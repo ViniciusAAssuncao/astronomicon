@@ -39,6 +39,7 @@ dependencies = [
 name = "astronomicon-db"
 version = "0.1.0"
 dependencies = [
+ "astronomicon-app",
  "astronomicon-core",
  "serde",
  "serde_json",
