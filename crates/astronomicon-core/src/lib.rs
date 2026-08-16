@@ -3,6 +3,6 @@ pub mod math;
 pub mod units;
 
 pub use units::{
-    Acceleration, AngularVelocity, Duration, GravitationalParameter, Irradiance, Length,
-    Luminosity, Mass, Speed, Temperature, Vector3,
+    Acceleration, Angle, AngularVelocity, Duration, GravitationalParameter, Irradiance, Length,
+    Luminosity, Mass, Position, Speed, Temperature, Vector3, Velocity,
 };
