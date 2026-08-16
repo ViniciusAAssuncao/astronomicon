@@ -21,7 +21,6 @@ version = "0.1.0"
 dependencies = [
  "astronomicon-core",
  "astronomicon-db",
- "sqlx",
  "thiserror",
  "tokio",
  "uuid",

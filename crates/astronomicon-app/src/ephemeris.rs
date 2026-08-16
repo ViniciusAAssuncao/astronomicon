@@ -4,7 +4,7 @@ use astronomicon_core::error::{DomainError, DomainResult};
 use astronomicon_core::math::gravity::{combined_gravitational_parameter, gravitational_parameter};
 use astronomicon_core::math::kepler::orbital_position;
 use astronomicon_core::units::{Duration, Mass, Position};
-use sqlx::SqlitePool;
+use astronomicon_db::SqlitePool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
