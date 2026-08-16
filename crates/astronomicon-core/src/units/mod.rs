@@ -1,9 +1,29 @@
 pub(crate) mod scalar_macro;
 pub(crate) mod vector_macro;
 
+pub mod acceleration;
+pub mod angular_velocity;
 pub mod constants;
 pub mod cross_operators;
+pub mod duration;
+pub mod gravitational_parameter;
+pub mod irradiance;
+pub mod length;
+pub mod luminosity;
+pub mod mass;
+pub mod speed;
+pub mod temperature;
 pub mod vector3;
 
+pub use acceleration::Acceleration;
+pub use angular_velocity::AngularVelocity;
 pub use constants::*;
+pub use duration::Duration;
+pub use gravitational_parameter::GravitationalParameter;
+pub use irradiance::Irradiance;
+pub use length::Length;
+pub use luminosity::Luminosity;
+pub use mass::Mass;
+pub use speed::Speed;
+pub use temperature::Temperature;
 pub use vector3::Vector3;
