@@ -13,7 +13,8 @@ pub fn compute_system_positions(
     planets: &[Planet],
     time_since_epoch: Duration,
 ) -> DomainResult<HashMap<Uuid, Position>> {
-    let mut resolved_positions: HashMap<Uuid, Position> = HashMap::with_capacity(stars.len() + planets.len());
+    let mut resolved_positions: HashMap<Uuid, Position> =
+        HashMap::with_capacity(stars.len() + planets.len());
 
     let star_map: HashMap<Uuid, &Star> = stars.iter().map(|s| (s.id(), s)).collect();
     let planet_map: HashMap<Uuid, &Planet> = planets.iter().map(|p| (p.id(), p)).collect();
@@ -65,12 +66,13 @@ pub fn compute_system_positions(
                 memo,
                 time_since_epoch,
             )?;
-            let parent_planet = planet_map.get(&parent_planet_id).copied().ok_or_else(|| {
-                DomainError::InvalidInvariant {
-                    field: "parent_planet_id".to_string(),
-                    reason: format!("parent planet '{}' not found in hierarchy", parent_planet_id),
-                }
-            })?;
+            let parent_planet =
+                planet_map.get(&parent_planet_id).copied().ok_or_else(|| {
+                    DomainError::InvalidInvariant {
+                        field: "parent_planet_id".to_string(),
+                        reason: format!("parent planet '{}' not found in hierarchy", parent_planet_id),
+                    }
+                })?;
             (parent_pos, parent_planet.mass())
         } else {
             (Position::zero(), Mass::new(0.0))
@@ -106,8 +108,20 @@ pub async fn resolve_system_positions(
     star_system_id: Uuid,
     time_since_epoch: Duration,
 ) -> AppResult<HashMap<Uuid, Position>> {
-    let stars = astronomicon_db::repositories::star::find_by_star_system(pool, star_system_id).await?;
-    let planets = astronomicon_db::repositories::planet::find_by_star_system(pool, star_system_id).await?;
+    let star_rows =
+        astronomicon_db::repositories::star_repository::list_by_system(pool, &star_system_id).await?;
+    let stars = star_rows
+        .into_iter()
+        .map(Star::try_from)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let planet_rows =
+        astronomicon_db::repositories::planet_repository::list_by_system(pool, &star_system_id).await?;
+    let planets = planet_rows
+        .into_iter()
+        .map(Planet::try_from)
+        .collect::<Result<Vec<_>, _>>()?;
+
     let positions = compute_system_positions(&stars, &planets, time_since_epoch)?;
     Ok(positions)
 }

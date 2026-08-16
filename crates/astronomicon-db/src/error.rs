@@ -13,6 +13,9 @@ pub enum DbError {
 
     #[error(transparent)]
     Domain(#[from] DomainError),
+
+    #[error(transparent)]
+    Uuid(#[from] uuid::Error),
 }
 
 pub type DbResult<T> = Result<T, DbError>;
