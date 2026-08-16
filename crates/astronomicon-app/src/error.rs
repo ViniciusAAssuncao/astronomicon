@@ -4,6 +4,8 @@ pub enum AppError {
     Generic(String),
     #[error(transparent)]
     Db(#[from] astronomicon_db::error::DbError),
+    #[error(transparent)]
+    Domain(#[from] astronomicon_core::error::DomainError),
 }
 
 pub type AppResult<T> = Result<T, AppError>;
