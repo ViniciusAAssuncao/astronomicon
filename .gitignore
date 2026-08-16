@@ -1,0 +1,10 @@
+/target
+*.db-wal
+*.db-shm
+**/*.rs.bk
+saves/
+*.db*
+.env
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/astronomicon",
+    "crates/astronomicon-core",
+    "crates/astronomicon-db",
+    "crates/astronomicon-app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Hadab Institute"]
+
+[workspace.dependencies]
+serde = { version = "1.0.197", features = ["derive"] }
+uuid = { version = "1.8.0", features = ["v4", "serde"] }
+thiserror = "2.0"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "uuid", "migrate", "macros"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "fs"] }
+
+[profile.release]
+opt-level = 3
+lto = true

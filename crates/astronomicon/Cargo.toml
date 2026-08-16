@@ -1,0 +1,11 @@
+[package]
+name = "astronomicon"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "astronomicon"
+path = "src/main.rs"
+
+[dependencies]
+astronomicon-app = { path = "../astronomicon-app" }
