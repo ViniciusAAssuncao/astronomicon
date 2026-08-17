@@ -3,12 +3,14 @@ pub mod context;
 pub mod ephemeris;
 pub mod error;
 pub mod gravity;
+pub mod lagrange;
 
 pub use climate::*;
 pub use context::{build_context, AppContext};
 pub use ephemeris::*;
 pub use error::{AppError, AppResult};
 pub use gravity::*;
+pub use lagrange::*;
 
 pub fn run() -> AppResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
