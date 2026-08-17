@@ -2,6 +2,7 @@ pub(crate) mod scalar_macro;
 pub(crate) mod vector_macro;
 
 pub mod acceleration;
+pub mod acceleration_vector;
 pub mod angle;
 pub mod angular_velocity;
 pub mod constants;
@@ -23,6 +24,7 @@ pub mod vector3;
 pub mod velocity;
 
 pub use acceleration::Acceleration;
+pub use acceleration_vector::AccelerationVector;
 pub use angle::Angle;
 pub use angular_velocity::AngularVelocity;
 pub use constants::*;

@@ -1,7 +1,9 @@
 use crate::domain::{Barycenter, BarycenterMember, OrbitalParent, Planet, Star};
 use crate::error::{DomainError, DomainResult};
 use crate::units::constants::GRAVITATIONAL_CONSTANT;
-use crate::units::{Acceleration, GravitationalParameter, Length, Mass};
+use crate::units::{
+    Acceleration, AccelerationVector, GravitationalParameter, Length, Mass, Position, Vector3,
+};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -19,6 +21,38 @@ pub fn surface_gravity(mu: GravitationalParameter, radius: Length) -> Accelerati
     } else {
         Acceleration::new(mu.value() / (radius.value() * radius.value()))
     }
+}
+
+pub fn gravitational_acceleration_at_altitude(
+    mu: GravitationalParameter,
+    equatorial_radius: Length,
+    altitude: Length,
+) -> Acceleration {
+    let r = equatorial_radius.value() + altitude.value();
+    if r <= 0.0 {
+        Acceleration::new(0.0)
+    } else {
+        Acceleration::new(mu.value() / (r * r))
+    }
+}
+
+pub fn gravitational_acceleration_at(
+    point: Position,
+    sources: &[(Position, Mass)],
+) -> AccelerationVector {
+    let mut total_acc = Vector3::zero();
+    let p = point.raw();
+
+    for (pos, mass) in sources {
+        let diff = pos.raw() - p;
+        let dist = diff.magnitude();
+        if dist > 1e-6 && mass.value() > 0.0 {
+            let factor = GRAVITATIONAL_CONSTANT * mass.value() / (dist * dist * dist);
+            total_acc = total_acc + diff * factor;
+        }
+    }
+
+    AccelerationVector::from_raw(total_acc)
 }
 
 fn calculate_effective_mass_inner(

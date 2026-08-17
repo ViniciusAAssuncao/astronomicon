@@ -9,7 +9,7 @@ pub use domain::{
     Planet, PlanetKind, Star, StarKind, StarSystem, UniverseState,
 };
 pub use units::{
-    Acceleration, Angle, AngularVelocity, Density, Duration, GravitationalParameter, Irradiance,
-    Length, Luminosity, Mass, MolarMass, Position, Pressure, Speed, Temperature,
-    TemperatureGradient, Vector3, Velocity,
+    Acceleration, AccelerationVector, Angle, AngularVelocity, Density, Duration,
+    GravitationalParameter, Irradiance, Length, Luminosity, Mass, MolarMass, Position, Pressure,
+    Speed, Temperature, TemperatureGradient, Vector3, Velocity,
 };
