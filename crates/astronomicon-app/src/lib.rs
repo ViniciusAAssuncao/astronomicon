@@ -1,7 +1,9 @@
+pub mod climate;
 pub mod context;
 pub mod ephemeris;
 pub mod error;
 
+pub use climate::*;
 pub use context::{build_context, AppContext};
 pub use ephemeris::*;
 pub use error::{AppError, AppResult};
