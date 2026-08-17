@@ -1,0 +1,122 @@
+[
+  {
+    "nome": "Zeta Ophiuchi",
+    "kind": "Star",
+    "massa_kg": 3.977e+31,
+    "raio_m": 5774310000.000001,
+    "temperatura_efetiva_k": 34000.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "O9.5V"
+  },
+  {
+    "nome": "Spica A",
+    "kind": "Star",
+    "massa_kg": 2.2728555e+31,
+    "raio_m": 5196879000.0,
+    "temperatura_efetiva_k": 25300.0,
+    "periodo_rotacao_s": 346861.44,
+    "teorica": false,
+    "classe_espectral": "B1III-IV"
+  },
+  {
+    "nome": "Sirius A",
+    "kind": "Star",
+    "massa_kg": 4.1022755000000005e+30,
+    "raio_m": 1191734100.0,
+    "temperatura_efetiva_k": 9940.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "A1V"
+  },
+  {
+    "nome": "Procyon A",
+    "kind": "Star",
+    "massa_kg": 2.9807615e+30,
+    "raio_m": 1424793600.0,
+    "temperatura_efetiva_k": 6530.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "F5IV-V"
+  },
+  {
+    "nome": "Sol",
+    "kind": "Star",
+    "massa_kg": 1.9885e+30,
+    "raio_m": 695700000.0,
+    "temperatura_efetiva_k": 5772.0,
+    "periodo_rotacao_s": 2164320.0,
+    "teorica": false,
+    "classe_espectral": "G2V"
+  },
+  {
+    "nome": "Alpha Centauri A",
+    "kind": "Star",
+    "massa_kg": 2.1451938e+30,
+    "raio_m": 847014750.0,
+    "temperatura_efetiva_k": 5790.0,
+    "periodo_rotacao_s": 1944000.0,
+    "teorica": false,
+    "classe_espectral": "G2V"
+  },
+  {
+    "nome": "Alpha Centauri B",
+    "kind": "Star",
+    "massa_kg": 1.8079442e+30,
+    "raio_m": 597675870.0,
+    "temperatura_efetiva_k": 5260.0,
+    "periodo_rotacao_s": 3110400.0,
+    "teorica": false,
+    "classe_espectral": "K1V"
+  },
+  {
+    "nome": "Proxima Centauri",
+    "kind": "Star",
+    "massa_kg": 2.4279585e+29,
+    "raio_m": 107276940.0,
+    "temperatura_efetiva_k": 3042.0,
+    "periodo_rotacao_s": 7136639.999999999,
+    "teorica": false,
+    "classe_espectral": "M5.5V"
+  },
+  {
+    "nome": "Sirius B",
+    "kind": "WhiteDwarf",
+    "massa_kg": 2.024293e+30,
+    "raio_m": 5800000.0,
+    "temperatura_efetiva_k": 25000.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "DA2"
+  },
+  {
+    "nome": "Gliese 229 B",
+    "kind": "BrownDwarf",
+    "massa_kg": 7.954e+28,
+    "raio_m": 71492000.0,
+    "temperatura_efetiva_k": 940.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "T7"
+  },
+  {
+    "nome": "PSR J1614-2230",
+    "kind": "NeutronStar",
+    "massa_kg": 3.917345e+30,
+    "raio_m": 13000.0,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": 0.0031508,
+    "teorica": true,
+    "classe_espectral": null
+  },
+  {
+    "nome": "Cygnus X-1",
+    "kind": "BlackHole",
+    "massa_kg": 4.21562e+31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": true,
+    "classe_espectral": null
+  }
+]
