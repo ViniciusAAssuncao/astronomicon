@@ -6,6 +6,7 @@ pub mod lagrange;
 pub mod perturbation;
 pub mod radiometry;
 pub mod resonance;
+pub mod shape;
 pub mod stability;
 pub mod tidal;
 
@@ -17,5 +18,6 @@ pub use lagrange::*;
 pub use perturbation::*;
 pub use radiometry::*;
 pub use resonance::*;
+pub use shape::*;
 pub use stability::*;
 pub use tidal::*;

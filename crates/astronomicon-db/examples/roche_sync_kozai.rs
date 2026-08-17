@@ -1,3 +1,5 @@
+use astronomicon_app::shape::planet_mean_density;
+use astronomicon_core::domain::{OrbitalParent, Planet, PlanetKind};
 use astronomicon_core::math::gravity::gravitational_parameter;
 use astronomicon_core::math::kepler::orbital_period;
 use astronomicon_core::math::radiometry::mean_density;
@@ -10,6 +12,7 @@ use astronomicon_core::math::tidal::{
 use astronomicon_core::units::constants::ASTRONOMICAL_UNIT;
 use astronomicon_core::units::{Angle, Density, Duration, Length, Mass};
 use std::f64::consts::PI;
+use uuid::Uuid;
 
 const SOLAR_MASS_KG: f64 = 1.98847e30;
 
@@ -24,13 +27,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "===================================================================================================="
     );
 
+    let saturn_id = Uuid::new_v4();
     let m_saturn = Mass::new(5.6834e26);
-    let r_saturn = Length::new(60_268_000.0);
-    let rho_saturn = mean_density(m_saturn, r_saturn);
+    let r_saturn_eq = Length::new(60_268_000.0);
+    let r_saturn_pol = Length::new(54_364_000.0);
+
+    let saturn_empirical = Planet::builder(
+        saturn_id,
+        "Saturno",
+        m_saturn,
+        PlanetKind::GasGiant,
+        OrbitalParent::Fixed,
+    )
+    .with_equatorial_radius(r_saturn_eq)
+    .with_polar_radius(r_saturn_pol)
+    .build()?;
+
+    let saturn_derived = Planet::builder(
+        saturn_id,
+        "Saturno",
+        m_saturn,
+        PlanetKind::GasGiant,
+        OrbitalParent::Fixed,
+    )
+    .with_equatorial_radius(r_saturn_eq)
+    .with_rotation_period(Duration::new(38052.0))
+    .with_oblateness_j2(0.01629)
+    .build()?;
+
+    let rho_saturn_empirical = planet_mean_density(&saturn_empirical);
+    let rho_saturn_derived = planet_mean_density(&saturn_derived);
     let rho_ice = Density::new(900.0);
 
-    let roche_saturn_rigid = roche_limit_rigid(r_saturn, rho_saturn, rho_ice);
-    let roche_saturn_fluid = roche_limit_fluid(r_saturn, rho_saturn, rho_ice);
+    let roche_saturn_rigid = roche_limit_rigid(r_saturn_eq, rho_saturn_empirical, rho_ice);
+    let roche_saturn_fluid = roche_limit_fluid(r_saturn_eq, rho_saturn_empirical, rho_ice);
     let ring_a_outer_radius = 136_775_000.0;
 
     println!("[SUB-FIXTURE A] SATURNO E O LIMITE DE ROCHE DOS ANÉIS");
@@ -38,19 +68,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "----------------------------------------------------------------------------------------------------"
     );
     println!("  Massa de Saturno           : {:>14.4e} kg", m_saturn.value());
-    println!("  Raio Equatorial Saturno    : {:>14.2} km", r_saturn.value() * 1e-3);
-    println!("  Densidade Média Saturno    : {:>14.2} kg/m³", rho_saturn.value());
+    println!("  Raio Equatorial Saturno    : {:>14.2} km", r_saturn_eq.value() * 1e-3);
+    println!("  Raio Polar Empírico        : {:>14.2} km", r_saturn_pol.value() * 1e-3);
+    println!("  Densidade Média Empírica   : {:>14.2} kg/m³ (Ref. Literatura: ~687 kg/m³)", rho_saturn_empirical.value());
+    println!("  Densidade Média Derivada   : {:>14.2} kg/m³ (Clairaut-Radau)", rho_saturn_derived.value());
     println!("  Densidade Típica do Gelo   : {:>14.2} kg/m³", rho_ice.value());
     println!("  Limite de Roche Rígido     : {:>14.2} km", roche_saturn_rigid.value() * 1e-3);
     println!("  Limite de Roche Fluido     : {:>14.2} km", roche_saturn_fluid.value() * 1e-3);
     println!("  Borda Externa do Anel A    : {:>14.2} km", ring_a_outer_radius * 1e-3);
+    let margin = ((ring_a_outer_radius - roche_saturn_fluid.value()) / roche_saturn_fluid.value()) * 100.0;
     println!(
-        "  Posicionamento dos Anéis   : {}",
-        if ring_a_outer_radius <= roche_saturn_fluid.value() {
-            "DENTRO DO LIMITE FLUIDO (Agregação gravitacional impedida por maré)"
-        } else {
-            "FORA DO LIMITE FLUIDO"
-        }
+        "  Posicionamento dos Anéis   : Borda do Anel A está a {:.2}% além do Limite Fluido",
+        margin
     );
     println!();
 

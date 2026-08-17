@@ -1,5 +1,6 @@
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
+use crate::shape::{planet_mean_density, star_mean_density};
 use astronomicon_core::domain::{Barycenter, BarycenterMember, Planet, Star};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::gravity::{
@@ -7,7 +8,6 @@ use astronomicon_core::math::gravity::{
     gravitational_acceleration_at, gravitational_parameter,
 };
 use astronomicon_core::math::kepler::orbital_period;
-use astronomicon_core::math::radiometry::mean_density;
 use astronomicon_core::math::stability::{
     hill_sphere_radius, kozai_constant, kozai_critical_inclination, kozai_max_eccentricity,
     kozai_oscillation_timescale, mardling_aarseth_critical_ratio, mardling_aarseth_stability_ratio,
@@ -394,13 +394,13 @@ pub async fn resolve_roche_limits(
 ) -> AppResult<RocheLimits> {
     let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
 
-    let (primary_mass, primary_radius) =
+    let (primary_density, primary_radius) =
         if let Some(star) = hierarchy.stars.iter().find(|s| s.id() == *primary_id) {
             let r = star.radius().ok_or_else(|| DomainError::InvalidInvariant {
                 field: "radius".to_string(),
                 reason: format!("primary star '{}' has no radius", primary_id),
             })?;
-            (star.mass(), r)
+            (star_mean_density(star), r)
         } else if let Some(planet) = hierarchy.planets.iter().find(|p| p.id() == *primary_id) {
             let r = planet
                 .equatorial_radius()
@@ -408,7 +408,7 @@ pub async fn resolve_roche_limits(
                     field: "equatorial_radius".to_string(),
                     reason: format!("primary planet '{}' has no equatorial radius", primary_id),
                 })?;
-            (planet.mass(), r)
+            (planet_mean_density(planet), r)
         } else {
             return Err(DomainError::InvalidInvariant {
                 field: "primary_id".to_string(),
@@ -420,25 +420,12 @@ pub async fn resolve_roche_limits(
             .into());
         };
 
-    let (satellite_mass, satellite_radius) = if let Some(star) =
+    let satellite_density = if let Some(star) =
         hierarchy.stars.iter().find(|s| s.id() == *satellite_id)
     {
-        let r = star.radius().ok_or_else(|| DomainError::InvalidInvariant {
-            field: "radius".to_string(),
-            reason: format!("satellite star '{}' has no radius", satellite_id),
-        })?;
-        (star.mass(), r)
+        star_mean_density(star)
     } else if let Some(planet) = hierarchy.planets.iter().find(|p| p.id() == *satellite_id) {
-        let r = planet
-            .equatorial_radius()
-            .ok_or_else(|| DomainError::InvalidInvariant {
-                field: "equatorial_radius".to_string(),
-                reason: format!(
-                    "satellite planet '{}' has no equatorial radius",
-                    satellite_id
-                ),
-            })?;
-        (planet.mass(), r)
+        planet_mean_density(planet)
     } else {
         return Err(DomainError::InvalidInvariant {
             field: "satellite_id".to_string(),
@@ -449,9 +436,6 @@ pub async fn resolve_roche_limits(
         }
         .into());
     };
-
-    let primary_density = mean_density(primary_mass, primary_radius);
-    let satellite_density = mean_density(satellite_mass, satellite_radius);
 
     let rigid = roche_limit_rigid(primary_radius, primary_density, satellite_density);
     let fluid = roche_limit_fluid(primary_radius, primary_density, satellite_density);
