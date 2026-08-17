@@ -1,6 +1,6 @@
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
-use astronomicon_core::domain::{Planet, Star};
+use astronomicon_core::domain::{Barycenter, BarycenterMember, OrbitalParent, Planet, Star};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::atmosphere::ideal_gas_density;
 use astronomicon_core::math::climate::{
@@ -14,42 +14,112 @@ use astronomicon_core::math::kepler::true_anomaly_at_epoch;
 use astronomicon_core::math::radiometry::{
     equilibrium_temperature, orbital_irradiance, stellar_luminosity,
 };
-use astronomicon_core::units::{
-    Angle, Density, Duration, Length, Pressure, Temperature,
+use astronomicon_core::units::{Angle, Density, Duration, Length, Pressure, Temperature};
+use astronomicon_db::repositories::{
+    atmosphere_repository, barycenter_repository, planet_repository, star_repository,
 };
-use astronomicon_db::repositories::{atmosphere_repository, planet_repository, star_repository};
 use astronomicon_db::SqlitePool;
 use uuid::Uuid;
 
+async fn collect_stars_from_barycenter(
+    pool: &SqlitePool,
+    barycenter_id: &Uuid,
+    visited: &mut std::collections::HashSet<Uuid>,
+) -> AppResult<Vec<Star>> {
+    if !visited.insert(*barycenter_id) {
+        return Err(DomainError::InvalidInvariant {
+            field: "barycenter".to_string(),
+            reason: format!("circular reference detected in barycenter '{}'", barycenter_id),
+        }
+        .into());
+    }
+
+    let row = barycenter_repository::get_by_id(pool, barycenter_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "barycenter_id".to_string(),
+            reason: format!("barycenter '{}' not found", barycenter_id),
+        })?;
+    let barycenter = Barycenter::try_from(row)?;
+
+    let mut stars = Vec::new();
+
+    for member in [barycenter.member_primary(), barycenter.member_secondary()] {
+        match member {
+            BarycenterMember::Star(star_id) => {
+                let star_row = star_repository::get_by_id(pool, &star_id)
+                    .await?
+                    .ok_or_else(|| DomainError::InvalidInvariant {
+                        field: "star_id".to_string(),
+                        reason: format!("star '{}' in barycenter not found", star_id),
+                    })?;
+                stars.push(Star::try_from(star_row)?);
+            }
+            BarycenterMember::Planet(_) => {}
+            BarycenterMember::Barycenter(sub_id) => {
+                let mut sub_stars =
+                    Box::pin(collect_stars_from_barycenter(pool, &sub_id, visited)).await?;
+                stars.append(&mut sub_stars);
+            }
+        }
+    }
+
+    visited.remove(barycenter_id);
+    Ok(stars)
+}
+
 async fn find_parent_star(pool: &SqlitePool, planet: &Planet) -> AppResult<Star> {
-    let mut current_parent_star_id = planet.parent_star_id();
-    let mut current_parent_planet_id = planet.parent_planet_id();
+    let mut current_parent = planet.orbital_parent();
+    let mut visited_barycenters = std::collections::HashSet::new();
 
     loop {
-        if let Some(star_id) = current_parent_star_id {
-            let row = star_repository::get_by_id(pool, &star_id)
-                .await?
-                .ok_or_else(|| DomainError::InvalidInvariant {
-                    field: "parent_star_id".to_string(),
-                    reason: format!("parent star '{}' not found", star_id),
-                })?;
-            return Ok(Star::try_from(row)?);
-        } else if let Some(p_id) = current_parent_planet_id {
-            let row = planet_repository::get_by_id(pool, &p_id)
-                .await?
-                .ok_or_else(|| DomainError::InvalidInvariant {
-                    field: "parent_planet_id".to_string(),
-                    reason: format!("parent planet '{}' not found", p_id),
-                })?;
-            let parent_p = Planet::try_from(row)?;
-            current_parent_star_id = parent_p.parent_star_id();
-            current_parent_planet_id = parent_p.parent_planet_id();
-        } else {
-            return Err(DomainError::InvalidInvariant {
-                field: "planet_hierarchy".to_string(),
-                reason: "planet has no parent star or parent planet in hierarchy".to_string(),
+        match current_parent {
+            OrbitalParent::Star(star_id) => {
+                let row = star_repository::get_by_id(pool, &star_id)
+                    .await?
+                    .ok_or_else(|| DomainError::InvalidInvariant {
+                        field: "parent_star_id".to_string(),
+                        reason: format!("parent star '{}' not found", star_id),
+                    })?;
+                return Ok(Star::try_from(row)?);
             }
-            .into());
+            OrbitalParent::Planet(planet_id) => {
+                let row = planet_repository::get_by_id(pool, &planet_id)
+                    .await?
+                    .ok_or_else(|| DomainError::InvalidInvariant {
+                        field: "parent_planet_id".to_string(),
+                        reason: format!("parent planet '{}' not found", planet_id),
+                    })?;
+                let parent_planet = Planet::try_from(row)?;
+                current_parent = parent_planet.orbital_parent();
+            }
+            OrbitalParent::Barycenter(barycenter_id) => {
+                let stars =
+                    collect_stars_from_barycenter(pool, &barycenter_id, &mut visited_barycenters)
+                        .await?;
+                let most_massive = stars
+                    .into_iter()
+                    .max_by(|a, b| {
+                        a.mass()
+                            .partial_cmp(&b.mass())
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .ok_or_else(|| DomainError::InvalidInvariant {
+                        field: "barycenter_stars".to_string(),
+                        reason: format!(
+                            "no stars found in barycenter '{}' hierarchy",
+                            barycenter_id
+                        ),
+                    })?;
+                return Ok(most_massive);
+            }
+            OrbitalParent::Fixed => {
+                return Err(DomainError::InvalidInvariant {
+                    field: "planet_hierarchy".to_string(),
+                    reason: "planet has no parent star in hierarchy".to_string(),
+                }
+                .into());
+            }
         }
     }
 }
@@ -119,8 +189,7 @@ pub async fn resolve_global_mean_temperature(
 
     let orbital_distance = (planet_pos - star_pos).magnitude();
 
-    let eq_temp =
-        equilibrium_temperature(star_temp, star_radius, orbital_distance, bond_albedo);
+    let eq_temp = equilibrium_temperature(star_temp, star_radius, orbital_distance, bond_albedo);
 
     let greenhouse = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
         Some(atmosphere) => atmosphere.greenhouse_effect(),
@@ -145,24 +214,7 @@ pub async fn resolve_latitudinal_surface_temperature(
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let parent_star_id = match (planet.parent_star_id(), planet.parent_planet_id()) {
-        (Some(id), None) => id,
-        _ => {
-            return Err(DomainError::InvalidInvariant {
-                field: "parent_star_id".to_string(),
-                reason: "latitudinal surface temperature is only supported for planets orbiting a star directly".to_string(),
-            }
-            .into());
-        }
-    };
-
-    let star_row = star_repository::get_by_id(pool, &parent_star_id)
-        .await?
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "parent_star_id".to_string(),
-            reason: format!("parent star '{}' not found", parent_star_id),
-        })?;
-    let star = Star::try_from(star_row)?;
+    let star = find_parent_star(pool, &planet).await?;
 
     let thermal_inertia = planet
         .thermal_inertia()
