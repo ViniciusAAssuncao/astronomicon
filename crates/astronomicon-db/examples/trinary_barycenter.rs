@@ -51,33 +51,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let r_nelica = Length::new(0.012 * SOLAR_RADIUS_M);
     let t_nelica = astronomicon_core::units::Temperature::new(18500.0);
 
-    let helca = Star::new(
+    let helca = Star::builder(
         helca_id,
-        None,
-        OrbitalParent::Fixed,
-        StarKind::Star,
-        "Hélca (Zód A)".to_string(),
+        "Hélca (Zód A)",
         m_helca,
-        Some(r_helca),
-        Some(t_helca),
-        None,
-        None,
-        None,
-    )?;
-
-    let asdi = Star::new(
-        asdi_id,
-        None,
-        OrbitalParent::Fixed,
         StarKind::Star,
-        "Ásdi (Zód B)".to_string(),
+        OrbitalParent::Fixed,
+    )
+    .with_radius(r_helca)
+    .with_effective_temperature(t_helca)
+    .build()?;
+
+    let asdi = Star::builder(
+        asdi_id,
+        "Ásdi (Zód B)",
         m_asdi,
-        Some(r_asdi),
-        Some(t_asdi),
-        None,
-        None,
-        None,
-    )?;
+        StarKind::Star,
+        OrbitalParent::Fixed,
+    )
+    .with_radius(r_asdi)
+    .with_effective_temperature(t_asdi)
+    .build()?;
 
     let inner_a = Length::new(1.80 * ASTRONOMICAL_UNIT);
     let inner_e = 0.12;
@@ -115,19 +109,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Angle::new(0.0),
     )?;
 
-    let nelica = Star::new(
+    let nelica = Star::builder(
         nelica_id,
-        None,
-        OrbitalParent::Barycenter(barycenter_id),
-        StarKind::WhiteDwarf,
-        "Nélica (Zód C)".to_string(),
+        "Nélica (Zód C)",
         m_nelica,
-        Some(r_nelica),
-        Some(t_nelica),
-        None,
-        None,
-        Some(outer_elements),
-    )?;
+        StarKind::WhiteDwarf,
+        OrbitalParent::Barycenter(barycenter_id),
+    )
+    .with_radius(r_nelica)
+    .with_effective_temperature(t_nelica)
+    .with_orbital_elements(outer_elements)
+    .build()?;
 
     let mu_inner = combined_gravitational_parameter(m_helca, m_asdi);
     let inner_period = orbital_period(inner_a, mu_inner).unwrap();

@@ -141,37 +141,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let planet_id = Uuid::new_v4();
     let moon_id = Uuid::new_v4();
 
-    let star = Star::new(
+    let star = Star::builder(
         star_id,
-        None,
-        OrbitalParent::Fixed,
-        StarKind::Star,
-        "Sol".to_string(),
+        "Sol",
         m_sun,
-        Some(Length::new(6.957e8)),
-        None,
-        None,
-        None,
-        None,
-    )?;
+        StarKind::Star,
+        OrbitalParent::Fixed,
+    )
+    .with_radius(Length::new(6.957e8))
+    .build()?;
 
-    let planet = Planet::new(
+    let planet = Planet::builder(
         planet_id,
-        None,
-        OrbitalParent::Star(star_id),
-        "Terra".to_string(),
-        PlanetKind::Telluric,
+        "Terra",
         m_earth,
-        Some(Length::new(6.371e6)),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(earth_elements),
-    )?;
+        PlanetKind::Telluric,
+        OrbitalParent::Star(star_id),
+    )
+    .with_equatorial_radius(Length::new(6.371e6))
+    .with_orbital_elements(earth_elements)
+    .build()?;
 
     let moon_elements = OrbitalElements::new(
         Length::new(MOON_SEMI_MAJOR_M),
@@ -182,23 +171,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Angle::new(0.0),
     )?;
 
-    let moon = Planet::new(
+    let moon = Planet::builder(
         moon_id,
-        None,
-        OrbitalParent::Planet(planet_id),
-        "Lua".to_string(),
-        PlanetKind::IcyBody,
+        "Lua",
         m_moon,
-        Some(Length::new(1.737e6)),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(moon_elements),
-    )?;
+        PlanetKind::IcyBody,
+        OrbitalParent::Planet(planet_id),
+    )
+    .with_equatorial_radius(Length::new(1.737e6))
+    .with_orbital_elements(moon_elements)
+    .build()?;
 
     let stars = vec![star];
     let planets = vec![planet, moon];

@@ -9,7 +9,7 @@ pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> DbResult<Option<PlanetRo
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
-         mean_anomaly_at_epoch_rad \
+         mean_anomaly_at_epoch_rad, oblateness_j2 \
          FROM planets WHERE id = ?",
     )
     .bind(id.to_string())
@@ -25,7 +25,7 @@ pub async fn list_all(pool: &SqlitePool) -> DbResult<Vec<PlanetRow>> {
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
-         mean_anomaly_at_epoch_rad \
+         mean_anomaly_at_epoch_rad, oblateness_j2 \
          FROM planets ORDER BY name ASC",
     )
     .fetch_all(pool)
@@ -43,7 +43,7 @@ pub async fn list_children_of_planet(
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
-         mean_anomaly_at_epoch_rad \
+         mean_anomaly_at_epoch_rad, oblateness_j2 \
          FROM planets WHERE parent_planet_id = ? ORDER BY name ASC",
     )
     .bind(parent_planet_id.to_string())
@@ -59,7 +59,7 @@ pub async fn list_by_star(pool: &SqlitePool, parent_star_id: &Uuid) -> DbResult<
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
-         mean_anomaly_at_epoch_rad \
+         mean_anomaly_at_epoch_rad, oblateness_j2 \
          FROM planets WHERE parent_star_id = ? ORDER BY name ASC",
     )
     .bind(parent_star_id.to_string())
@@ -75,7 +75,7 @@ pub async fn list_by_system(pool: &SqlitePool, system_id: &Uuid) -> DbResult<Vec
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
-         mean_anomaly_at_epoch_rad \
+         mean_anomaly_at_epoch_rad, oblateness_j2 \
          FROM planets WHERE star_system_id = ? ORDER BY name ASC",
     )
     .bind(system_id.to_string())

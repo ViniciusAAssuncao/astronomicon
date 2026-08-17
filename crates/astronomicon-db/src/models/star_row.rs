@@ -25,6 +25,7 @@ pub struct StarRow {
     pub longitude_ascending_node_rad: Option<f64>,
     pub argument_periapsis_rad: Option<f64>,
     pub mean_anomaly_at_epoch_rad: Option<f64>,
+    pub oblateness_j2: Option<f64>,
 }
 
 fn parse_orbital_parent(
@@ -120,19 +121,15 @@ impl TryFrom<StarRow> for Star {
             row.mean_anomaly_at_epoch_rad,
         )?;
 
-        let star = Star::new(
-            id,
-            star_system_id,
-            orbital_parent,
-            kind,
-            row.name,
-            Mass::new(row.mass_kg),
-            row.radius_m.map(Length::new),
-            row.effective_temperature_k.map(Temperature::new),
-            row.rotation_period_s.map(Duration::new),
-            row.axial_tilt_rad.map(Angle::new),
-            orbital_elements,
-        )?;
+        let star = Star::builder(id, row.name, Mass::new(row.mass_kg), kind, orbital_parent)
+            .with_star_system_id(star_system_id)
+            .with_radius(row.radius_m.map(Length::new))
+            .with_effective_temperature(row.effective_temperature_k.map(Temperature::new))
+            .with_rotation_period(row.rotation_period_s.map(Duration::new))
+            .with_obliquity(row.axial_tilt_rad.map(Angle::new))
+            .with_orbital_elements(orbital_elements)
+            .with_oblateness_j2(row.oblateness_j2)
+            .build()?;
 
         Ok(star)
     }

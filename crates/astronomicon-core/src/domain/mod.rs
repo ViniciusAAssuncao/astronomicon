@@ -14,6 +14,6 @@ pub use epoch::UniverseState;
 pub use gas_component::GasComponent;
 pub use orbital_elements::OrbitalElements;
 pub use orbital_parent::OrbitalParent;
-pub use planet::{Planet, PlanetKind};
-pub use star::{Star, StarKind};
+pub use planet::{Planet, PlanetBuilder, PlanetKind};
+pub use star::{Star, StarBuilder, StarKind};
 pub use star_system::StarSystem;

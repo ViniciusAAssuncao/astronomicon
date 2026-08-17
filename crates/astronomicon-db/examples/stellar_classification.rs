@@ -142,87 +142,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         StarFixture {
             _name: "Sol",
             catalog_spec: "G2V",
-            star: Star::new(
+            star: Star::builder(
                 Uuid::new_v4(),
-                None,
-                OrbitalParent::Fixed,
-                StarKind::Star,
-                "Sol".to_string(),
+                "Sol",
                 Mass::new(SOLAR_MASS),
-                Some(Length::new(SOLAR_RADIUS)),
-                Some(Temperature::new(SOLAR_TEMPERATURE)),
-                None,
-                None,
-                None,
-            )?,
+                StarKind::Star,
+                OrbitalParent::Fixed,
+            )
+            .with_radius(Length::new(SOLAR_RADIUS))
+            .with_effective_temperature(Temperature::new(SOLAR_TEMPERATURE))
+            .build()?,
         },
         StarFixture {
             _name: "Sirius A",
             catalog_spec: "A1V",
-            star: Star::new(
+            star: Star::builder(
                 Uuid::new_v4(),
-                None,
-                OrbitalParent::Fixed,
-                StarKind::Star,
-                "Sirius A".to_string(),
+                "Sirius A",
                 Mass::new(2.063 * SOLAR_MASS),
-                Some(Length::new(1.711 * SOLAR_RADIUS)),
-                Some(Temperature::new(9940.0)),
-                None,
-                None,
-                None,
-            )?,
+                StarKind::Star,
+                OrbitalParent::Fixed,
+            )
+            .with_radius(Length::new(1.711 * SOLAR_RADIUS))
+            .with_effective_temperature(Temperature::new(9940.0))
+            .build()?,
         },
         StarFixture {
             _name: "Betelgeuse",
             catalog_spec: "M1-2Ia-ab",
-            star: Star::new(
+            star: Star::builder(
                 Uuid::new_v4(),
-                None,
-                OrbitalParent::Fixed,
-                StarKind::Star,
-                "Betelgeuse".to_string(),
+                "Betelgeuse",
                 Mass::new(16.5 * SOLAR_MASS),
-                Some(Length::new(764.0 * SOLAR_RADIUS)),
-                Some(Temperature::new(3600.0)),
-                None,
-                None,
-                None,
-            )?,
+                StarKind::Star,
+                OrbitalParent::Fixed,
+            )
+            .with_radius(Length::new(764.0 * SOLAR_RADIUS))
+            .with_effective_temperature(Temperature::new(3600.0))
+            .build()?,
         },
         StarFixture {
             _name: "Proxima Centauri",
             catalog_spec: "M5.5V",
-            star: Star::new(
+            star: Star::builder(
                 Uuid::new_v4(),
-                None,
-                OrbitalParent::Fixed,
-                StarKind::Star,
-                "Proxima Centauri".to_string(),
+                "Proxima Centauri",
                 Mass::new(0.1221 * SOLAR_MASS),
-                Some(Length::new(0.1542 * SOLAR_RADIUS)),
-                Some(Temperature::new(3042.0)),
-                None,
-                None,
-                None,
-            )?,
+                StarKind::Star,
+                OrbitalParent::Fixed,
+            )
+            .with_radius(Length::new(0.1542 * SOLAR_RADIUS))
+            .with_effective_temperature(Temperature::new(3042.0))
+            .build()?,
         },
         StarFixture {
             _name: "Sirius B",
             catalog_spec: "DA2 (VII)",
-            star: Star::new(
+            star: Star::builder(
                 Uuid::new_v4(),
-                None,
-                OrbitalParent::Fixed,
-                StarKind::WhiteDwarf,
-                "Sirius B".to_string(),
+                "Sirius B",
                 Mass::new(1.018 * SOLAR_MASS),
-                Some(Length::new(0.0084 * SOLAR_RADIUS)),
-                Some(Temperature::new(25200.0)),
-                None,
-                None,
-                None,
-            )?,
+                StarKind::WhiteDwarf,
+                OrbitalParent::Fixed,
+            )
+            .with_radius(Length::new(0.0084 * SOLAR_RADIUS))
+            .with_effective_temperature(Temperature::new(25200.0))
+            .build()?,
         },
     ];
 

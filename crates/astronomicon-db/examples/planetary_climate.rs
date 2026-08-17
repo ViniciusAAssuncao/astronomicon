@@ -49,19 +49,16 @@ struct PlanetClimateFixture {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let sun = Star::new(
+    let sun = Star::builder(
         Uuid::new_v4(),
-        None,
-        OrbitalParent::Fixed,
-        StarKind::Star,
-        "Sol".to_string(),
+        "Sol",
         Mass::new(SOLAR_MASS),
-        Some(Length::new(SOLAR_RADIUS)),
-        Some(Temperature::new(SOLAR_TEMPERATURE)),
-        None,
-        None,
-        None
-    )?;
+        StarKind::Star,
+        OrbitalParent::Fixed,
+    )
+    .with_radius(Length::new(SOLAR_RADIUS))
+    .with_effective_temperature(Temperature::new(SOLAR_TEMPERATURE))
+    .build()?;
 
     let earth_id = Uuid::new_v4();
     let earth_elements = OrbitalElements::new(
@@ -72,23 +69,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Angle::new(0.0),
         Angle::new(0.0)
     )?;
-    let earth = Planet::new(
+    let earth = Planet::builder(
         earth_id,
-        None,
-        OrbitalParent::Star(sun.id()),
-        "Terra".to_string(),
-        PlanetKind::Telluric,
+        "Terra",
         Mass::new(5.9722e24),
-        Some(Length::new(6.371e6)),
-        Some(Length::new(6.3568e6)),
-        None,
-        Some(Angle::new((23.44 * PI) / 180.0)),
-        Some(0.367),
-        Some(0.306),
-        Some(0.8),
-        Some(Angle::new(0.0)),
-        Some(earth_elements)
-    )?;
+        PlanetKind::Telluric,
+        OrbitalParent::Star(sun.id()),
+    )
+    .with_equatorial_radius(Length::new(6.371e6))
+    .with_polar_radius(Length::new(6.3568e6))
+    .with_obliquity(Angle::new((23.44 * PI) / 180.0))
+    .with_geometric_albedo(0.367)
+    .with_bond_albedo(0.306)
+    .with_thermal_inertia(0.8)
+    .with_solstice_true_anomaly(Angle::new(0.0))
+    .with_orbital_elements(earth_elements)
+    .build()?;
+
     let earth_atmosphere = Atmosphere::new(
         Uuid::new_v4(),
         earth_id,
@@ -112,23 +109,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Angle::new(5.0),
         Angle::new(0.0)
     )?;
-    let mars = Planet::new(
+    let mars = Planet::builder(
         mars_id,
-        None,
-        OrbitalParent::Star(sun.id()),
-        "Marte".to_string(),
-        PlanetKind::Telluric,
+        "Marte",
         Mass::new(6.4171e23),
-        Some(Length::new(3.3895e6)),
-        Some(Length::new(3.3762e6)),
-        None,
-        Some(Angle::new((25.19 * PI) / 180.0)),
-        Some(0.15),
-        Some(0.25),
-        Some(0.2),
-        Some(Angle::new(0.0)),
-        Some(mars_elements)
-    )?;
+        PlanetKind::Telluric,
+        OrbitalParent::Star(sun.id()),
+    )
+    .with_equatorial_radius(Length::new(3.3895e6))
+    .with_polar_radius(Length::new(3.3762e6))
+    .with_obliquity(Angle::new((25.19 * PI) / 180.0))
+    .with_geometric_albedo(0.15)
+    .with_bond_albedo(0.25)
+    .with_thermal_inertia(0.2)
+    .with_solstice_true_anomaly(Angle::new(0.0))
+    .with_orbital_elements(mars_elements)
+    .build()?;
+
     let mars_atmosphere = Atmosphere::new(
         Uuid::new_v4(),
         mars_id,
@@ -151,23 +148,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Angle::new(0.958),
         Angle::new(0.0)
     )?;
-    let venus = Planet::new(
+    let venus = Planet::builder(
         venus_id,
-        None,
-        OrbitalParent::Star(sun.id()),
-        "Vênus".to_string(),
-        PlanetKind::Telluric,
+        "Vênus",
         Mass::new(4.8675e24),
-        Some(Length::new(6.0518e6)),
-        Some(Length::new(6.0518e6)),
-        None,
-        Some(Angle::new((2.64 * PI) / 180.0)),
-        Some(0.67),
-        Some(0.77),
-        Some(0.95),
-        Some(Angle::new(0.0)),
-        Some(venus_elements)
-    )?;
+        PlanetKind::Telluric,
+        OrbitalParent::Star(sun.id()),
+    )
+    .with_equatorial_radius(Length::new(6.0518e6))
+    .with_polar_radius(Length::new(6.0518e6))
+    .with_obliquity(Angle::new((2.64 * PI) / 180.0))
+    .with_geometric_albedo(0.67)
+    .with_bond_albedo(0.77)
+    .with_thermal_inertia(0.95)
+    .with_solstice_true_anomaly(Angle::new(0.0))
+    .with_orbital_elements(venus_elements)
+    .build()?;
+
     let venus_atmosphere = Atmosphere::new(
         Uuid::new_v4(),
         venus_id,

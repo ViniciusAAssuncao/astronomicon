@@ -6,7 +6,7 @@ pub mod units;
 
 pub use domain::{
     Atmosphere, Barycenter, BarycenterMember, GasComponent, OrbitalElements, OrbitalParent,
-    Planet, PlanetKind, Star, StarKind, StarSystem, UniverseState,
+    Planet, PlanetBuilder, PlanetKind, Star, StarBuilder, StarKind, StarSystem, UniverseState,
 };
 pub use math::ResonanceState;
 pub use units::{

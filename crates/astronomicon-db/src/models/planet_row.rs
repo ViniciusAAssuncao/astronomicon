@@ -29,6 +29,7 @@ pub struct PlanetRow {
     pub longitude_ascending_node_rad: Option<f64>,
     pub argument_periapsis_rad: Option<f64>,
     pub mean_anomaly_at_epoch_rad: Option<f64>,
+    pub oblateness_j2: Option<f64>,
 }
 
 fn parse_orbital_parent(
@@ -126,23 +127,19 @@ impl TryFrom<PlanetRow> for Planet {
             row.mean_anomaly_at_epoch_rad,
         )?;
 
-        let planet = Planet::new(
-            id,
-            star_system_id,
-            orbital_parent,
-            row.name,
-            kind,
-            Mass::new(row.mass_kg),
-            row.equatorial_radius_m.map(Length::new),
-            row.polar_radius_m.map(Length::new),
-            row.rotation_period_s.map(Duration::new),
-            row.axial_tilt_rad.map(Angle::new),
-            row.geometric_albedo,
-            row.bond_albedo,
-            row.thermal_inertia,
-            row.solstice_true_anomaly_rad.map(Angle::new),
-            orbital_elements,
-        )?;
+        let planet = Planet::builder(id, row.name, Mass::new(row.mass_kg), kind, orbital_parent)
+            .with_star_system_id(star_system_id)
+            .with_equatorial_radius(row.equatorial_radius_m.map(Length::new))
+            .with_polar_radius(row.polar_radius_m.map(Length::new))
+            .with_rotation_period(row.rotation_period_s.map(Duration::new))
+            .with_obliquity(row.axial_tilt_rad.map(Angle::new))
+            .with_geometric_albedo(row.geometric_albedo)
+            .with_bond_albedo(row.bond_albedo)
+            .with_thermal_inertia(row.thermal_inertia)
+            .with_solstice_true_anomaly(row.solstice_true_anomaly_rad.map(Angle::new))
+            .with_orbital_elements(orbital_elements)
+            .with_oblateness_j2(row.oblateness_j2)
+            .build()?;
 
         Ok(planet)
     }
