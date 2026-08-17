@@ -7,6 +7,7 @@ pub mod perturbation;
 pub mod radiometry;
 pub mod resonance;
 pub mod stability;
+pub mod tidal;
 
 pub use atmosphere::*;
 pub use climate::*;
@@ -17,3 +18,4 @@ pub use perturbation::*;
 pub use radiometry::*;
 pub use resonance::*;
 pub use stability::*;
+pub use tidal::*;
