@@ -4,6 +4,7 @@ pub mod gravity;
 pub mod kepler;
 pub mod lagrange;
 pub mod radiometry;
+pub mod resonance;
 pub mod stability;
 
 pub use atmosphere::*;
@@ -12,4 +13,5 @@ pub use gravity::*;
 pub use kepler::*;
 pub use lagrange::*;
 pub use radiometry::*;
+pub use resonance::*;
 pub use stability::*;

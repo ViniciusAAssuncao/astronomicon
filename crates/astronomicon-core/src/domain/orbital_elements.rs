@@ -99,4 +99,8 @@ impl OrbitalElements {
     pub fn mean_anomaly_at_epoch(&self) -> Angle {
         self.mean_anomaly_at_epoch
     }
+
+    pub fn longitude_of_periapsis(&self) -> Angle {
+        Angle::new((self.longitude_of_ascending_node.value() + self.argument_of_periapsis.value()).rem_euclid(TAU))
+    }
 }
