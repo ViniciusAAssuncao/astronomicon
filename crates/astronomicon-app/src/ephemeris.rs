@@ -1,15 +1,36 @@
 use crate::error::AppResult;
-use astronomicon_core::domain::{Barycenter, BarycenterMember, OrbitalParent, Planet, Star};
-use astronomicon_core::error::{DomainError, DomainResult};
+use astronomicon_core::domain::{ Barycenter, BarycenterMember, OrbitalParent, Planet, Star };
+use astronomicon_core::error::{ DomainError, DomainResult };
 use astronomicon_core::math::gravity::{
-    calculate_effective_mass, calculate_parent_effective_mass, combined_gravitational_parameter,
+    calculate_effective_mass,
+    calculate_parent_effective_mass,
+    combined_gravitational_parameter,
     gravitational_parameter,
 };
-use astronomicon_core::math::kepler::orbital_position;
-use astronomicon_core::units::{Duration, Mass, Position};
+use astronomicon_core::math::kepler::orbital_position_secular;
+use astronomicon_core::math::perturbation::resolve_secular_precession;
+use astronomicon_core::units::{ Duration, Length, Mass, Position };
 use astronomicon_db::SqlitePool;
-use std::collections::{HashMap, HashSet};
+use std::collections::{ HashMap, HashSet };
 use uuid::Uuid;
+
+fn get_parent_j2_and_radius(
+    parent: &OrbitalParent,
+    star_map: &HashMap<Uuid, &Star>,
+    planet_map: &HashMap<Uuid, &Planet>
+) -> (Option<f64>, Option<Length>) {
+    match parent {
+        OrbitalParent::Star(pid) => {
+            let p = star_map.get(pid).copied();
+            (p.and_then(|s| s.oblateness_j2()), p.and_then(|s| s.radius()))
+        }
+        OrbitalParent::Planet(pid) => {
+            let p = planet_map.get(pid).copied();
+            (p.and_then(|pl| pl.oblateness_j2()), p.and_then(|pl| pl.equatorial_radius()))
+        }
+        OrbitalParent::Barycenter(_) | OrbitalParent::Fixed => (None, None),
+    }
+}
 
 fn split_barycenter_positions(
     bary_id: Uuid,
@@ -18,34 +39,44 @@ fn split_barycenter_positions(
     star_map: &HashMap<Uuid, &Star>,
     planet_map: &HashMap<Uuid, &Planet>,
     memo: &mut HashMap<Uuid, Position>,
-    time_since_epoch: Duration,
+    time_since_epoch: Duration
 ) -> DomainResult<()> {
-    let bary = barycenter_map.get(&bary_id).copied().ok_or_else(|| {
-        DomainError::InvalidInvariant {
-            field: "barycenter_id".to_string(),
-            reason: format!("barycenter '{}' not found", bary_id),
-        }
-    })?;
+    let bary = barycenter_map
+        .get(&bary_id)
+        .copied()
+        .ok_or_else(|| {
+            DomainError::InvalidInvariant {
+                field: "barycenter_id".to_string(),
+                reason: format!("barycenter '{}' not found", bary_id),
+            }
+        })?;
 
     let m_pri = calculate_effective_mass(
         &bary.member_primary(),
         star_map,
         planet_map,
-        barycenter_map,
+        barycenter_map
     )?;
     let m_sec = calculate_effective_mass(
         &bary.member_secondary(),
         star_map,
         planet_map,
-        barycenter_map,
+        barycenter_map
     )?;
 
     let m_total = m_pri.value() + m_sec.value();
     let mu_int = gravitational_parameter(Mass::new(m_total));
-    let r_rel_int = orbital_position(
+    let secular_rates = resolve_secular_precession(
         &bary.internal_orbital_elements(),
         mu_int,
-        time_since_epoch,
+        None,
+        None
+    );
+    let r_rel_int = orbital_position_secular(
+        &bary.internal_orbital_elements(),
+        mu_int,
+        &secular_rates,
+        time_since_epoch
     )?;
 
     let (frac_pri, frac_sec) = if m_total > 0.0 {
@@ -71,7 +102,7 @@ fn split_barycenter_positions(
             star_map,
             planet_map,
             memo,
-            time_since_epoch,
+            time_since_epoch
         )?;
     }
 
@@ -83,7 +114,7 @@ fn split_barycenter_positions(
             star_map,
             planet_map,
             memo,
-            time_since_epoch,
+            time_since_epoch
         )?;
     }
 
@@ -98,7 +129,7 @@ fn resolve_node(
     barycenter_map: &HashMap<Uuid, &Barycenter>,
     memo: &mut HashMap<Uuid, Position>,
     visiting: &mut HashSet<Uuid>,
-    time_since_epoch: Duration,
+    time_since_epoch: Duration
 ) -> DomainResult<Position> {
     if let Some(&pos) = memo.get(&id) {
         return Ok(pos);
@@ -120,7 +151,7 @@ fn resolve_node(
             barycenter_map,
             memo,
             visiting,
-            time_since_epoch,
+            time_since_epoch
         )?;
 
         split_barycenter_positions(
@@ -130,17 +161,24 @@ fn resolve_node(
             star_map,
             planet_map,
             memo,
-            time_since_epoch,
+            time_since_epoch
         )?;
 
         visiting.remove(&id);
 
-        return memo.get(&id).copied().ok_or_else(|| {
-            DomainError::InvalidInvariant {
-                field: "barycenter_member".to_string(),
-                reason: format!("position for member '{}' not resolved by barycenter '{}'", id, parent_bary_id),
-            }
-        });
+        return memo
+            .get(&id)
+            .copied()
+            .ok_or_else(|| {
+                DomainError::InvalidInvariant {
+                    field: "barycenter_member".to_string(),
+                    reason: format!(
+                        "position for member '{}' not resolved by barycenter '{}'",
+                        id,
+                        parent_bary_id
+                    ),
+                }
+            });
     }
 
     let pos = if let Some(star) = star_map.get(&id).copied() {
@@ -148,7 +186,9 @@ fn resolve_node(
             OrbitalParent::Fixed => Position::zero(),
             parent => {
                 let parent_id = match parent {
-                    OrbitalParent::Star(pid) | OrbitalParent::Planet(pid) | OrbitalParent::Barycenter(pid) => pid,
+                    | OrbitalParent::Star(pid)
+                    | OrbitalParent::Planet(pid)
+                    | OrbitalParent::Barycenter(pid) => pid,
                     OrbitalParent::Fixed => unreachable!(),
                 };
                 let parent_pos = resolve_node(
@@ -159,7 +199,7 @@ fn resolve_node(
                     barycenter_map,
                     memo,
                     visiting,
-                    time_since_epoch,
+                    time_since_epoch
                 )?;
                 let elements = star.orbital_elements().ok_or_else(|| {
                     DomainError::InvalidInvariant {
@@ -172,10 +212,26 @@ fn resolve_node(
                     &parent,
                     star_map,
                     planet_map,
-                    barycenter_map,
+                    barycenter_map
                 )?;
                 let mu = combined_gravitational_parameter(m_node, m_parent);
-                let rel_pos = orbital_position(&elements, mu, time_since_epoch)?;
+                let (parent_j2, parent_radius) = get_parent_j2_and_radius(
+                    &parent,
+                    star_map,
+                    planet_map
+                );
+                let secular_rates = resolve_secular_precession(
+                    &elements,
+                    mu,
+                    parent_j2,
+                    parent_radius
+                );
+                let rel_pos = orbital_position_secular(
+                    &elements,
+                    mu,
+                    &secular_rates,
+                    time_since_epoch
+                )?;
                 parent_pos + rel_pos
             }
         }
@@ -184,7 +240,9 @@ fn resolve_node(
             OrbitalParent::Fixed => Position::zero(),
             parent => {
                 let parent_id = match parent {
-                    OrbitalParent::Star(pid) | OrbitalParent::Planet(pid) | OrbitalParent::Barycenter(pid) => pid,
+                    | OrbitalParent::Star(pid)
+                    | OrbitalParent::Planet(pid)
+                    | OrbitalParent::Barycenter(pid) => pid,
                     OrbitalParent::Fixed => unreachable!(),
                 };
                 let parent_pos = resolve_node(
@@ -195,7 +253,7 @@ fn resolve_node(
                     barycenter_map,
                     memo,
                     visiting,
-                    time_since_epoch,
+                    time_since_epoch
                 )?;
                 let elements = planet.orbital_elements().ok_or_else(|| {
                     DomainError::InvalidInvariant {
@@ -208,10 +266,26 @@ fn resolve_node(
                     &parent,
                     star_map,
                     planet_map,
-                    barycenter_map,
+                    barycenter_map
                 )?;
                 let mu = combined_gravitational_parameter(m_node, m_parent);
-                let rel_pos = orbital_position(&elements, mu, time_since_epoch)?;
+                let (parent_j2, parent_radius) = get_parent_j2_and_radius(
+                    &parent,
+                    star_map,
+                    planet_map
+                );
+                let secular_rates = resolve_secular_precession(
+                    &elements,
+                    mu,
+                    parent_j2,
+                    parent_radius
+                );
+                let rel_pos = orbital_position_secular(
+                    &elements,
+                    mu,
+                    &secular_rates,
+                    time_since_epoch
+                )?;
                 parent_pos + rel_pos
             }
         }
@@ -220,7 +294,9 @@ fn resolve_node(
             OrbitalParent::Fixed => Position::zero(),
             parent => {
                 let parent_id = match parent {
-                    OrbitalParent::Star(pid) | OrbitalParent::Planet(pid) | OrbitalParent::Barycenter(pid) => pid,
+                    | OrbitalParent::Star(pid)
+                    | OrbitalParent::Planet(pid)
+                    | OrbitalParent::Barycenter(pid) => pid,
                     OrbitalParent::Fixed => unreachable!(),
                 };
                 let parent_pos = resolve_node(
@@ -231,7 +307,7 @@ fn resolve_node(
                     barycenter_map,
                     memo,
                     visiting,
-                    time_since_epoch,
+                    time_since_epoch
                 )?;
                 let elements = bary.external_orbital_elements().ok_or_else(|| {
                     DomainError::InvalidInvariant {
@@ -243,16 +319,32 @@ fn resolve_node(
                     &BarycenterMember::Barycenter(id),
                     star_map,
                     planet_map,
-                    barycenter_map,
+                    barycenter_map
                 )?;
                 let m_parent = calculate_parent_effective_mass(
                     &parent,
                     star_map,
                     planet_map,
-                    barycenter_map,
+                    barycenter_map
                 )?;
                 let mu = combined_gravitational_parameter(m_node, m_parent);
-                let rel_pos = orbital_position(&elements, mu, time_since_epoch)?;
+                let (parent_j2, parent_radius) = get_parent_j2_and_radius(
+                    &parent,
+                    star_map,
+                    planet_map
+                );
+                let secular_rates = resolve_secular_precession(
+                    &elements,
+                    mu,
+                    parent_j2,
+                    parent_radius
+                );
+                let rel_pos = orbital_position_secular(
+                    &elements,
+                    mu,
+                    &secular_rates,
+                    time_since_epoch
+                )?;
                 parent_pos + rel_pos
             }
         };
@@ -266,7 +358,7 @@ fn resolve_node(
             star_map,
             planet_map,
             memo,
-            time_since_epoch,
+            time_since_epoch
         )?;
 
         bary_pos
@@ -286,12 +378,20 @@ pub fn compute_system_positions(
     stars: &[Star],
     planets: &[Planet],
     barycenters: &[Barycenter],
-    time_since_epoch: Duration,
+    time_since_epoch: Duration
 ) -> DomainResult<HashMap<Uuid, Position>> {
-    let star_map: HashMap<Uuid, &Star> = stars.iter().map(|s| (s.id(), s)).collect();
-    let planet_map: HashMap<Uuid, &Planet> = planets.iter().map(|p| (p.id(), p)).collect();
-    let barycenter_map: HashMap<Uuid, &Barycenter> =
-        barycenters.iter().map(|b| (b.id(), b)).collect();
+    let star_map: HashMap<Uuid, &Star> = stars
+        .iter()
+        .map(|s| (s.id(), s))
+        .collect();
+    let planet_map: HashMap<Uuid, &Planet> = planets
+        .iter()
+        .map(|p| (p.id(), p))
+        .collect();
+    let barycenter_map: HashMap<Uuid, &Barycenter> = barycenters
+        .iter()
+        .map(|b| (b.id(), b))
+        .collect();
 
     let mut member_of: HashMap<Uuid, Uuid> = HashMap::with_capacity(barycenters.len() * 2);
     for b in barycenters {
@@ -312,8 +412,9 @@ pub fn compute_system_positions(
         }
     }
 
-    let mut memo: HashMap<Uuid, Position> =
-        HashMap::with_capacity(stars.len() + planets.len() + barycenters.len());
+    let mut memo: HashMap<Uuid, Position> = HashMap::with_capacity(
+        stars.len() + planets.len() + barycenters.len()
+    );
     let mut visiting: HashSet<Uuid> = HashSet::new();
 
     for barycenter in barycenters {
@@ -325,7 +426,7 @@ pub fn compute_system_positions(
             &barycenter_map,
             &mut memo,
             &mut visiting,
-            time_since_epoch,
+            time_since_epoch
         )?;
     }
 
@@ -338,7 +439,7 @@ pub fn compute_system_positions(
             &barycenter_map,
             &mut memo,
             &mut visiting,
-            time_since_epoch,
+            time_since_epoch
         )?;
     }
 
@@ -351,7 +452,7 @@ pub fn compute_system_positions(
             &barycenter_map,
             &mut memo,
             &mut visiting,
-            time_since_epoch,
+            time_since_epoch
         )?;
     }
 
@@ -361,24 +462,24 @@ pub fn compute_system_positions(
 pub async fn resolve_system_positions(
     pool: &SqlitePool,
     star_system_id: Uuid,
-    time_since_epoch: Duration,
+    time_since_epoch: Duration
 ) -> AppResult<HashMap<Uuid, Position>> {
-    let star_rows =
-        astronomicon_db::repositories::star_repository::list_by_system(pool, &star_system_id).await?;
-    let stars = star_rows
-        .into_iter()
-        .map(Star::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
+    let star_rows = astronomicon_db::repositories::star_repository::list_by_system(
+        pool,
+        &star_system_id
+    ).await?;
+    let stars = star_rows.into_iter().map(Star::try_from).collect::<Result<Vec<_>, _>>()?;
 
-    let planet_rows =
-        astronomicon_db::repositories::planet_repository::list_by_system(pool, &star_system_id).await?;
-    let planets = planet_rows
-        .into_iter()
-        .map(Planet::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
+    let planet_rows = astronomicon_db::repositories::planet_repository::list_by_system(
+        pool,
+        &star_system_id
+    ).await?;
+    let planets = planet_rows.into_iter().map(Planet::try_from).collect::<Result<Vec<_>, _>>()?;
 
-    let barycenter_rows =
-        astronomicon_db::repositories::barycenter_repository::list_by_system(pool, &star_system_id).await?;
+    let barycenter_rows = astronomicon_db::repositories::barycenter_repository::list_by_system(
+        pool,
+        &star_system_id
+    ).await?;
     let barycenters = barycenter_rows
         .into_iter()
         .map(Barycenter::try_from)
