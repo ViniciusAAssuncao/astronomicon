@@ -1,4 +1,4 @@
-use astronomicon_core::domain::{Star, StarKind};
+use astronomicon_core::domain::{OrbitalParent, Star, StarKind};
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::radiometry::{mean_density, schwarzschild_radius, stellar_luminosity};
 use astronomicon_core::units::constants::{GRAVITATIONAL_CONSTANT, STEFAN_BOLTZMANN_CONSTANT};
@@ -145,6 +145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             star: Star::new(
                 Uuid::new_v4(),
                 None,
+                OrbitalParent::Fixed,
                 StarKind::Star,
                 "Sol".to_string(),
                 Mass::new(SOLAR_MASS),
@@ -161,6 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             star: Star::new(
                 Uuid::new_v4(),
                 None,
+                OrbitalParent::Fixed,
                 StarKind::Star,
                 "Sirius A".to_string(),
                 Mass::new(2.063 * SOLAR_MASS),
@@ -177,6 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             star: Star::new(
                 Uuid::new_v4(),
                 None,
+                OrbitalParent::Fixed,
                 StarKind::Star,
                 "Betelgeuse".to_string(),
                 Mass::new(16.5 * SOLAR_MASS),
@@ -193,6 +196,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             star: Star::new(
                 Uuid::new_v4(),
                 None,
+                OrbitalParent::Fixed,
                 StarKind::Star,
                 "Proxima Centauri".to_string(),
                 Mass::new(0.1221 * SOLAR_MASS),
@@ -209,6 +213,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             star: Star::new(
                 Uuid::new_v4(),
                 None,
+                OrbitalParent::Fixed,
                 StarKind::WhiteDwarf,
                 "Sirius B".to_string(),
                 Mass::new(1.018 * SOLAR_MASS),

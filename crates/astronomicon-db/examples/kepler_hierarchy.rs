@@ -1,9 +1,13 @@
 use astronomicon_app::ephemeris::compute_system_positions;
-use astronomicon_core::domain::{ OrbitalElements, Planet, PlanetKind, Star, StarKind };
-use astronomicon_core::math::gravity::{ combined_gravitational_parameter, gravitational_parameter };
-use astronomicon_core::math::kepler::{ orbital_period, orbital_speed, orbital_state_vectors };
+use astronomicon_core::domain::{
+    OrbitalElements, OrbitalParent, Planet, PlanetKind, Star, StarKind,
+};
+use astronomicon_core::math::gravity::{
+    combined_gravitational_parameter, gravitational_parameter,
+};
+use astronomicon_core::math::kepler::{orbital_period, orbital_speed, orbital_state_vectors};
 use astronomicon_core::units::constants::ASTRONOMICAL_UNIT;
-use astronomicon_core::units::{ Angle, Duration, Length, Mass, Position };
+use astronomicon_core::units::{Angle, Duration, Length, Mass, Position};
 use std::f64::consts::PI;
 use uuid::Uuid;
 
@@ -53,13 +57,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Angle::new(0.0),
         Angle::new(0.0),
         Angle::new(0.0),
-        Angle::new(0.0)
+        Angle::new(0.0),
     )?;
 
     let (r_peri, v_peri) = orbital_state_vectors(
         &earth_elements,
         mu_sun_earth,
-        Duration::new(0.0)
+        Duration::new(0.0),
     )?;
     let r_peri_mag = r_peri.magnitude().value();
     let v_peri_mag = v_peri.magnitude().value();
@@ -140,6 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let star = Star::new(
         star_id,
         None,
+        OrbitalParent::Fixed,
         StarKind::Star,
         "Sol".to_string(),
         m_sun,
@@ -147,13 +152,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         None,
         None,
-        None
+        None,
     )?;
 
     let planet = Planet::new(
         planet_id,
-        Some(star_id),
         None,
+        OrbitalParent::Star(star_id),
         "Terra".to_string(),
         PlanetKind::Telluric,
         m_earth,
@@ -165,7 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         None,
         None,
-        Some(earth_elements)
+        Some(earth_elements),
     )?;
 
     let moon_elements = OrbitalElements::new(
@@ -174,13 +179,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Angle::new(0.0898),
         Angle::new(0.0),
         Angle::new(0.0),
-        Angle::new(0.0)
+        Angle::new(0.0),
     )?;
 
     let moon = Planet::new(
         moon_id,
         None,
-        Some(planet_id),
+        OrbitalParent::Planet(planet_id),
         "Lua".to_string(),
         PlanetKind::IcyBody,
         m_moon,
@@ -192,24 +197,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         None,
         None,
-        Some(moon_elements)
+        Some(moon_elements),
     )?;
 
     let stars = vec![star];
     let planets = vec![planet, moon];
+    let barycenters = vec![];
 
     let test_intervals = vec![
         ("t = 0 (Época Inicial)", Duration::new(0.0)),
-        ("t = 1/4 Período Terrestre", Duration::new(computed_period.value() / 4.0)),
-        ("t = 1/2 Período Terrestre", Duration::new(computed_period.value() / 2.0)),
-        ("t = 1 Período Completo", Duration::new(computed_period.value()))
+        (
+            "t = 1/4 Período Terrestre",
+            Duration::new(computed_period.value() / 4.0),
+        ),
+        (
+            "t = 1/2 Período Terrestre",
+            Duration::new(computed_period.value() / 2.0),
+        ),
+        ("t = 1 Período Completo", Duration::new(computed_period.value())),
     ];
 
     let mu_earth_moon = combined_gravitational_parameter(m_earth, m_moon);
     let moon_period = orbital_period(Length::new(MOON_SEMI_MAJOR_M), mu_earth_moon).unwrap();
 
     println!("  Composição de μ:");
-    println!("    μ(Sol)           = {:>16.6e} m³/s²", gravitational_parameter(m_sun).value());
+    println!(
+        "    μ(Sol)           = {:>16.6e} m³/s²",
+        gravitational_parameter(m_sun).value()
+    );
     println!("    μ(Sol + Terra)   = {:>16.6e} m³/s²", mu_sun_earth.value());
     println!("    μ(Terra + Lua)   = {:>16.6e} m³/s²", mu_earth_moon.value());
     println!(
@@ -222,7 +237,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     for (label, t) in test_intervals {
-        let positions = compute_system_positions(&stars, &planets, t)?;
+        let positions = compute_system_positions(&stars, &planets, &barycenters, t)?;
 
         let pos_sun = positions.get(&star_id).copied().unwrap_or_else(Position::zero);
         let pos_earth = positions.get(&planet_id).copied().unwrap_or_else(Position::zero);
