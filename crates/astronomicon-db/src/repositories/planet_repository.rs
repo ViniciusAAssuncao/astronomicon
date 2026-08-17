@@ -7,7 +7,7 @@ pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> DbResult<Option<PlanetRo
     let row = sqlx::query_as::<_, PlanetRow>(
         "SELECT id, parent_star_id, parent_planet_id, name, kind, mass_kg, equatorial_radius_m, \
          polar_radius_m, rotation_period_s, axial_tilt_rad, geometric_albedo, bond_albedo, \
-         surface_pressure_pa, semi_major_axis_m, eccentricity, inclination_rad, \
+         thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, eccentricity, inclination_rad, \
          longitude_ascending_node_rad, argument_periapsis_rad, mean_anomaly_at_epoch_rad \
          FROM planets WHERE id = ?",
     )
@@ -22,7 +22,7 @@ pub async fn list_all(pool: &SqlitePool) -> DbResult<Vec<PlanetRow>> {
     let rows = sqlx::query_as::<_, PlanetRow>(
         "SELECT id, parent_star_id, parent_planet_id, name, kind, mass_kg, equatorial_radius_m, \
          polar_radius_m, rotation_period_s, axial_tilt_rad, geometric_albedo, bond_albedo, \
-         surface_pressure_pa, semi_major_axis_m, eccentricity, inclination_rad, \
+         thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, eccentricity, inclination_rad, \
          longitude_ascending_node_rad, argument_periapsis_rad, mean_anomaly_at_epoch_rad \
          FROM planets ORDER BY name ASC",
     )
@@ -39,7 +39,7 @@ pub async fn list_children_of_planet(
     let rows = sqlx::query_as::<_, PlanetRow>(
         "SELECT id, parent_star_id, parent_planet_id, name, kind, mass_kg, equatorial_radius_m, \
          polar_radius_m, rotation_period_s, axial_tilt_rad, geometric_albedo, bond_albedo, \
-         surface_pressure_pa, semi_major_axis_m, eccentricity, inclination_rad, \
+         thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, eccentricity, inclination_rad, \
          longitude_ascending_node_rad, argument_periapsis_rad, mean_anomaly_at_epoch_rad \
          FROM planets WHERE parent_planet_id = ? ORDER BY name ASC",
     )
@@ -54,7 +54,7 @@ pub async fn list_by_star(pool: &SqlitePool, parent_star_id: &Uuid) -> DbResult<
     let rows = sqlx::query_as::<_, PlanetRow>(
         "SELECT id, parent_star_id, parent_planet_id, name, kind, mass_kg, equatorial_radius_m, \
          polar_radius_m, rotation_period_s, axial_tilt_rad, geometric_albedo, bond_albedo, \
-         surface_pressure_pa, semi_major_axis_m, eccentricity, inclination_rad, \
+         thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, eccentricity, inclination_rad, \
          longitude_ascending_node_rad, argument_periapsis_rad, mean_anomaly_at_epoch_rad \
          FROM planets WHERE parent_star_id = ? ORDER BY name ASC",
     )

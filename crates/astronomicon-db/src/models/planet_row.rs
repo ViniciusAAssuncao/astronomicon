@@ -19,7 +19,8 @@ pub struct PlanetRow {
     pub axial_tilt_rad: Option<f64>,
     pub geometric_albedo: Option<f64>,
     pub bond_albedo: Option<f64>,
-    pub surface_pressure_pa: Option<f64>,
+    pub thermal_inertia: Option<f64>,
+    pub solstice_true_anomaly_rad: Option<f64>,
     pub semi_major_axis_m: Option<f64>,
     pub eccentricity: Option<f64>,
     pub inclination_rad: Option<f64>,
@@ -110,7 +111,8 @@ impl TryFrom<PlanetRow> for Planet {
             row.axial_tilt_rad.map(Angle::new),
             row.geometric_albedo,
             row.bond_albedo,
-            row.surface_pressure_pa,
+            row.thermal_inertia,
+            row.solstice_true_anomaly_rad.map(Angle::new),
             orbital_elements,
         )?;
 

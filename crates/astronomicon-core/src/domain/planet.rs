@@ -2,6 +2,7 @@ use crate::domain::orbital_elements::OrbitalElements;
 use crate::error::{DomainError, DomainResult};
 use crate::units::{Angle, Duration, Length, Mass};
 use serde::{Deserialize, Serialize};
+use std::f64::consts::TAU;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,7 +31,8 @@ pub struct Planet {
     obliquity: Option<Angle>,
     geometric_albedo: Option<f64>,
     bond_albedo: Option<f64>,
-    surface_pressure: Option<f64>,
+    thermal_inertia: Option<f64>,
+    solstice_true_anomaly: Option<Angle>,
     orbital_elements: Option<OrbitalElements>,
 }
 
@@ -48,7 +50,8 @@ impl Planet {
         obliquity: Option<Angle>,
         geometric_albedo: Option<f64>,
         bond_albedo: Option<f64>,
-        surface_pressure: Option<f64>,
+        thermal_inertia: Option<f64>,
+        solstice_true_anomaly: Option<Angle>,
         orbital_elements: Option<OrbitalElements>,
     ) -> DomainResult<Self> {
         if name.trim().is_empty() {
@@ -126,14 +129,26 @@ impl Planet {
             }
         }
 
-        if let Some(p) = surface_pressure {
-            if !p.is_finite() || p < 0.0 {
+        if let Some(ti) = thermal_inertia {
+            if !ti.is_finite() || !(0.0..=1.0).contains(&ti) {
                 return Err(DomainError::InvalidInvariant {
-                    field: "surface_pressure".to_string(),
-                    reason: "must be non-negative and finite".to_string(),
+                    field: "thermal_inertia".to_string(),
+                    reason: "must be between 0.0 and 1.0".to_string(),
                 });
             }
         }
+
+        if let Some(sta) = solstice_true_anomaly {
+            if !sta.value().is_finite() {
+                return Err(DomainError::InvalidInvariant {
+                    field: "solstice_true_anomaly".to_string(),
+                    reason: "must be finite".to_string(),
+                });
+            }
+        }
+
+        let solstice_true_anomaly =
+            solstice_true_anomaly.map(|angle| Angle::new(angle.value().rem_euclid(TAU)));
 
         Ok(Self {
             id,
@@ -148,7 +163,8 @@ impl Planet {
             obliquity,
             geometric_albedo,
             bond_albedo,
-            surface_pressure,
+            thermal_inertia,
+            solstice_true_anomaly,
             orbital_elements,
         })
     }
@@ -201,8 +217,12 @@ impl Planet {
         self.bond_albedo
     }
 
-    pub fn surface_pressure(&self) -> Option<f64> {
-        self.surface_pressure
+    pub fn thermal_inertia(&self) -> Option<f64> {
+        self.thermal_inertia
+    }
+
+    pub fn solstice_true_anomaly(&self) -> Option<Angle> {
+        self.solstice_true_anomaly
     }
 
     pub fn orbital_elements(&self) -> Option<OrbitalElements> {

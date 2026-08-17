@@ -164,6 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         None,
         None,
+        None,
         Some(earth_elements)
     )?;
 
@@ -184,6 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PlanetKind::IcyBody,
         m_moon,
         Some(Length::new(1.737e6)),
+        None,
         None,
         None,
         None,
