@@ -5,8 +5,8 @@ pub mod math;
 pub mod units;
 
 pub use domain::{
-    Atmosphere, GasComponent, OrbitalElements, OrbitalParent, Planet, PlanetKind, Star, StarKind,
-    StarSystem, UniverseState,
+    Atmosphere, Barycenter, BarycenterMember, GasComponent, OrbitalElements, OrbitalParent,
+    Planet, PlanetKind, Star, StarKind, StarSystem, UniverseState,
 };
 pub use units::{
     Acceleration, Angle, AngularVelocity, Density, Duration, GravitationalParameter, Irradiance,

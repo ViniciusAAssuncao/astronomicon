@@ -21,6 +21,7 @@ pub enum PlanetKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Planet {
     id: Uuid,
+    star_system_id: Option<Uuid>,
     orbital_parent: OrbitalParent,
     name: String,
     kind: PlanetKind,
@@ -39,6 +40,7 @@ pub struct Planet {
 impl Planet {
     pub fn new(
         id: Uuid,
+        star_system_id: Option<Uuid>,
         orbital_parent: OrbitalParent,
         name: String,
         kind: PlanetKind,
@@ -158,6 +160,7 @@ impl Planet {
 
         Ok(Self {
             id,
+            star_system_id,
             orbital_parent,
             kind,
             name,
@@ -176,6 +179,10 @@ impl Planet {
 
     pub fn id(&self) -> Uuid {
         self.id
+    }
+
+    pub fn star_system_id(&self) -> Option<Uuid> {
+        self.star_system_id
     }
 
     pub fn orbital_parent(&self) -> OrbitalParent {

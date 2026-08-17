@@ -1,4 +1,5 @@
 pub mod atmosphere;
+pub mod barycenter;
 pub mod epoch;
 pub mod gas_component;
 pub mod orbital_elements;
@@ -8,6 +9,7 @@ pub mod star;
 pub mod star_system;
 
 pub use atmosphere::Atmosphere;
+pub use barycenter::{Barycenter, BarycenterMember};
 pub use epoch::UniverseState;
 pub use gas_component::GasComponent;
 pub use orbital_elements::OrbitalElements;

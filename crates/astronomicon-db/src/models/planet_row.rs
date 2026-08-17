@@ -1,5 +1,5 @@
 use crate::error::DbError;
-use astronomicon_core::domain::{OrbitalElements, Planet, PlanetKind};
+use astronomicon_core::domain::{OrbitalElements, OrbitalParent, Planet, PlanetKind};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::units::{Angle, Duration, Length, Mass};
 use sqlx::FromRow;
@@ -8,8 +8,10 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct PlanetRow {
     pub id: String,
+    pub star_system_id: Option<String>,
     pub parent_star_id: Option<String>,
     pub parent_planet_id: Option<String>,
+    pub parent_barycenter_id: Option<String>,
     pub name: String,
     pub kind: String,
     pub mass_kg: f64,
@@ -27,6 +29,23 @@ pub struct PlanetRow {
     pub longitude_ascending_node_rad: Option<f64>,
     pub argument_periapsis_rad: Option<f64>,
     pub mean_anomaly_at_epoch_rad: Option<f64>,
+}
+
+fn parse_orbital_parent(
+    parent_star_id: Option<String>,
+    parent_planet_id: Option<String>,
+    parent_barycenter_id: Option<String>,
+) -> Result<OrbitalParent, DbError> {
+    match (parent_star_id, parent_planet_id, parent_barycenter_id) {
+        (None, None, None) => Ok(OrbitalParent::Fixed),
+        (Some(id), None, None) => Ok(OrbitalParent::Star(Uuid::parse_str(&id)?)),
+        (None, Some(id), None) => Ok(OrbitalParent::Planet(Uuid::parse_str(&id)?)),
+        (None, None, Some(id)) => Ok(OrbitalParent::Barycenter(Uuid::parse_str(&id)?)),
+        _ => Err(DbError::Domain(DomainError::InvalidInvariant {
+            field: "orbital_parent".to_string(),
+            reason: "multiple orbital parents specified".to_string(),
+        })),
+    }
 }
 
 fn parse_orbital_elements(
@@ -69,8 +88,17 @@ impl TryFrom<PlanetRow> for Planet {
 
     fn try_from(row: PlanetRow) -> Result<Self, Self::Error> {
         let id = Uuid::parse_str(&row.id)?;
-        let parent_star_id = row.parent_star_id.as_deref().map(Uuid::parse_str).transpose()?;
-        let parent_planet_id = row.parent_planet_id.as_deref().map(Uuid::parse_str).transpose()?;
+        let star_system_id = row
+            .star_system_id
+            .as_deref()
+            .map(Uuid::parse_str)
+            .transpose()?;
+
+        let orbital_parent = parse_orbital_parent(
+            row.parent_star_id,
+            row.parent_planet_id,
+            row.parent_barycenter_id,
+        )?;
 
         let kind = match row.kind.as_str() {
             "Telluric" => PlanetKind::Telluric,
@@ -100,8 +128,8 @@ impl TryFrom<PlanetRow> for Planet {
 
         let planet = Planet::new(
             id,
-            parent_star_id,
-            parent_planet_id,
+            star_system_id,
+            orbital_parent,
             row.name,
             kind,
             Mass::new(row.mass_kg),
