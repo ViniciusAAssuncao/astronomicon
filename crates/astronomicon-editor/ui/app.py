@@ -1,5 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
+
+from ui.frame_atmosphere import FrameAtmosphere
+from ui.frame_barycenter import FrameBarycenter
+from ui.frame_planet import FramePlanet
+from ui.frame_star import FrameStar
+from ui.frame_star_system import FrameStarSystem
+from ui.frame_universe_state import FrameUniverseState
 from ui.output_panel import OutputPanel
 
 
@@ -32,45 +39,61 @@ class App(tk.Tk):
         top_container.rowconfigure(0, weight=1)
         main_paned.add(top_container, weight=3)
 
-        self.notebook = ttk.Notebook(top_container)
-        self.notebook.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
-
-        self.tab_system = ttk.Frame(self.notebook)
-        self.tab_star = ttk.Frame(self.notebook)
-        self.tab_planet = ttk.Frame(self.notebook)
-        self.tab_barycenter = ttk.Frame(self.notebook)
-        self.tab_atmosphere = ttk.Frame(self.notebook)
-        self.tab_universe_state = ttk.Frame(self.notebook)
-
-        self.notebook.add(self.tab_system, text="Sistema Estelar")
-        self.notebook.add(self.tab_star, text="Estrela")
-        self.notebook.add(self.tab_planet, text="Planeta")
-        self.notebook.add(self.tab_barycenter, text="Baricentro")
-        self.notebook.add(self.tab_atmosphere, text="Atmosfera")
-        self.notebook.add(self.tab_universe_state, text="Estado do Universo")
-
-        self.init_placeholder_tabs()
-
         self.output_panel = OutputPanel(main_paned)
         main_paned.add(self.output_panel, weight=2)
 
-    def init_placeholder_tabs(self) -> None:
-        tabs_config = [
-            (self.tab_system, "Formulário de Sistema Estelar"),
-            (self.tab_star, "Formulário de Estrela"),
-            (self.tab_planet, "Formulário de Planeta"),
-            (self.tab_barycenter, "Formulário de Baricentro"),
-            (self.tab_atmosphere, "Formulário de Atmosfera"),
-            (self.tab_universe_state, "Formulário de Estado do Universo"),
-        ]
+        self.notebook = ttk.Notebook(top_container)
+        self.notebook.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
 
-        for tab_frame, label_text in tabs_config:
-            tab_frame.columnconfigure(0, weight=1)
-            tab_frame.rowconfigure(0, weight=1)
-            lbl = ttk.Label(
-                tab_frame,
-                text=label_text,
-                style="Header.TLabel",
-                anchor="center",
-            )
-            lbl.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+        self.frame_system = FrameStarSystem(
+            self.notebook,
+            output_panel=self.output_panel,
+            on_cache_updated=self.on_cache_updated,
+        )
+        self.frame_star = FrameStar(
+            self.notebook,
+            output_panel=self.output_panel,
+            on_cache_updated=self.on_cache_updated,
+        )
+        self.frame_planet = FramePlanet(
+            self.notebook,
+            output_panel=self.output_panel,
+            on_cache_updated=self.on_cache_updated,
+        )
+        self.frame_barycenter = FrameBarycenter(
+            self.notebook,
+            output_panel=self.output_panel,
+            on_cache_updated=self.on_cache_updated,
+        )
+        self.frame_atmosphere = FrameAtmosphere(
+            self.notebook,
+            output_panel=self.output_panel,
+            on_cache_updated=self.on_cache_updated,
+        )
+        self.frame_universe_state = FrameUniverseState(
+            self.notebook,
+            output_panel=self.output_panel,
+            on_cache_updated=self.on_cache_updated,
+        )
+
+        self.notebook.add(self.frame_system, text="Sistema Estelar")
+        self.notebook.add(self.frame_star, text="Estrela")
+        self.notebook.add(self.frame_planet, text="Planeta")
+        self.notebook.add(self.frame_barycenter, text="Baricentro")
+        self.notebook.add(self.frame_atmosphere, text="Atmosfera")
+        self.notebook.add(self.frame_universe_state, text="Estado do Universo")
+
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+
+    def on_cache_updated(self) -> None:
+        self.frame_system.refresh_cache_list()
+        self.frame_star.refresh_systems()
+        self.frame_star.refresh_cache_list()
+        self.frame_planet.refresh_systems()
+        self.frame_planet.refresh_cache_list()
+        self.frame_barycenter.refresh_systems()
+        self.frame_barycenter.refresh_cache_list()
+        self.frame_atmosphere.refresh_planets()
+
+    def _on_tab_changed(self, _event: tk.Event) -> None:
+        self.on_cache_updated()

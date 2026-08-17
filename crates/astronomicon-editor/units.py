@@ -1,11 +1,15 @@
 import math
 
 ASTRONOMICAL_UNIT: float = 149_597_870_700.0
+LIGHT_YEAR: float = 9_460_730_472_580_800.0
+PARSEC: float = 3.085677581491367e16
+
 SOLAR_MASS_KG: float = 1.98847e30
 SOLAR_RADIUS_M: float = 6.957e8
 EARTH_MASS_KG: float = 5.9722e24
 EARTH_RADIUS_M: float = 6.371e6
 EARTH_EQUATORIAL_RADIUS_M: float = 6.378137e6
+JUPITER_MASS_KG: float = 1.89813e27
 
 HOUR_SECONDS: float = 3600.0
 DAY_SECONDS: float = 86400.0
@@ -19,6 +23,18 @@ def meters_to_au(meters: float) -> float:
 
 def au_to_meters(au: float) -> float:
     return au * ASTRONOMICAL_UNIT
+
+def meters_to_ly(meters: float) -> float:
+    return meters / LIGHT_YEAR
+
+def ly_to_meters(ly: float) -> float:
+    return ly * LIGHT_YEAR
+
+def meters_to_parsec(meters: float) -> float:
+    return meters / PARSEC
+
+def parsec_to_meters(pc: float) -> float:
+    return pc * PARSEC
 
 def meters_to_solar_radii(meters: float) -> float:
     return meters / SOLAR_RADIUS_M
@@ -49,6 +65,12 @@ def kg_to_earth_masses(kg: float) -> float:
 
 def earth_masses_to_kg(earth_masses: float) -> float:
     return earth_masses * EARTH_MASS_KG
+
+def kg_to_jupiter_masses(kg: float) -> float:
+    return kg / JUPITER_MASS_KG
+
+def jupiter_masses_to_kg(jupiter_masses: float) -> float:
+    return jupiter_masses * JUPITER_MASS_KG
 
 def radians_to_degrees(radians: float) -> float:
     return math.degrees(radians)
