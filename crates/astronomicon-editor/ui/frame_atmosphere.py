@@ -3,12 +3,13 @@ from tkinter import messagebox, ttk
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import cache
+from curation import curate_atmosphere
 import elements
-import sql_builder
-import units
 from models import Atmosphere, AtmosphereGasComponent
+import sql_builder
 from ui.output_panel import OutputPanel
 from ui.widgets_common import UnitEntry
+import units
 from validation import validate_atmosphere
 
 
@@ -305,6 +306,16 @@ class FrameAtmosphere(ttk.Frame):
         if errors:
             messagebox.showerror("Erro de Validação", "\n".join(f"• {e}" for e in errors))
             return None
+
+        warnings = curate_atmosphere(model, components)
+        if warnings:
+            msg = (
+                "Foram detectadas anomalias físicas nos parâmetros:\n\n"
+                + "\n".join(f"• {w}" for w in warnings)
+                + "\n\nDeseja prosseguir com a geração mesmo assim?"
+            )
+            if not messagebox.askyesno("Avisos de Curadoria Física", msg, icon="warning"):
+                return None
 
         sql = sql_builder.build_insert_atmosphere(model, components=components, atomic=True)
         self.output_panel.append_sql(sql)
