@@ -1,4 +1,5 @@
 use crate::domain::orbital_elements::OrbitalElements;
+use crate::domain::orbital_parent::OrbitalParent;
 use crate::error::{DomainError, DomainResult};
 use crate::units::{Angle, Duration, Length, Mass};
 use serde::{Deserialize, Serialize};
@@ -20,8 +21,7 @@ pub enum PlanetKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Planet {
     id: Uuid,
-    parent_star_id: Option<Uuid>,
-    parent_planet_id: Option<Uuid>,
+    orbital_parent: OrbitalParent,
     name: String,
     kind: PlanetKind,
     mass: Mass,
@@ -39,8 +39,7 @@ pub struct Planet {
 impl Planet {
     pub fn new(
         id: Uuid,
-        parent_star_id: Option<Uuid>,
-        parent_planet_id: Option<Uuid>,
+        orbital_parent: OrbitalParent,
         name: String,
         kind: PlanetKind,
         mass: Mass,
@@ -61,17 +60,24 @@ impl Planet {
             });
         }
 
-        if parent_star_id.is_some() && parent_planet_id.is_some() {
-            return Err(DomainError::InvalidInvariant {
-                field: "parent_star_id / parent_planet_id".to_string(),
-                reason: "body cannot orbit both a star and a planet simultaneously".to_string(),
-            });
-        }
-
         if !mass.value().is_finite() || mass.value() <= 0.0 {
             return Err(DomainError::InvalidInvariant {
                 field: "mass".to_string(),
                 reason: "must be positive and finite".to_string(),
+            });
+        }
+
+        if orbital_parent == OrbitalParent::Fixed && orbital_elements.is_some() {
+            return Err(DomainError::InvalidInvariant {
+                field: "orbital_elements".to_string(),
+                reason: "fixed planet cannot have orbital elements".to_string(),
+            });
+        }
+
+        if orbital_parent != OrbitalParent::Fixed && orbital_elements.is_none() {
+            return Err(DomainError::InvalidInvariant {
+                field: "orbital_elements".to_string(),
+                reason: "non-fixed orbiting planet must have orbital elements".to_string(),
             });
         }
 
@@ -152,8 +158,7 @@ impl Planet {
 
         Ok(Self {
             id,
-            parent_star_id,
-            parent_planet_id,
+            orbital_parent,
             kind,
             name,
             mass,
@@ -173,12 +178,8 @@ impl Planet {
         self.id
     }
 
-    pub fn parent_star_id(&self) -> Option<Uuid> {
-        self.parent_star_id
-    }
-
-    pub fn parent_planet_id(&self) -> Option<Uuid> {
-        self.parent_planet_id
+    pub fn orbital_parent(&self) -> OrbitalParent {
+        self.orbital_parent
     }
 
     pub fn kind(&self) -> PlanetKind {

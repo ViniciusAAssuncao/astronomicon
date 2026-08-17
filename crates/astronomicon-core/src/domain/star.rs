@@ -1,4 +1,5 @@
 use crate::domain::orbital_elements::OrbitalElements;
+use crate::domain::orbital_parent::OrbitalParent;
 use crate::error::{DomainError, DomainResult};
 use crate::units::{Angle, Duration, Length, Mass, Temperature};
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,7 @@ pub enum StarKind {
 pub struct Star {
     id: Uuid,
     star_system_id: Option<Uuid>,
+    orbital_parent: OrbitalParent,
     kind: StarKind,
     name: String,
     mass: Mass,
@@ -32,6 +34,7 @@ impl Star {
     pub fn new(
         id: Uuid,
         star_system_id: Option<Uuid>,
+        orbital_parent: OrbitalParent,
         kind: StarKind,
         name: String,
         mass: Mass,
@@ -91,16 +94,24 @@ impl Star {
             }
         }
 
-        if star_system_id.is_none() && orbital_elements.is_some() {
+        if orbital_parent == OrbitalParent::Fixed && orbital_elements.is_some() {
             return Err(DomainError::InvalidInvariant {
                 field: "orbital_elements".to_string(),
-                reason: "cannot have orbital elements without a star system".to_string(),
+                reason: "fixed star cannot have orbital elements".to_string(),
+            });
+        }
+
+        if orbital_parent != OrbitalParent::Fixed && orbital_elements.is_none() {
+            return Err(DomainError::InvalidInvariant {
+                field: "orbital_elements".to_string(),
+                reason: "non-fixed orbiting star must have orbital elements".to_string(),
             });
         }
 
         Ok(Self {
             id,
             star_system_id,
+            orbital_parent,
             kind,
             name,
             mass,
@@ -118,6 +129,10 @@ impl Star {
 
     pub fn star_system_id(&self) -> Option<Uuid> {
         self.star_system_id
+    }
+
+    pub fn orbital_parent(&self) -> OrbitalParent {
+        self.orbital_parent
     }
 
     pub fn kind(&self) -> StarKind {
