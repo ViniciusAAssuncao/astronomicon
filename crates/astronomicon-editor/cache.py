@@ -31,6 +31,9 @@ def init_cache(conn: sqlite3.Connection) -> None:
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             kind TEXT NOT NULL,
+            mass_kg REAL,
+            radius_m REAL,
+            effective_temperature_k REAL,
             star_system_id TEXT,
             parent_star_id TEXT,
             parent_planet_id TEXT,
@@ -44,6 +47,8 @@ def init_cache(conn: sqlite3.Connection) -> None:
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             kind TEXT NOT NULL,
+            mass_kg REAL,
+            equatorial_radius_m REAL,
             star_system_id TEXT,
             parent_star_id TEXT,
             parent_planet_id TEXT,
@@ -101,6 +106,9 @@ def register_star(
     star_id: str,
     name: str,
     kind: str,
+    mass_kg: Optional[float] = None,
+    radius_m: Optional[float] = None,
+    effective_temperature_k: Optional[float] = None,
     star_system_id: Optional[str] = None,
     parent_star_id: Optional[str] = None,
     parent_planet_id: Optional[str] = None,
@@ -112,13 +120,16 @@ def register_star(
     cur.execute(
         """
         INSERT INTO stars (
-            id, name, kind, star_system_id,
-            parent_star_id, parent_planet_id, parent_barycenter_id
+            id, name, kind, mass_kg, radius_m, effective_temperature_k,
+            star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             kind = excluded.kind,
+            mass_kg = excluded.mass_kg,
+            radius_m = excluded.radius_m,
+            effective_temperature_k = excluded.effective_temperature_k,
             star_system_id = excluded.star_system_id,
             parent_star_id = excluded.parent_star_id,
             parent_planet_id = excluded.parent_planet_id,
@@ -128,6 +139,9 @@ def register_star(
             star_id,
             name,
             kind,
+            mass_kg,
+            radius_m,
+            effective_temperature_k,
             star_system_id,
             parent_star_id,
             parent_planet_id,
@@ -142,6 +156,8 @@ def register_planet(
     planet_id: str,
     name: str,
     kind: str,
+    mass_kg: Optional[float] = None,
+    equatorial_radius_m: Optional[float] = None,
     star_system_id: Optional[str] = None,
     parent_star_id: Optional[str] = None,
     parent_planet_id: Optional[str] = None,
@@ -153,13 +169,15 @@ def register_planet(
     cur.execute(
         """
         INSERT INTO planets (
-            id, name, kind, star_system_id,
-            parent_star_id, parent_planet_id, parent_barycenter_id
+            id, name, kind, mass_kg, equatorial_radius_m,
+            star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             kind = excluded.kind,
+            mass_kg = excluded.mass_kg,
+            equatorial_radius_m = excluded.equatorial_radius_m,
             star_system_id = excluded.star_system_id,
             parent_star_id = excluded.parent_star_id,
             parent_planet_id = excluded.parent_planet_id,
@@ -169,6 +187,8 @@ def register_planet(
             planet_id,
             name,
             kind,
+            mass_kg,
+            equatorial_radius_m,
             star_system_id,
             parent_star_id,
             parent_planet_id,
@@ -258,6 +278,9 @@ def register_entity_from_model(model: Any, db_path: Optional[str] = None) -> Non
             star_id=model.id,
             name=model.name,
             kind=model.kind,
+            mass_kg=model.mass_kg,
+            radius_m=model.radius_m,
+            effective_temperature_k=model.effective_temperature_k,
             star_system_id=model.star_system_id,
             parent_star_id=model.parent_star_id,
             parent_planet_id=model.parent_planet_id,
@@ -269,6 +292,8 @@ def register_entity_from_model(model: Any, db_path: Optional[str] = None) -> Non
             planet_id=model.id,
             name=model.name,
             kind=model.kind,
+            mass_kg=model.mass_kg,
+            equatorial_radius_m=model.equatorial_radius_m,
             star_system_id=model.star_system_id,
             parent_star_id=model.parent_star_id,
             parent_planet_id=model.parent_planet_id,
@@ -320,6 +345,10 @@ def register_manual_entity(
     entity_id: str,
     name: str,
     kind: Optional[str] = None,
+    mass_kg: Optional[float] = None,
+    radius_m: Optional[float] = None,
+    equatorial_radius_m: Optional[float] = None,
+    effective_temperature_k: Optional[float] = None,
     star_system_id: Optional[str] = None,
     parent_star_id: Optional[str] = None,
     parent_planet_id: Optional[str] = None,
@@ -338,10 +367,13 @@ def register_manual_entity(
             entity_id,
             name,
             kind or "Star",
-            star_system_id,
-            parent_star_id,
-            parent_planet_id,
-            parent_barycenter_id,
+            mass_kg=mass_kg,
+            radius_m=radius_m,
+            effective_temperature_k=effective_temperature_k,
+            star_system_id=star_system_id,
+            parent_star_id=parent_star_id,
+            parent_planet_id=parent_planet_id,
+            parent_barycenter_id=parent_barycenter_id,
             db_path=db_path,
         )
     elif norm_type == "planet":
@@ -349,10 +381,12 @@ def register_manual_entity(
             entity_id,
             name,
             kind or "Telluric",
-            star_system_id,
-            parent_star_id,
-            parent_planet_id,
-            parent_barycenter_id,
+            mass_kg=mass_kg,
+            equatorial_radius_m=equatorial_radius_m,
+            star_system_id=star_system_id,
+            parent_star_id=parent_star_id,
+            parent_planet_id=parent_planet_id,
+            parent_barycenter_id=parent_barycenter_id,
             db_path=db_path,
         )
     elif norm_type == "barycenter":
@@ -393,7 +427,7 @@ def list_stars(
     if star_system_id:
         cur.execute(
             """
-            SELECT id, name, kind, star_system_id,
+            SELECT id, name, kind, mass_kg, radius_m, effective_temperature_k, star_system_id,
                    parent_star_id, parent_planet_id, parent_barycenter_id
             FROM stars WHERE star_system_id = ? ORDER BY name ASC
             """,
@@ -402,7 +436,7 @@ def list_stars(
     else:
         cur.execute(
             """
-            SELECT id, name, kind, star_system_id,
+            SELECT id, name, kind, mass_kg, radius_m, effective_temperature_k, star_system_id,
                    parent_star_id, parent_planet_id, parent_barycenter_id
             FROM stars ORDER BY name ASC
             """
@@ -421,7 +455,7 @@ def list_planets(
     if star_system_id:
         cur.execute(
             """
-            SELECT id, name, kind, star_system_id,
+            SELECT id, name, kind, mass_kg, equatorial_radius_m, star_system_id,
                    parent_star_id, parent_planet_id, parent_barycenter_id
             FROM planets WHERE star_system_id = ? ORDER BY name ASC
             """,
@@ -430,7 +464,7 @@ def list_planets(
     else:
         cur.execute(
             """
-            SELECT id, name, kind, star_system_id,
+            SELECT id, name, kind, mass_kg, equatorial_radius_m, star_system_id,
                    parent_star_id, parent_planet_id, parent_barycenter_id
             FROM planets ORDER BY name ASC
             """
@@ -514,7 +548,7 @@ def get_entity(entity_id: str, db_path: Optional[str] = None) -> Optional[Dict[s
 
     cur.execute(
         """
-        SELECT id, name, kind, star_system_id,
+        SELECT id, name, kind, mass_kg, radius_m, effective_temperature_k, star_system_id,
                parent_star_id, parent_planet_id, parent_barycenter_id
         FROM stars WHERE id = ?
         """,
@@ -529,7 +563,7 @@ def get_entity(entity_id: str, db_path: Optional[str] = None) -> Optional[Dict[s
 
     cur.execute(
         """
-        SELECT id, name, kind, star_system_id,
+        SELECT id, name, kind, mass_kg, equatorial_radius_m, star_system_id,
                parent_star_id, parent_planet_id, parent_barycenter_id
         FROM planets WHERE id = ?
         """,
@@ -700,6 +734,12 @@ def run_manual_registration_console(db_path: Optional[str] = None) -> None:
             uid = input("UUID da Estrela: ").strip()
             name = input("Nome da Estrela: ").strip()
             kind = input("Tipo (Star/WhiteDwarf/NeutronStar/BlackHole/BrownDwarf/Exotic) [Star]: ").strip() or "Star"
+            mass_raw = input("Massa em kg (opcional): ").strip()
+            mass_kg = float(mass_raw) if mass_raw else None
+            rad_raw = input("Raio em m (opcional): ").strip()
+            radius_m = float(rad_raw) if rad_raw else None
+            temp_raw = input("Temperatura Efetiva em K (opcional): ").strip()
+            temp_k = float(temp_raw) if temp_raw else None
             sys_id = input("UUID do Sistema Estelar (opcional): ").strip() or None
             p_star = input("UUID Estrela Pai (opcional): ").strip() or None
             p_planet = input("UUID Planeta Pai (opcional): ").strip() or None
@@ -709,6 +749,9 @@ def run_manual_registration_console(db_path: Optional[str] = None) -> None:
                     star_id=uid,
                     name=name,
                     kind=kind,
+                    mass_kg=mass_kg,
+                    radius_m=radius_m,
+                    effective_temperature_k=temp_k,
                     star_system_id=sys_id,
                     parent_star_id=p_star,
                     parent_planet_id=p_planet,
@@ -723,6 +766,10 @@ def run_manual_registration_console(db_path: Optional[str] = None) -> None:
             uid = input("UUID do Planeta: ").strip()
             name = input("Nome do Planeta: ").strip()
             kind = input("Tipo (Telluric/GasGiant/IceGiant/DwarfPlanet/Chthonian/CarbonPlanet/IcyBody/Exotic) [Telluric]: ").strip() or "Telluric"
+            mass_raw = input("Massa em kg (opcional): ").strip()
+            mass_kg = float(mass_raw) if mass_raw else None
+            rad_raw = input("Raio Equatorial em m (opcional): ").strip()
+            eq_rad_m = float(rad_raw) if rad_raw else None
             sys_id = input("UUID do Sistema Estelar (opcional): ").strip() or None
             p_star = input("UUID Estrela Pai (opcional): ").strip() or None
             p_planet = input("UUID Planeta Pai (opcional): ").strip() or None
@@ -732,6 +779,8 @@ def run_manual_registration_console(db_path: Optional[str] = None) -> None:
                     planet_id=uid,
                     name=name,
                     kind=kind,
+                    mass_kg=mass_kg,
+                    equatorial_radius_m=eq_rad_m,
                     star_system_id=sys_id,
                     parent_star_id=p_star,
                     parent_planet_id=p_planet,
