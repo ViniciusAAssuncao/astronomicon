@@ -66,6 +66,29 @@ class UnitEntry(ttk.Frame):
         if unit and unit in self.unit_names:
             self.unit_var.set(unit)
 
+    def set_si_value(self, si_val: float) -> None:
+        if si_val is None or not math.isfinite(si_val):
+            return
+        current_unit = self.unit_var.get()
+        converter = self.converters.get(current_unit)
+        if converter:
+            try:
+                factor = converter(1.0)
+                if factor != 0.0:
+                    disp_val = si_val / factor
+                else:
+                    disp_val = si_val
+            except Exception:
+                disp_val = si_val
+        else:
+            disp_val = si_val
+
+        if abs(disp_val) >= 1e6 or (0.0 < abs(disp_val) < 1e-4):
+            formatted = f"{disp_val:.6e}"
+        else:
+            formatted = f"{disp_val:.6g}"
+        self.value_var.set(formatted)
+
     def clear(self) -> None:
         self.value_var.set("")
 
@@ -142,12 +165,12 @@ class OrbitalElementsFrame(ttk.LabelFrame):
             return None
 
         return OrbitalElements(
-            semi_major_axis_m=a,  # type: ignore
-            eccentricity=e,  # type: ignore
-            inclination_rad=inc,  # type: ignore
-            longitude_ascending_node_rad=lan,  # type: ignore
-            argument_periapsis_rad=arg,  # type: ignore
-            mean_anomaly_at_epoch_rad=m0,  # type: ignore
+            semi_major_axis_m=a,
+            eccentricity=e,
+            inclination_rad=inc,
+            longitude_ascending_node_rad=lan,
+            argument_periapsis_rad=arg,
+            mean_anomaly_at_epoch_rad=m0,
         )
 
     def is_empty(self) -> bool:
@@ -403,3 +426,139 @@ class BarycenterMemberSelector(ttk.Frame):
         self.member_type_var.set("Estrela")
         self.entity_var.set("")
         self._refresh_entity_list()
+
+
+class SuggestionDialog(tk.Toplevel):
+    def __init__(
+        self,
+        parent: tk.Widget,
+        title: str,
+        initial_result: Any,
+        field_widgets_map: Dict[str, Any],
+        on_next_suggestion: Callable[[], Any],
+        field_labels_map: Optional[Dict[str, str]] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(parent, **kwargs)
+        self.title(title)
+        self.geometry("540x440")
+        self.minsize(460, 340)
+        self.transient(parent)
+
+        self.current_result = initial_result
+        self.field_widgets_map = field_widgets_map
+        self.on_next_suggestion = on_next_suggestion
+        self.field_labels_map = field_labels_map or {}
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        header_frame = ttk.Frame(self, padding=12)
+        header_frame.grid(row=0, column=0, sticky="ew")
+        header_frame.columnconfigure(0, weight=1)
+
+        self.note_lbl = ttk.Label(
+            header_frame,
+            text="",
+            font=("Segoe UI", 9, "bold"),
+            foreground="#1976D2",
+            wraplength=500,
+        )
+        self.note_lbl.grid(row=0, column=0, sticky="w")
+
+        tree_frame = ttk.Frame(self, padding=(12, 0, 12, 12))
+        tree_frame.grid(row=1, column=0, sticky="nsew")
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
+
+        self.tree = ttk.Treeview(
+            tree_frame,
+            columns=("field", "value"),
+            show="headings",
+            height=9,
+        )
+        self.tree.heading("field", text="Campo Sugerido")
+        self.tree.heading("value", text="Valor")
+        self.tree.column("field", width=220, anchor="w")
+        self.tree.column("value", width=260, anchor="w")
+        self.tree.grid(row=0, column=0, sticky="nsew")
+
+        scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
+        self.tree.configure(yscrollcommand=scroll.set)
+
+        btn_frame = ttk.Frame(self, padding=12)
+        btn_frame.grid(row=2, column=0, sticky="ew")
+
+        ttk.Button(
+            btn_frame,
+            text="Aplicar Sugestões",
+            command=self._apply_suggestions,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        ttk.Button(
+            btn_frame,
+            text="Sugerir Outro",
+            command=self._cycle_suggestion,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        ttk.Button(
+            btn_frame,
+            text="Fechar",
+            command=self.destroy,
+        ).pack(side=tk.RIGHT)
+
+        self._render_result(initial_result)
+
+    def _render_result(self, result: Any) -> None:
+        self.current_result = result
+        self.note_lbl.configure(text=result.note)
+
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        for field_name, val in result.suggested_fields.items():
+            label = self.field_labels_map.get(field_name, field_name)
+            widget = self.field_widgets_map.get(field_name)
+            display_val = str(val)
+            if isinstance(widget, UnitEntry):
+                unit_name = widget.unit_var.get()
+                conv = widget.converters.get(unit_name)
+                if conv and isinstance(val, (int, float)):
+                    f = conv(1.0)
+                    scaled = val / f if f != 0.0 else val
+                    if abs(scaled) >= 1e6 or (0.0 < abs(scaled) < 1e-4):
+                        display_val = f"{scaled:.4e} {unit_name}"
+                    else:
+                        display_val = f"{scaled:.4g} {unit_name}"
+            elif isinstance(val, float):
+                display_val = f"{val:.4g}"
+
+            self.tree.insert("", tk.END, values=(label, display_val))
+
+    def _cycle_suggestion(self) -> None:
+        new_result = self.on_next_suggestion()
+        if new_result:
+            self._render_result(new_result)
+
+    def _apply_suggestions(self) -> None:
+        if not self.current_result:
+            return
+
+        for field_name, val in self.current_result.suggested_fields.items():
+            widget = self.field_widgets_map.get(field_name)
+            if widget is None:
+                continue
+
+            if isinstance(widget, UnitEntry):
+                if widget.get_raw_value() is None:
+                    widget.set_si_value(val)
+            elif isinstance(widget, ttk.Combobox):
+                if not widget.get().strip():
+                    widget.set(str(val))
+            elif isinstance(widget, ttk.Entry):
+                if not widget.get().strip():
+                    widget.delete(0, tk.END)
+                    widget.insert(0, str(val))
+
+        self.destroy()

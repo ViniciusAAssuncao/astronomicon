@@ -6,8 +6,9 @@ import cache
 from curation import curate_star
 from models import STAR_KINDS, Star
 import sql_builder
+import suggestions
 from ui.output_panel import OutputPanel
-from ui.widgets_common import OrbitalElementsFrame, OrbitalParentSelector, UnitEntry
+from ui.widgets_common import OrbitalElementsFrame, OrbitalParentSelector, SuggestionDialog, UnitEntry
 import units
 from validation import validate_star
 
@@ -27,6 +28,7 @@ class FrameStar(ttk.Frame):
         self.current_star_id: str = sql_builder.generate_uuid()
         self.systems_map: Dict[str, str] = {}
         self.load_cache_map: Dict[str, str] = {}
+        self.star_suggestion_cursor: int = 0
 
         self.columnconfigure(0, weight=1)
 
@@ -164,6 +166,12 @@ class FrameStar(ttk.Frame):
 
         ttk.Button(
             actions_frame,
+            text="Sugerir Preenchimento",
+            command=self.open_suggestion_dialog,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        ttk.Button(
+            actions_frame,
             text="Gerar SQL",
             command=self.generate_sql,
         ).pack(side=tk.LEFT, padx=(0, 6))
@@ -179,6 +187,26 @@ class FrameStar(ttk.Frame):
             text="Limpar Formulário",
             command=self.clear_form,
         ).pack(side=tk.LEFT)
+
+        self.star_field_widgets = {
+            "kind": self.kind_combo,
+            "mass_kg": self.entry_mass,
+            "radius_m": self.entry_radius,
+            "effective_temperature_k": self.entry_temp,
+            "rotation_period_s": self.entry_rotation,
+            "axial_tilt_rad": self.entry_axial_tilt,
+            "oblateness_j2": self.entry_j2,
+        }
+
+        self.star_field_labels = {
+            "kind": "Classificação (Kind)",
+            "mass_kg": "Massa",
+            "radius_m": "Raio",
+            "effective_temperature_k": "Temperatura Efetiva",
+            "rotation_period_s": "Período de Rotação",
+            "axial_tilt_rad": "Obliquidade Axial",
+            "oblateness_j2": "Achatamento J2",
+        }
 
         self.refresh_systems()
         self.refresh_cache_list()
@@ -257,6 +285,39 @@ class FrameStar(ttk.Frame):
         else:
             self.orbital_elements_frame.set_enabled(True)
 
+    def _gather_known_fields(self) -> Dict[str, Any]:
+        kind = self.kind_var.get().strip() or None
+        return {
+            "kind": kind,
+            "mass_kg": self.entry_mass.get_si_value(),
+            "radius_m": self.entry_radius.get_si_value(),
+            "effective_temperature_k": self.entry_temp.get_si_value(),
+            "rotation_period_s": self.entry_rotation.get_si_value(),
+            "axial_tilt_rad": self.entry_axial_tilt.get_si_value(),
+            "oblateness_j2": self.entry_j2.get_si_value(),
+        }
+
+    def _get_next_star_suggestion(self) -> Any:
+        known = self._gather_known_fields()
+        self.star_suggestion_cursor += 1
+        return suggestions.suggest_star_fill(known, cursor=self.star_suggestion_cursor)
+
+    def open_suggestion_dialog(self) -> None:
+        known = self._gather_known_fields()
+        result = suggestions.suggest_star_fill(known, cursor=self.star_suggestion_cursor)
+        if not result.suggested_fields:
+            messagebox.showinfo("Sugestão", "Todos os campos já estão preenchidos ou não há sugestões disponíveis.")
+            return
+
+        SuggestionDialog(
+            self,
+            "Sugestão de Propriedades da Estrela",
+            initial_result=result,
+            field_widgets_map=self.star_field_widgets,
+            on_next_suggestion=self._get_next_star_suggestion,
+            field_labels_map=self.star_field_labels,
+        )
+
     def build_model(self) -> Star:
         sys_id = self.systems_map.get(self.system_var.get())
         p_star, p_planet, p_bary = self.parent_selector.get_parent_references()
@@ -329,3 +390,4 @@ class FrameStar(ttk.Frame):
         self.parent_selector.clear()
         self.orbital_elements_frame.clear()
         self.orbital_elements_frame.set_enabled(False)
+        self.star_suggestion_cursor = 0

@@ -6,8 +6,9 @@ import cache
 from curation import curate_planet
 from models import PLANET_KINDS, Planet
 import sql_builder
+import suggestions
 from ui.output_panel import OutputPanel
-from ui.widgets_common import OrbitalElementsFrame, OrbitalParentSelector, UnitEntry
+from ui.widgets_common import OrbitalElementsFrame, OrbitalParentSelector, SuggestionDialog, UnitEntry
 import units
 from validation import validate_planet
 
@@ -27,6 +28,7 @@ class FramePlanet(ttk.Frame):
         self.current_planet_id: str = sql_builder.generate_uuid()
         self.systems_map: Dict[str, str] = {}
         self.load_cache_map: Dict[str, str] = {}
+        self.planet_suggestion_cursor: int = 0
 
         self.columnconfigure(0, weight=1)
 
@@ -197,6 +199,12 @@ class FramePlanet(ttk.Frame):
 
         ttk.Button(
             actions_frame,
+            text="Sugerir Preenchimento",
+            command=self.open_suggestion_dialog,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        ttk.Button(
+            actions_frame,
             text="Gerar SQL",
             command=self.generate_sql,
         ).pack(side=tk.LEFT, padx=(0, 6))
@@ -212,6 +220,34 @@ class FramePlanet(ttk.Frame):
             text="Limpar Formulário",
             command=self.clear_form,
         ).pack(side=tk.LEFT)
+
+        self.planet_field_widgets = {
+            "kind": self.kind_combo,
+            "mass_kg": self.entry_mass,
+            "equatorial_radius_m": self.entry_eq_radius,
+            "polar_radius_m": self.entry_pol_radius,
+            "rotation_period_s": self.entry_rotation,
+            "axial_tilt_rad": self.entry_axial_tilt,
+            "geometric_albedo": self.entry_geo_albedo,
+            "bond_albedo": self.entry_bond_albedo,
+            "thermal_inertia": self.entry_thermal_inertia,
+            "solstice_true_anomaly_rad": self.entry_solstice_ta,
+            "oblateness_j2": self.entry_j2,
+        }
+
+        self.planet_field_labels = {
+            "kind": "Tipo (Kind)",
+            "mass_kg": "Massa",
+            "equatorial_radius_m": "Raio Equatorial",
+            "polar_radius_m": "Raio Polar",
+            "rotation_period_s": "Período de Rotação",
+            "axial_tilt_rad": "Obliquidade Axial",
+            "geometric_albedo": "Albedo Geométrico",
+            "bond_albedo": "Albedo de Bond",
+            "thermal_inertia": "Inércia Térmica",
+            "solstice_true_anomaly_rad": "Anomalia do Solstício",
+            "oblateness_j2": "Achatamento J2",
+        }
 
         self.refresh_systems()
         self.refresh_cache_list()
@@ -289,6 +325,43 @@ class FramePlanet(ttk.Frame):
             self.orbital_elements_frame.clear()
         else:
             self.orbital_elements_frame.set_enabled(True)
+
+    def _gather_known_fields(self) -> Dict[str, Any]:
+        kind = self.kind_var.get().strip() or None
+        return {
+            "kind": kind,
+            "mass_kg": self.entry_mass.get_si_value(),
+            "equatorial_radius_m": self.entry_eq_radius.get_si_value(),
+            "polar_radius_m": self.entry_pol_radius.get_si_value(),
+            "rotation_period_s": self.entry_rotation.get_si_value(),
+            "axial_tilt_rad": self.entry_axial_tilt.get_si_value(),
+            "geometric_albedo": self.entry_geo_albedo.get_si_value(),
+            "bond_albedo": self.entry_bond_albedo.get_si_value(),
+            "thermal_inertia": self.entry_thermal_inertia.get_si_value(),
+            "solstice_true_anomaly_rad": self.entry_solstice_ta.get_si_value(),
+            "oblateness_j2": self.entry_j2.get_si_value(),
+        }
+
+    def _get_next_planet_suggestion(self) -> Any:
+        known = self._gather_known_fields()
+        self.planet_suggestion_cursor += 1
+        return suggestions.suggest_planet_fill(known, cursor=self.planet_suggestion_cursor)
+
+    def open_suggestion_dialog(self) -> None:
+        known = self._gather_known_fields()
+        result = suggestions.suggest_planet_fill(known, cursor=self.planet_suggestion_cursor)
+        if not result.suggested_fields:
+            messagebox.showinfo("Sugestão", "Todos os campos já estão preenchidos ou não há sugestões disponíveis.")
+            return
+
+        SuggestionDialog(
+            self,
+            "Sugestão de Propriedades do Planeta",
+            initial_result=result,
+            field_widgets_map=self.planet_field_widgets,
+            on_next_suggestion=self._get_next_planet_suggestion,
+            field_labels_map=self.planet_field_labels,
+        )
 
     def build_model(self) -> Planet:
         sys_id = self.systems_map.get(self.system_var.get())
@@ -370,3 +443,4 @@ class FramePlanet(ttk.Frame):
         self.parent_selector.clear()
         self.orbital_elements_frame.clear()
         self.orbital_elements_frame.set_enabled(False)
+        self.planet_suggestion_cursor = 0
