@@ -118,5 +118,104 @@
     "periodo_rotacao_s": null,
     "teorica": true,
     "classe_espectral": null
+  },
+  {
+    "nome": "PSR J0348+0432 (Neutron Star)",
+    "kind": "NeutronStar",
+    "massa_kg": 3.98e30,
+    "raio_m": 13000.0,
+    "temperatura_efetiva_k": 300000.0,
+    "periodo_rotacao_s": 0.039,
+    "teorica": false,
+    "classe_espectral": null,
+    "nota": "Pulsar binário de 2.01 M☉, bem caracterizado."
+  },
+  {
+    "nome": "Neutron Star Típica (1.4 M☉)",
+    "kind": "NeutronStar",
+    "massa_kg": 2.784e30,
+    "raio_m": 12000.0,
+    "temperatura_efetiva_k": 100000.0,
+    "periodo_rotacao_s": 0.01,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de nêutrons canônica, raio ~12 km, massa 1.4 M☉."
+  },
+  {
+    "nome": "Neutron Star Massiva (2.5 M☉)",
+    "kind": "NeutronStar",
+    "massa_kg": 4.97e30,
+    "raio_m": 11000.0,
+    "temperatura_efetiva_k": 50000.0,
+    "periodo_rotacao_s": 0.002,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de nêutrons com massa próxima ao limite TOV."
+  },
+  {
+    "nome": "Buraco Negro Estelar (5 M☉)",
+    "kind": "BlackHole",
+    "massa_kg": 9.94e30,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Buraco negro estelar típico de 5 M☉, raio de Schwarzschild ~15 km."
+  },
+  {
+    "nome": "Buraco Negro Estelar (10 M☉)",
+    "kind": "BlackHole",
+    "massa_kg": 1.988e31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Buraco negro estelar de 10 M☉."
+  },
+  {
+    "nome": "Buraco Negro Estelar (20 M☉)",
+    "kind": "BlackHole",
+    "massa_kg": 3.976e31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Buraco negro estelar massivo de 20 M☉."
+  },
+  {
+    "nome": "Gravastar (Exótico)",
+    "kind": "Exotic",
+    "massa_kg": 3.0e30,
+    "raio_m": 15000.0,
+    "temperatura_efetiva_k": 10000.0,
+    "periodo_rotacao_s": 0.1,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Gravastar hipotético, objeto exótico sem horizonte de eventos, raio ~15 km."
+  },
+  {
+    "nome": "Estrela de Quarks (Exótica)",
+    "kind": "Exotic",
+    "massa_kg": 2.0e30,
+    "raio_m": 9000.0,
+    "temperatura_efetiva_k": 50000.0,
+    "periodo_rotacao_s": 0.005,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de quarks teórica, composta por matéria de quarks desconfínados."
+  },
+  {
+    "nome": "Estrela de Ferro (Exótica)",
+    "kind": "Exotic",
+    "massa_kg": 1.0e30,
+    "raio_m": 1000000.0,
+    "temperatura_efetiva_k": 3000.0,
+    "periodo_rotacao_s": 86400.0,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de ferro hipotética, resfriada e colapsada (estágio final de uma anã branca)."
   }
 ]

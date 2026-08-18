@@ -510,5 +510,83 @@
       "tipo_pai": "estrela"
     },
     "teorica": true
+  },
+  {
+    "nome": "Chthonian Típico (1 M⊕)",
+    "kind": "Chthonian",
+    "massa_kg": 5.972e24,
+    "raio_equatorial_m": 6371000.0,
+    "raio_polar_m": 6356800.0,
+    "periodo_rotacao_s": 86400.0,
+    "obliquidade_rad": 0.0,
+    "albedo_geometrico": 0.1,
+    "albedo_bond": 0.05,
+    "teorica": true,
+    "nota": "Planeta ctoniano remanescente de um gigante gasoso evaporado, núcleo de ferro."
+  },
+  {
+    "nome": "Chthonian Massivo (10 M⊕)",
+    "kind": "Chthonian",
+    "massa_kg": 5.972e25,
+    "raio_equatorial_m": 15000000.0,
+    "raio_polar_m": 14800000.0,
+    "periodo_rotacao_s": 43200.0,
+    "obliquidade_rad": 0.1,
+    "albedo_geometrico": 0.15,
+    "albedo_bond": 0.08,
+    "teorica": true,
+    "nota": "Super-Chthonian, núcleo denso de um gigante gasoso de alta massa."
+  },
+  {
+    "nome": "Planeta de Carbono (2 M⊕)",
+    "kind": "CarbonPlanet",
+    "massa_kg": 1.1944e25,
+    "raio_equatorial_m": 9000000.0,
+    "raio_polar_m": 8900000.0,
+    "periodo_rotacao_s": 60000.0,
+    "obliquidade_rad": 0.2,
+    "albedo_geometrico": 0.2,
+    "albedo_bond": 0.15,
+    "teorica": true,
+    "nota": "Planeta de carbono com composição rica em carbonetos, grafite e diamante."
+  },
+  {
+    "nome": "Planeta de Diamante (1 M⊕)",
+    "kind": "CarbonPlanet",
+    "massa_kg": 5.972e24,
+    "raio_equatorial_m": 7000000.0,
+    "raio_polar_m": 6950000.0,
+    "periodo_rotacao_s": 72000.0,
+    "obliquidade_rad": 0.05,
+    "albedo_geometrico": 0.3,
+    "albedo_bond": 0.25,
+    "teorica": true,
+    "nota": "Planeta de carbono com alta pressão, superfície de diamante."
+  },
+  {
+    "nome": "Planeta Oceano (Exótico)",
+    "kind": "Exotic",
+    "massa_kg": 8.0e24,
+    "raio_equatorial_m": 12000000.0,
+    "raio_polar_m": 11800000.0,
+    "periodo_rotacao_s": 36000.0,
+    "obliquidade_rad": 0.3,
+    "albedo_geometrico": 0.4,
+    "albedo_bond": 0.35,
+    "teorica": true,
+    "nota": "Planeta oceano com manto de água líquida e gelo de alta pressão."
+  },
+  {
+    "nome": "Planeta de Lava (Exótico)",
+    "kind": "Exotic",
+    "massa_kg": 3.0e24,
+    "raio_equatorial_m": 5500000.0,
+    "raio_polar_m": 5400000.0,
+    "periodo_rotacao_s": 80000.0,
+    "obliquidade_rad": 0.01,
+    "albedo_geometrico": 0.05,
+    "albedo_bond": 0.02,
+    "teorica": true,
+    "nota": "Planeta coberto por oceanos de lava, com atmosfera de silicatos."
   }
 ]

@@ -171,6 +171,7 @@ def _calculate_property_stats(values: List[float]) -> Optional[Dict[str, float]]
         "max": float(max(clean)),
         "median": float(statistics.median(clean)),
         "mean": float(statistics.mean(clean)),
+        "count": len(clean),
     }
 
 
