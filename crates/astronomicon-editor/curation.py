@@ -50,6 +50,7 @@ ROUGH_MOLAR_MASS: Dict[str, float] = {
     "TI": 47.867,
     "TIO": 63.866,
     "VO": 66.941,
+    "SIO": 44.085,
 }
 
 
@@ -64,12 +65,10 @@ def curate_orbital_context(
     if semi_major_axis_m is None or semi_major_axis_m <= 0.0 or parent_data is None:
         return warnings
 
-    e = eccentricity if (
-        eccentricity is not None and math.isfinite(eccentricity)) else 0.0
+    e = eccentricity if (eccentricity is not None and math.isfinite(eccentricity)) else 0.0
     periapsis = semi_major_axis_m * (1.0 - max(0.0, min(0.9999, e)))
 
-    p_radius = parent_data.get(
-        "radius_m") or parent_data.get("equatorial_radius_m")
+    p_radius = parent_data.get("radius_m") or parent_data.get("equatorial_radius_m")
     p_mass = parent_data.get("mass_kg")
     p_name = parent_data.get("name", "Primário")
 
@@ -91,8 +90,7 @@ def curate_orbital_context(
                 else 3000.0
             )
             if p_dens > 0.0 and b_dens > 0.0:
-                roche_fluid = physics_lite.roche_limit_fluid(
-                    p_radius, p_dens, b_dens)
+                roche_fluid = physics_lite.roche_limit_fluid(p_radius, p_dens, b_dens)
                 if periapsis < roche_fluid:
                     warnings.append(
                         f"Periastro orbital ({periapsis:.2e} m) está abaixo do limite de Roche fluido (~{roche_fluid:.2e} m) de '{p_name}', risco de ruptura por maré."
@@ -129,8 +127,7 @@ def curate_star(star: Star) -> List[str]:
     ):
         omega = (2.0 * math.pi) / star.rotation_period_s
         v_eq = omega * star.radius_m
-        v_break = math.sqrt(
-            (physics_lite.GRAVITATIONAL_CONSTANT * star.mass_kg) / star.radius_m)
+        v_break = math.sqrt((physics_lite.GRAVITATIONAL_CONSTANT * star.mass_kg) / star.radius_m)
         if v_eq >= v_break:
             warnings.append(
                 f"Velocidade equatorial de rotação ({v_eq:.1f} m/s) excede a velocidade de ruptura gravitacional ({v_break:.1f} m/s)."
@@ -142,8 +139,7 @@ def curate_star(star: Star) -> List[str]:
 
     if star.kind == "WhiteDwarf":
         if star.radius_m is not None and star.radius_m > 5.0e7:
-            warnings.append(
-                "Raio excessivamente grande para uma anã branca (> 50.000 km).")
+            warnings.append("Raio excessivamente grande para uma anã branca (> 50.000 km).")
         if star.mass_kg > 1.44 * units.SOLAR_MASS_KG:
             warnings.append(
                 f"Massa ({star.mass_kg / units.SOLAR_MASS_KG:.2f} M☉) excede o limite de Chandrasekhar (~1.44 M☉)."
@@ -151,8 +147,7 @@ def curate_star(star: Star) -> List[str]:
 
     elif star.kind == "NeutronStar":
         if star.radius_m is not None and star.radius_m > 5.0e4:
-            warnings.append(
-                "Raio excessivamente grande para uma estrela de nêutrons (> 50 km).")
+            warnings.append("Raio excessivamente grande para uma estrela de nêutrons (> 50 km).")
         if star.mass_kg > 3.0 * units.SOLAR_MASS_KG:
             warnings.append(
                 f"Massa ({star.mass_kg / units.SOLAR_MASS_KG:.2f} M☉) excede o limite de Tolman-Oppenheimer-Volkoff (~3.0 M☉)."
@@ -209,8 +204,7 @@ def curate_planet(planet: Planet) -> List[str]:
 
     if planet.mass_kg > 0.0 and planet.equatorial_radius_m is not None and planet.equatorial_radius_m > 0.0:
         r_eq = planet.equatorial_radius_m
-        r_pol = planet.polar_radius_m if (
-            planet.polar_radius_m is not None and planet.polar_radius_m > 0.0) else r_eq
+        r_pol = planet.polar_radius_m if (planet.polar_radius_m is not None and planet.polar_radius_m > 0.0) else r_eq
         vol = (4.0 / 3.0) * math.pi * (r_eq ** 2) * r_pol
         dens = planet.mass_kg / vol
         stats = reference_data.get_planet_statistics(planet.kind)
@@ -233,11 +227,9 @@ def curate_planet(planet: Planet) -> List[str]:
                 f"Raio polar ({planet.polar_radius_m:.0f} m) maior que o raio equatorial ({planet.equatorial_radius_m:.0f} m), formato prolato anômalo para corpos em rotação."
             )
         elif planet.equatorial_radius_m > 0.0:
-            f = (planet.equatorial_radius_m - planet.polar_radius_m) / \
-                planet.equatorial_radius_m
+            f = (planet.equatorial_radius_m - planet.polar_radius_m) / planet.equatorial_radius_m
             if f > 0.5:
-                warnings.append(
-                    f"Achatamento polar excessivo (f = {f:.3f} > 0.50).")
+                warnings.append(f"Achatamento polar excessivo (f = {f:.3f} > 0.50).")
             if (
                 planet.rotation_period_s is not None
                 and planet.rotation_period_s > 0.0
@@ -360,16 +352,14 @@ def curate_atmosphere(
                 s_temp = star_entity.get("effective_temperature_k")
                 s_rad = star_entity.get("radius_m")
                 if s_temp and s_rad and s_temp > 0.0 and s_rad > 0.0:
-                    t_eq = physics_lite.equilibrium_temperature(
-                        s_temp, s_rad, sma, albedo)
+                    t_eq = physics_lite.equilibrium_temperature(s_temp, s_rad, sma, albedo)
 
     t_surf: Optional[float] = None
     if t_eq is not None and t_eq > 0.0:
         t_surf = t_eq + max(0.0, atmosphere.greenhouse_effect_k)
 
     if components:
-        total_pct = sum(
-            c.percentage for c in components if math.isfinite(c.percentage))
+        total_pct = sum(c.percentage for c in components if math.isfinite(c.percentage))
         if total_pct < 95.0:
             warnings.append(
                 f"Soma das frações gasosas ({total_pct:.2f}%) não cobre a quase totalidade da composição (< 95%)."
@@ -451,19 +441,15 @@ def curate_barycenter(barycenter: Barycenter) -> List[str]:
 
     m_pri: Optional[float] = None
     m_sec: Optional[float] = None
-    r_pri: Optional[float] = None
-    r_sec: Optional[float] = None
 
     if pri_id:
         e1 = cache.get_entity(pri_id)
-        if e1:
-            m_pri = e1.get("mass_kg")
-            r_pri = e1.get("radius_m") or e1.get("equatorial_radius_m")
+        if e1 and e1.get("mass_kg") is not None:
+            m_pri = e1["mass_kg"]
     if sec_id:
         e2 = cache.get_entity(sec_id)
-        if e2:
-            m_sec = e2.get("mass_kg")
-            r_sec = e2.get("radius_m") or e2.get("equatorial_radius_m")
+        if e2 and e2.get("mass_kg") is not None:
+            m_sec = e2["mass_kg"]
 
     if m_pri is not None and m_sec is not None:
         if m_sec > m_pri:
@@ -475,51 +461,6 @@ def curate_barycenter(barycenter: Barycenter) -> List[str]:
         warnings.append(
             f"Excentricidade interna muito alta (e = {barycenter.internal_eccentricity:.3f}), risco elevado de instabilidade orbital."
         )
-
-    int_periapsis = barycenter.internal_semi_major_axis_m * (1.0 - max(0.0, min(0.9999, barycenter.internal_eccentricity)))
-    if r_pri is not None and r_sec is not None and (r_pri + r_sec) > 0.0:
-        if int_periapsis <= (r_pri + r_sec):
-            warnings.append(
-                f"Periastro interno ({int_periapsis:.2e} m) é menor ou igual à soma dos raios dos membros ({(r_pri + r_sec):.2e} m), resultando em colisão física entre os componentes."
-            )
-
-    if barycenter.external_semi_major_axis_m is not None and barycenter.external_semi_major_axis_m > 0.0:
-        ext_e = barycenter.external_eccentricity or 0.0
-        ext_periapsis = barycenter.external_semi_major_axis_m * (1.0 - max(0.0, min(0.9999, ext_e)))
-        int_apoapsis = barycenter.internal_semi_major_axis_m * (1.0 + barycenter.internal_eccentricity)
-
-        if ext_periapsis <= int_apoapsis:
-            warnings.append(
-                f"Periastro externo ({ext_periapsis:.2e} m) cruza ou se aproxima excessivamente da órbita do par interno ({int_apoapsis:.2e} m)."
-            )
-
-        p_id = (
-            barycenter.parent_star_id
-            or barycenter.parent_planet_id
-            or barycenter.parent_barycenter_id
-        )
-        if p_id and m_pri is not None and m_sec is not None:
-            p_entity = cache.get_entity(p_id)
-            if p_entity and p_entity.get("mass_kg"):
-                m_outer = p_entity["mass_kg"]
-                m_inner_total = m_pri + m_sec
-                inc_diff = abs(barycenter.internal_inclination_rad - (barycenter.external_inclination_rad or 0.0))
-
-                crit_ratio = physics_lite.mardling_aarseth_critical_ratio(
-                    inner_mass=m_inner_total,
-                    outer_mass=m_outer,
-                    outer_eccentricity=ext_e,
-                    mutual_inclination_rad=inc_diff,
-                )
-                actual_ratio = physics_lite.mardling_aarseth_stability_ratio(
-                    inner_semi_major_axis=barycenter.internal_semi_major_axis_m,
-                    outer_periapsis=ext_periapsis,
-                )
-
-                if actual_ratio < crit_ratio:
-                    warnings.append(
-                        f"Hierarquia tripla instável a longo prazo segundo o critério de Mardling-Aarseth (razão periastro externo/semi-eixo interno: {actual_ratio:.2f} < crítica: {crit_ratio:.2f})."
-                    )
 
     return warnings
 

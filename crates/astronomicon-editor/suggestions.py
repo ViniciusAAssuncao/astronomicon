@@ -55,24 +55,17 @@ def _match_score(known: Dict[str, Any], item: Dict[str, Any]) -> Tuple[float, in
     total_dist = 0.0
     matched_count = 0
     for k, val in known.items():
-        if val is None or k in ("kind", "name", "id", "tipo"):
+        if val is None or k in ("kind", "name", "id"):
             continue
-        if k in item and item[k] is not None:
-            total_dist += _calc_field_distance(k, float(val), float(item[k]))
-            matched_count += 1
-        elif k == "equatorial_radius_m" and "radius_m" in item and item["radius_m"] is not None:
-            total_dist += _calc_field_distance(k,
-                                               float(val), float(item["radius_m"]))
-            matched_count += 1
-        elif k == "internal_semi_major_axis_m" and "semi_eixo_maior_m" in item and item["semi_eixo_maior_m"] is not None:
-            total_dist += _calc_field_distance("semi_major_axis_m", float(val), float(item["semi_eixo_maior_m"]))
-            matched_count += 1
-        elif k == "internal_eccentricity" and "excentricidade" in item and item["excentricidade"] is not None:
-            total_dist += _calc_field_distance("eccentricity", float(val), float(item["excentricidade"]))
-            matched_count += 1
-        elif k == "internal_inclination_rad" and "inclinacao_rad" in item and item["inclinacao_rad"] is not None:
-            total_dist += _calc_field_distance("inclination_rad", float(val), float(item["inclinacao_rad"]))
-            matched_count += 1
+        v_item = item.get(k)
+        if v_item is None and k == "equatorial_radius_m":
+            v_item = item.get("radius_m")
+        if v_item is not None:
+            try:
+                total_dist += _calc_field_distance(k, float(val), float(v_item))
+                matched_count += 1
+            except (ValueError, TypeError):
+                total_dist += 2.0
         else:
             total_dist += 2.0
     return total_dist, matched_count
@@ -86,14 +79,13 @@ def _find_top_candidates(
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     items = dataset
     if kind_filter:
-        filtered = [x for x in items if str(
-            x.get("kind") or x.get("tipo") or "").lower() == kind_filter.lower()]
+        filtered = [x for x in items if str(x.get("kind", "")).strip().lower() == kind_filter.strip().lower()]
         if filtered:
             items = filtered
 
     scored = []
     has_known_numeric = any(
-        v is not None for k, v in known.items() if k not in ("kind", "name", "id", "tipo")
+        v is not None for k, v in known.items() if k not in ("kind", "name", "id")
     )
 
     for item in items:
@@ -110,7 +102,7 @@ def _find_top_candidates(
 
     inferred_kind = None
     if top:
-        inferred_kind = top[0].get("kind") or top[0].get("tipo")
+        inferred_kind = top[0].get("kind")
 
     return top, inferred_kind
 
@@ -125,8 +117,7 @@ def suggest_orbital_context(
     known = known_orbit or {}
 
     p_type = parent_data.get("entity_type", "")
-    p_radius = parent_data.get(
-        "radius_m") or parent_data.get("equatorial_radius_m")
+    p_radius = parent_data.get("radius_m") or parent_data.get("equatorial_radius_m")
     p_temp = parent_data.get("effective_temperature_k")
     p_mass = parent_data.get("mass_kg")
     p_name = parent_data.get("name", "Primário")
@@ -143,8 +134,7 @@ def suggest_orbital_context(
         if p_radius and p_temp:
             lum = physics_lite.stellar_luminosity(p_radius, p_temp)
         elif p_mass and p_mass > 0.0:
-            lum = physics_lite.SOLAR_LUMINOSITY * \
-                ((p_mass / physics_lite.SOLAR_MASS) ** 3.5)
+            lum = physics_lite.SOLAR_LUMINOSITY * ((p_mass / physics_lite.SOLAR_MASS) ** 3.5)
         else:
             lum = physics_lite.SOLAR_LUMINOSITY
 
@@ -164,53 +154,58 @@ def suggest_orbital_context(
                 0.85 * hz_in,
                 1.15 * hz_out,
                 0.70 * hz_in,
+                1.25 * hz_out,
             ]
             chosen_sma = sma_candidates[cursor % len(sma_candidates)]
-            note_context = f"Órbita sugerida dentro da Zona Habitável ({hz_in / physics_lite.ASTRONOMICAL_UNIT:.2f} - {hz_out / physics_lite.ASTRONOMICAL_UNIT:.2f} AU) de {p_name}."
+            note_context = f"Órbita sugerida em relação à Zona Habitável ({hz_in / physics_lite.ASTRONOMICAL_UNIT:.2f} - {hz_out / physics_lite.ASTRONOMICAL_UNIT:.2f} AU) de {p_name}."
         elif k in ("GasGiant", "IceGiant"):
             sma_candidates = [
-                1.25 * frost_line,
-                1.80 * frost_line,
-                2.60 * frost_line,
-                3.80 * frost_line,
+                1.30 * frost_line,
+                1.90 * frost_line,
+                2.70 * frost_line,
+                4.00 * frost_line,
+                0.05 * physics_lite.ASTRONOMICAL_UNIT,
             ]
             chosen_sma = sma_candidates[cursor % len(sma_candidates)]
-            note_context = f"Órbita sugerida além da Linha de Gelo (~{frost_line / physics_lite.ASTRONOMICAL_UNIT:.2f} AU) de {p_name}."
+            note_context = f"Órbita sugerida em relação à Linha de Gelo (~{frost_line / physics_lite.ASTRONOMICAL_UNIT:.2f} AU) de {p_name}."
         elif k in ("DwarfPlanet", "IcyBody"):
             sma_candidates = [
-                2.20 * frost_line,
-                3.50 * frost_line,
-                5.20 * frost_line,
-                8.00 * frost_line,
+                2.50 * frost_line,
+                3.80 * frost_line,
+                5.50 * frost_line,
+                8.20 * frost_line,
+                12.0 * frost_line,
             ]
             chosen_sma = sma_candidates[cursor % len(sma_candidates)]
-            note_context = f"Órbita externa sugerida para corpo gelado/anão além da Linha de Gelo (~{frost_line / physics_lite.ASTRONOMICAL_UNIT:.2f} AU)."
+            note_context = f"Órbita externa sugerida além da Linha de Gelo (~{frost_line / physics_lite.ASTRONOMICAL_UNIT:.2f} AU)."
         elif k == "Chthonian":
             sma_candidates = [
-                0.03 * physics_lite.ASTRONOMICAL_UNIT,
-                0.06 * physics_lite.ASTRONOMICAL_UNIT,
-                0.12 * hz_in,
-                0.20 * hz_in,
+                0.025 * physics_lite.ASTRONOMICAL_UNIT,
+                0.045 * physics_lite.ASTRONOMICAL_UNIT,
+                0.080 * physics_lite.ASTRONOMICAL_UNIT,
+                0.120 * hz_in,
+                0.035 * physics_lite.ASTRONOMICAL_UNIT,
             ]
             chosen_sma = sma_candidates[cursor % len(sma_candidates)]
-            note_context = f"Órbita extremamente próxima sugerida para remanescente ctoniano de {p_name}."
+            note_context = f"Órbita ultra-curta sugerida para núcleo ctoniano de {p_name}."
         else:
             sma_candidates = [
                 0.5 * (hz_in + hz_out),
                 1.3 * frost_line,
                 0.8 * hz_in,
-                2.0 * frost_line,
+                2.2 * frost_line,
+                0.15 * hz_in,
             ]
             chosen_sma = sma_candidates[cursor % len(sma_candidates)]
             note_context = f"Órbita configurada em relação à radiação estelar de {p_name}."
     else:
-        ref_rad = p_radius if (p_radius and p_radius >
-                               0.0) else physics_lite.EARTH_RADIUS
+        ref_rad = p_radius if (p_radius and p_radius > 0.0) else physics_lite.EARTH_RADIUS
         sma_candidates = [
-            12.0 * ref_rad,
-            24.0 * ref_rad,
-            45.0 * ref_rad,
-            60.0 * ref_rad,
+            9.5 * ref_rad,
+            18.0 * ref_rad,
+            32.0 * ref_rad,
+            55.0 * ref_rad,
+            80.0 * ref_rad,
         ]
         chosen_sma = sma_candidates[cursor % len(sma_candidates)]
         note_context = f"Órbita circumplanetária sugerida em torno de {p_name}."
@@ -220,39 +215,28 @@ def suggest_orbital_context(
 
     k = (body_kind or "").strip()
     if k == "DwarfPlanet":
-        ecc_candidates = [0.15, 0.22, 0.08, 0.28]
-        inc_candidates = [math.radians(14.0), math.radians(
-            24.0), math.radians(9.0), math.radians(18.0)]
+        ecc_candidates = [0.12, 0.21, 0.07, 0.28, 0.16]
+        inc_candidates = [math.radians(11.0), math.radians(22.0), math.radians(7.0), math.radians(17.0), math.radians(14.0)]
     elif k in ("GasGiant", "IceGiant"):
-        ecc_candidates = [0.035, 0.048, 0.012, 0.055]
-        inc_candidates = [math.radians(1.2), math.radians(
-            2.5), math.radians(0.4), math.radians(1.8)]
+        ecc_candidates = [0.032, 0.048, 0.012, 0.055, 0.022]
+        inc_candidates = [math.radians(1.3), math.radians(2.5), math.radians(0.5), math.radians(1.8), math.radians(3.1)]
     else:
-        ecc_candidates = [0.016, 0.028, 0.006, 0.042]
-        inc_candidates = [math.radians(1.8), math.radians(
-            3.5), math.radians(0.6), math.radians(5.0)]
+        ecc_candidates = [0.016, 0.028, 0.007, 0.045, 0.021]
+        inc_candidates = [math.radians(1.8), math.radians(3.4), math.radians(0.8), math.radians(5.1), math.radians(2.2)]
 
     if known.get("eccentricity") is None:
-        suggested["eccentricity"] = ecc_candidates[cursor %
-                                                   len(ecc_candidates)]
+        suggested["eccentricity"] = ecc_candidates[cursor % len(ecc_candidates)]
     if known.get("inclination_rad") is None:
-        suggested["inclination_rad"] = inc_candidates[cursor %
-                                                      len(inc_candidates)]
+        suggested["inclination_rad"] = inc_candidates[cursor % len(inc_candidates)]
     if known.get("longitude_ascending_node_rad") is None:
-        lan_candidates = [math.radians(0.0), math.radians(
-            45.0), math.radians(110.0), math.radians(225.0)]
-        suggested["longitude_ascending_node_rad"] = lan_candidates[cursor %
-                                                                   len(lan_candidates)]
+        lan_candidates = [math.radians(0.0), math.radians(45.0), math.radians(110.0), math.radians(225.0), math.radians(310.0)]
+        suggested["longitude_ascending_node_rad"] = lan_candidates[cursor % len(lan_candidates)]
     if known.get("argument_periapsis_rad") is None:
-        arg_candidates = [math.radians(0.0), math.radians(
-            65.0), math.radians(140.0), math.radians(280.0)]
-        suggested["argument_periapsis_rad"] = arg_candidates[cursor %
-                                                             len(arg_candidates)]
+        arg_candidates = [math.radians(0.0), math.radians(65.0), math.radians(140.0), math.radians(280.0), math.radians(195.0)]
+        suggested["argument_periapsis_rad"] = arg_candidates[cursor % len(arg_candidates)]
     if known.get("mean_anomaly_at_epoch_rad") is None:
-        m0_candidates = [math.radians(0.0), math.radians(
-            90.0), math.radians(180.0), math.radians(270.0)]
-        suggested["mean_anomaly_at_epoch_rad"] = m0_candidates[cursor %
-                                                               len(m0_candidates)]
+        m0_candidates = [math.radians(0.0), math.radians(90.0), math.radians(180.0), math.radians(270.0), math.radians(45.0)]
+        suggested["mean_anomaly_at_epoch_rad"] = m0_candidates[cursor % len(m0_candidates)]
 
     return suggested, note_context
 
@@ -264,62 +248,180 @@ def suggest_star_fill(
 ) -> SuggestionResult:
     dataset = reference_data.get_all_stars()
     kind_filter = known_fields.get("kind")
-    top_candidates, inferred_kind = _find_top_candidates(
-        dataset, known_fields, kind_filter, k=5)
+    top_candidates, inferred_kind = _find_top_candidates(dataset, known_fields, kind_filter, k=5)
 
-    if not top_candidates:
-        return SuggestionResult(
-            suggested_fields={},
-            reference_names=[],
-            note="Nenhum corpo estelar de referência disponível.",
-            inferred_kind=kind_filter,
-            candidate_index=0,
-            total_candidates=0,
-        )
+    ref_kind = kind_filter or inferred_kind or "Star"
+    ref_name = "Corpo Estelar Procedural"
 
-    idx = cursor % len(top_candidates)
-    chosen = top_candidates[idx]
-    ref_name = chosen.get("name", "Corpo Estelar")
-    ref_kind = chosen.get("kind", inferred_kind or "Star")
+    if top_candidates:
+        idx = cursor % len(top_candidates)
+        chosen = top_candidates[idx]
+        ref_name = chosen.get("name") or chosen.get("nome") or ref_name
+        ref_kind = chosen.get("kind", ref_kind)
+    else:
+        chosen = {}
+        idx = cursor
 
     suggested: Dict[str, Any] = {}
-    for field_name in (
-        "kind",
-        "mass_kg",
-        "radius_m",
-        "effective_temperature_k",
-        "rotation_period_s",
-        "axial_tilt_rad",
-        "oblateness_j2",
-    ):
-        if known_fields.get(field_name) is None:
-            val = chosen.get(field_name)
-            if val is not None:
-                suggested[field_name] = val
 
-    if "kind" in suggested and kind_filter:
-        suggested.pop("kind", None)
+    mass_val = known_fields.get("mass_kg")
+    rad_val = known_fields.get("radius_m")
+    temp_val = known_fields.get("effective_temperature_k")
+    rot_val = known_fields.get("rotation_period_s")
+    tilt_val = known_fields.get("axial_tilt_rad")
+    j2_val = known_fields.get("oblateness_j2")
 
-    note = f"Baseado em {ref_name} ({ref_kind}). Candidato {idx + 1} de {len(top_candidates)}."
+    if ref_kind == "Star":
+        if mass_val is None:
+            mass_val = chosen.get("mass_kg") or chosen.get("massa_kg")
+            if mass_val is None:
+                mass_options = [1.9885e30, 0.85 * 1.9885e30, 1.4 * 1.9885e30, 0.3 * 1.9885e30, 2.2 * 1.9885e30]
+                mass_val = mass_options[cursor % len(mass_options)]
+            suggested["mass_kg"] = mass_val
+
+        if rad_val is None:
+            rad_val = chosen.get("radius_m") or chosen.get("raio_m")
+            if rad_val is None and mass_val:
+                rad_val = physics_lite.stellar_main_sequence_radius(mass_val)
+            if rad_val is None:
+                rad_val = physics_lite.SOLAR_RADIUS
+            suggested["radius_m"] = rad_val
+
+        if temp_val is None:
+            temp_val = chosen.get("effective_temperature_k") or chosen.get("temperatura_efetiva_k")
+            if temp_val is None and mass_val and rad_val:
+                temp_val = physics_lite.stellar_main_sequence_temperature(mass_val, rad_val)
+            if temp_val is None:
+                temp_val = physics_lite.SOLAR_TEMPERATURE
+            suggested["effective_temperature_k"] = temp_val
+
+        if rot_val is None:
+            rot_val = chosen.get("rotation_period_s") or chosen.get("periodo_rotacao_s")
+            if rot_val is None and mass_val:
+                m_rel = mass_val / physics_lite.SOLAR_MASS
+                rot_val = 25.0 * 86400.0 * (m_rel ** 0.4)
+            if rot_val is None:
+                rot_val = 25.0 * 86400.0
+            suggested["rotation_period_s"] = rot_val
+
+        if tilt_val is None:
+            tilt_val = chosen.get("axial_tilt_rad") or chosen.get("obliquidade_rad")
+            if tilt_val is None:
+                tilt_val = math.radians(7.25)
+            suggested["axial_tilt_rad"] = tilt_val
+
+        if j2_val is None:
+            j2_val = chosen.get("oblateness_j2") or chosen.get("achatamento_j2")
+            if j2_val is None and mass_val and rad_val and rot_val:
+                j2_val = physics_lite.oblateness_j2_from_rotation(mass_val, rad_val, rot_val, love_k2=0.05)
+            if j2_val is None or j2_val <= 0.0:
+                j2_val = 2.0e-7
+            suggested["oblateness_j2"] = j2_val
+
+    elif ref_kind == "WhiteDwarf":
+        if mass_val is None:
+            mass_val = chosen.get("mass_kg") or chosen.get("massa_kg") or (0.6 * physics_lite.SOLAR_MASS)
+            suggested["mass_kg"] = mass_val
+        if rad_val is None:
+            rad_val = chosen.get("radius_m") or chosen.get("raio_m") or (0.009 * physics_lite.SOLAR_RADIUS)
+            suggested["radius_m"] = rad_val
+        if temp_val is None:
+            temp_options = [25000.0, 15000.0, 10000.0, 32000.0, 8000.0]
+            temp_val = chosen.get("effective_temperature_k") or chosen.get("temperatura_efetiva_k") or temp_options[cursor % len(temp_options)]
+            suggested["effective_temperature_k"] = temp_val
+        if rot_val is None:
+            rot_val = chosen.get("rotation_period_s") or chosen.get("periodo_rotacao_s") or 86400.0
+            suggested["rotation_period_s"] = rot_val
+        if tilt_val is None:
+            suggested["axial_tilt_rad"] = 0.0
+        if j2_val is None:
+            suggested["oblateness_j2"] = 1.0e-6
+
+    elif ref_kind == "NeutronStar":
+        if mass_val is None:
+            mass_val = chosen.get("mass_kg") or chosen.get("massa_kg") or (1.4 * physics_lite.SOLAR_MASS)
+            suggested["mass_kg"] = mass_val
+        if rad_val is None:
+            rad_val = chosen.get("radius_m") or chosen.get("raio_m") or 12000.0
+            suggested["radius_m"] = rad_val
+        if temp_val is None:
+            temp_options = [100000.0, 300000.0, 50000.0, 600000.0, 150000.0]
+            temp_val = chosen.get("effective_temperature_k") or chosen.get("temperatura_efetiva_k") or temp_options[cursor % len(temp_options)]
+            suggested["effective_temperature_k"] = temp_val
+        if rot_val is None:
+            rot_options = [0.033, 0.003, 0.1, 0.015, 0.5]
+            rot_val = chosen.get("rotation_period_s") or chosen.get("periodo_rotacao_s") or rot_options[cursor % len(rot_options)]
+            suggested["rotation_period_s"] = rot_val
+        if tilt_val is None:
+            suggested["axial_tilt_rad"] = 0.0
+        if j2_val is None:
+            suggested["oblateness_j2"] = 1.0e-4
+
+    elif ref_kind == "BlackHole":
+        if mass_val is None:
+            mass_val = chosen.get("mass_kg") or chosen.get("massa_kg") or (10.0 * physics_lite.SOLAR_MASS)
+            suggested["mass_kg"] = mass_val
+        if rad_val is None and mass_val:
+            rad_val = physics_lite.schwarzschild_radius(mass_val)
+            suggested["radius_m"] = rad_val
+
+    elif ref_kind == "BrownDwarf":
+        if mass_val is None:
+            mass_val = chosen.get("mass_kg") or chosen.get("massa_kg") or (0.04 * physics_lite.SOLAR_MASS)
+            suggested["mass_kg"] = mass_val
+        if rad_val is None:
+            rad_val = chosen.get("radius_m") or chosen.get("raio_m") or physics_lite.JUPITER_RADIUS
+            suggested["radius_m"] = rad_val
+        if temp_val is None:
+            temp_options = [940.0, 1400.0, 1800.0, 750.0, 2200.0]
+            temp_val = chosen.get("effective_temperature_k") or chosen.get("temperatura_efetiva_k") or temp_options[cursor % len(temp_options)]
+            suggested["effective_temperature_k"] = temp_val
+        if rot_val is None:
+            rot_val = chosen.get("rotation_period_s") or chosen.get("periodo_rotacao_s") or 28800.0
+            suggested["rotation_period_s"] = rot_val
+        if tilt_val is None:
+            suggested["axial_tilt_rad"] = math.radians(3.0)
+        if j2_val is None:
+            suggested["oblateness_j2"] = 0.015
+
+    else:
+        for field_name in (
+            "mass_kg",
+            "radius_m",
+            "effective_temperature_k",
+            "rotation_period_s",
+            "axial_tilt_rad",
+            "oblateness_j2",
+        ):
+            if known_fields.get(field_name) is None:
+                val = chosen.get(field_name)
+                if val is not None:
+                    suggested[field_name] = val
+
+    final_suggested = {k: v for k, v in suggested.items() if known_fields.get(k) is None and v is not None}
+
+    note = f"Baseado em {ref_name} ({ref_kind}). Variação procedural {idx + 1} de {max(1, len(top_candidates))}."
 
     if parent_data:
         orbit_suggested, orbit_note = suggest_orbital_context(
-            body_kind=kind_filter or ref_kind,
+            body_kind=ref_kind,
             parent_data=parent_data,
             known_orbit=known_fields,
             cursor=cursor,
         )
-        suggested.update(orbit_suggested)
+        for ok, ov in orbit_suggested.items():
+            if known_fields.get(ok) is None:
+                final_suggested[ok] = ov
         if orbit_note:
             note += f" {orbit_note}"
 
     return SuggestionResult(
-        suggested_fields=suggested,
+        suggested_fields=final_suggested,
         reference_names=[ref_name],
         note=note,
         inferred_kind=ref_kind,
         candidate_index=idx,
-        total_candidates=len(top_candidates),
+        total_candidates=max(1, len(top_candidates)),
     )
 
 
@@ -330,74 +432,218 @@ def suggest_planet_fill(
 ) -> SuggestionResult:
     dataset = reference_data.get_all_planets()
     kind_filter = known_fields.get("kind")
-    top_candidates, inferred_kind = _find_top_candidates(
-        dataset, known_fields, kind_filter, k=5)
+    top_candidates, inferred_kind = _find_top_candidates(dataset, known_fields, kind_filter, k=5)
 
-    if not top_candidates:
-        return SuggestionResult(
-            suggested_fields={},
-            reference_names=[],
-            note="Nenhum corpo planetário de referência disponível.",
-            inferred_kind=kind_filter,
-            candidate_index=0,
-            total_candidates=0,
-        )
+    ref_kind = kind_filter or inferred_kind or "Telluric"
+    ref_name = "Corpo Planetário Procedural"
 
-    idx = cursor % len(top_candidates)
-    chosen = top_candidates[idx]
-    ref_name = chosen.get("name", "Corpo Planetário")
-    ref_kind = chosen.get("kind", inferred_kind or "Telluric")
+    if top_candidates:
+        idx = cursor % len(top_candidates)
+        chosen = top_candidates[idx]
+        ref_name = chosen.get("name") or chosen.get("nome") or ref_name
+        ref_kind = chosen.get("kind", ref_kind)
+    else:
+        chosen = {}
+        idx = cursor
 
     suggested: Dict[str, Any] = {}
-    for field_name in (
-        "kind",
-        "mass_kg",
-        "equatorial_radius_m",
-        "polar_radius_m",
-        "rotation_period_s",
-        "axial_tilt_rad",
-        "geometric_albedo",
-        "bond_albedo",
-        "thermal_inertia",
-        "solstice_true_anomaly_rad",
-        "oblateness_j2",
-    ):
-        if known_fields.get(field_name) is None:
-            val = chosen.get(field_name)
-            if val is None and field_name == "equatorial_radius_m":
-                val = chosen.get("radius_m")
-            if val is not None:
-                suggested[field_name] = val
 
-    if "polar_radius_m" in suggested and suggested["polar_radius_m"] is None:
-        eq = known_fields.get("equatorial_radius_m") or suggested.get(
-            "equatorial_radius_m")
-        if eq is not None:
-            suggested["polar_radius_m"] = eq
+    mass_val = known_fields.get("mass_kg")
+    r_eq_val = known_fields.get("equatorial_radius_m") or known_fields.get("radius_m")
+    r_pol_val = known_fields.get("polar_radius_m")
+    rot_val = known_fields.get("rotation_period_s")
+    tilt_val = known_fields.get("axial_tilt_rad")
+    geo_val = known_fields.get("geometric_albedo")
+    bond_val = known_fields.get("bond_albedo")
+    ti_val = known_fields.get("thermal_inertia")
+    solst_val = known_fields.get("solstice_true_anomaly_rad")
+    j2_val = known_fields.get("oblateness_j2")
 
-    if "kind" in suggested and kind_filter:
-        suggested.pop("kind", None)
+    if mass_val is None:
+        mass_val = chosen.get("mass_kg") or chosen.get("massa_kg")
+        if mass_val is None:
+            if ref_kind == "Telluric":
+                mass_options = [1.0 * physics_lite.EARTH_MASS, 0.65 * physics_lite.EARTH_MASS, 2.5 * physics_lite.EARTH_MASS, 0.107 * physics_lite.EARTH_MASS, 0.012 * physics_lite.EARTH_MASS]
+                mass_val = mass_options[cursor % len(mass_options)]
+            elif ref_kind == "GasGiant":
+                mass_options = [1.0 * physics_lite.JUPITER_MASS, 0.3 * physics_lite.JUPITER_MASS, 1.8 * physics_lite.JUPITER_MASS, 2.5 * physics_lite.JUPITER_MASS, 0.6 * physics_lite.JUPITER_MASS]
+                mass_val = mass_options[cursor % len(mass_options)]
+            elif ref_kind == "IceGiant":
+                mass_options = [1.0 * physics_lite.NEPTUNE_MASS, 0.85 * physics_lite.NEPTUNE_MASS, 1.5 * physics_lite.NEPTUNE_MASS, 2.2 * physics_lite.NEPTUNE_MASS, 0.5 * physics_lite.NEPTUNE_MASS]
+                mass_val = mass_options[cursor % len(mass_options)]
+            elif ref_kind in ("DwarfPlanet", "IcyBody"):
+                mass_options = [1.3e22, 1.6e22, 9.4e20, 4.0e21, 4.8e22]
+                mass_val = mass_options[cursor % len(mass_options)]
+            elif ref_kind == "CarbonPlanet":
+                mass_options = [1.0 * physics_lite.EARTH_MASS, 2.0 * physics_lite.EARTH_MASS, 7.7 * physics_lite.EARTH_MASS]
+                mass_val = mass_options[cursor % len(mass_options)]
+            elif ref_kind == "Chthonian":
+                mass_options = [1.0 * physics_lite.EARTH_MASS, 5.0 * physics_lite.EARTH_MASS, 10.0 * physics_lite.EARTH_MASS]
+                mass_val = mass_options[cursor % len(mass_options)]
+            else:
+                mass_val = physics_lite.EARTH_MASS
+        suggested["mass_kg"] = mass_val
 
-    note = f"Baseado em {ref_name} ({ref_kind}). Candidato {idx + 1} de {len(top_candidates)}."
+    if r_eq_val is None:
+        r_eq_val = chosen.get("equatorial_radius_m") or chosen.get("raio_equatorial_m") or chosen.get("radius_m") or chosen.get("raio_m")
+        if r_eq_val is None:
+            if r_pol_val is not None:
+                r_eq_val = r_pol_val * 1.0034
+            elif mass_val is not None:
+                if ref_kind == "Telluric":
+                    r_eq_val = physics_lite.telluric_radius_from_mass(mass_val)
+                elif ref_kind == "GasGiant":
+                    r_eq_val = physics_lite.gas_giant_radius_from_mass(mass_val)
+                elif ref_kind == "IceGiant":
+                    r_eq_val = physics_lite.ice_giant_radius_from_mass(mass_val)
+                elif ref_kind in ("DwarfPlanet", "IcyBody"):
+                    vol = mass_val / 2000.0
+                    r_eq_val = (vol / ((4.0 / 3.0) * math.pi)) ** (1.0 / 3.0)
+                elif ref_kind == "Chthonian":
+                    vol = mass_val / 7500.0
+                    r_eq_val = (vol / ((4.0 / 3.0) * math.pi)) ** (1.0 / 3.0)
+                elif ref_kind == "CarbonPlanet":
+                    vol = mass_val / 4200.0
+                    r_eq_val = (vol / ((4.0 / 3.0) * math.pi)) ** (1.0 / 3.0)
+                else:
+                    r_eq_val = physics_lite.EARTH_EQUATORIAL_RADIUS
+            else:
+                r_eq_val = physics_lite.EARTH_EQUATORIAL_RADIUS
+        suggested["equatorial_radius_m"] = r_eq_val
+
+    if rot_val is None:
+        rot_val = chosen.get("rotation_period_s") or chosen.get("periodo_rotacao_s")
+        if rot_val is None:
+            if ref_kind == "Telluric":
+                rot_options = [86164.0, 50000.0, 100000.0, 150000.0, 36000.0]
+            elif ref_kind == "GasGiant":
+                rot_options = [35730.0, 38362.0, 42000.0, 32000.0, 48000.0]
+            elif ref_kind == "IceGiant":
+                rot_options = [58000.0, 62000.0, 54000.0, 68000.0, 45000.0]
+            elif ref_kind == "DwarfPlanet":
+                rot_options = [32667.0, 82175.0, 14095.0, 136390.0, 45000.0]
+            elif ref_kind == "IcyBody":
+                rot_options = [152853.0, 306822.0, 618153.0, 118386.0, 1377648.0]
+            elif ref_kind == "Chthonian":
+                rot_options = [86400.0, 43200.0, 60000.0, 120000.0, 30000.0]
+            elif ref_kind == "CarbonPlanet":
+                rot_options = [60000.0, 72000.0, 48000.0, 90000.0, 36000.0]
+            else:
+                rot_options = [36000.0, 80000.0, 50000.0, 100000.0, 24000.0]
+            rot_val = rot_options[cursor % len(rot_options)]
+        suggested["rotation_period_s"] = rot_val
+
+    if j2_val is None:
+        j2_val = chosen.get("oblateness_j2") or chosen.get("achatamento_j2")
+        if j2_val is None and mass_val and r_eq_val and rot_val:
+            k2 = 0.52 if ref_kind in ("GasGiant", "IceGiant") else 0.93
+            j2_val = physics_lite.oblateness_j2_from_rotation(mass_val, r_eq_val, rot_val, love_k2=k2)
+        if j2_val is None or j2_val <= 0.0:
+            j2_val = 0.0147 if ref_kind == "GasGiant" else 0.00108
+        suggested["oblateness_j2"] = j2_val
+
+    if r_pol_val is None:
+        r_pol_val = chosen.get("polar_radius_m") or chosen.get("raio_polar_m")
+        if r_pol_val is None and mass_val and r_eq_val and rot_val:
+            f = physics_lite.rotational_flattening(mass_val, r_eq_val, rot_val, j2=j2_val or 0.0)
+            r_pol_val = r_eq_val * (1.0 - f)
+        elif r_pol_val is None and r_eq_val:
+            r_pol_val = r_eq_val * 0.9966
+        suggested["polar_radius_m"] = r_pol_val
+
+    if tilt_val is None:
+        tilt_val = chosen.get("axial_tilt_rad") or chosen.get("obliquidade_rad")
+        if tilt_val is None:
+            if ref_kind == "Telluric":
+                tilt_options = [math.radians(23.44), math.radians(25.19), math.radians(1.5), math.radians(12.0), math.radians(28.0)]
+            elif ref_kind == "GasGiant":
+                tilt_options = [math.radians(3.13), math.radians(26.73), math.radians(2.5), math.radians(15.0), math.radians(8.0)]
+            elif ref_kind == "IceGiant":
+                tilt_options = [math.radians(28.32), math.radians(97.77), math.radians(35.0), math.radians(45.0), math.radians(82.0)]
+            elif ref_kind in ("DwarfPlanet", "IcyBody"):
+                tilt_options = [math.radians(4.0), math.radians(0.5), math.radians(24.0), math.radians(1.0), math.radians(18.0)]
+            else:
+                tilt_options = [math.radians(5.0), math.radians(15.0), math.radians(0.0), math.radians(22.0), math.radians(10.0)]
+            tilt_val = tilt_options[cursor % len(tilt_options)]
+        suggested["axial_tilt_rad"] = tilt_val
+
+    if geo_val is None:
+        geo_val = chosen.get("geometric_albedo") or chosen.get("albedo_geometrico")
+        if geo_val is None:
+            if ref_kind == "Telluric":
+                geo_options = [0.367, 0.142, 0.170, 0.250, 0.300]
+            elif ref_kind == "GasGiant":
+                geo_options = [0.503, 0.499, 0.450, 0.530, 0.480]
+            elif ref_kind == "IceGiant":
+                geo_options = [0.488, 0.422, 0.460, 0.510, 0.390]
+            elif ref_kind == "DwarfPlanet":
+                geo_options = [0.520, 0.090, 0.660, 0.770, 0.350]
+            elif ref_kind == "IcyBody":
+                geo_options = [0.670, 0.430, 0.630, 0.756, 0.550]
+            elif ref_kind == "Chthonian":
+                geo_options = [0.100, 0.150, 0.080, 0.120, 0.180]
+            elif ref_kind == "CarbonPlanet":
+                geo_options = [0.200, 0.300, 0.150, 0.220, 0.280]
+            else:
+                geo_options = [0.400, 0.050, 0.300, 0.500, 0.200]
+            geo_val = geo_options[cursor % len(geo_options)]
+        suggested["geometric_albedo"] = geo_val
+
+    if bond_val is None:
+        bond_val = chosen.get("bond_albedo") or chosen.get("albedo_bond")
+        if bond_val is None and geo_val is not None:
+            bond_val = max(0.01, min(0.99, geo_val * 0.85))
+        elif bond_val is None:
+            bond_val = 0.30
+        suggested["bond_albedo"] = bond_val
+
+    if ti_val is None:
+        ti_val = chosen.get("thermal_inertia") or chosen.get("inercia_termica")
+        if ti_val is None:
+            if ref_kind in ("GasGiant", "IceGiant"):
+                ti_options = [0.90, 0.85, 0.92, 0.88, 0.95]
+            elif ref_kind in ("DwarfPlanet", "IcyBody"):
+                ti_options = [0.05, 0.02, 0.08, 0.04, 0.10]
+            elif ref_kind == "Chthonian":
+                ti_options = [0.15, 0.10, 0.20, 0.12, 0.18]
+            elif ref_kind == "CarbonPlanet":
+                ti_options = [0.20, 0.25, 0.18, 0.22, 0.30]
+            else:
+                ti_options = [0.30, 0.25, 0.35, 0.20, 0.40]
+            ti_val = ti_options[cursor % len(ti_options)]
+        suggested["thermal_inertia"] = ti_val
+
+    if solst_val is None:
+        solst_val = chosen.get("solstice_true_anomaly_rad") or chosen.get("anomalia_solsticio_rad")
+        if solst_val is None:
+            solst_options = [math.radians(90.0), math.radians(0.0), math.radians(180.0), math.radians(270.0), math.radians(45.0)]
+            solst_val = solst_options[cursor % len(solst_options)]
+        suggested["solstice_true_anomaly_rad"] = solst_val
+
+    final_suggested = {k: v for k, v in suggested.items() if known_fields.get(k) is None and v is not None}
+
+    note = f"Baseado em {ref_name} ({ref_kind}). Variação procedural {idx + 1} de {max(1, len(top_candidates))}."
 
     if parent_data:
         orbit_suggested, orbit_note = suggest_orbital_context(
-            body_kind=kind_filter or ref_kind,
+            body_kind=ref_kind,
             parent_data=parent_data,
             known_orbit=known_fields,
             cursor=cursor,
         )
-        suggested.update(orbit_suggested)
+        for ok, ov in orbit_suggested.items():
+            if known_fields.get(ok) is None:
+                final_suggested[ok] = ov
         if orbit_note:
             note += f" {orbit_note}"
 
     return SuggestionResult(
-        suggested_fields=suggested,
+        suggested_fields=final_suggested,
         reference_names=[ref_name],
         note=note,
         inferred_kind=ref_kind,
         candidate_index=idx,
-        total_candidates=len(top_candidates),
+        total_candidates=max(1, len(top_candidates)),
     )
 
 
@@ -422,13 +668,35 @@ def suggest_atmosphere_fill(
 
     idx = cursor % len(candidates)
     chosen = candidates[idx]
-    arch_name = chosen.get("nome", "Atmosfera Padrão")
+    arch_name = chosen.get("name") or chosen.get("nome") or "Atmosfera Padrão"
+
+    pres = chosen.get("pressure_pa", 101325.0)
+    gh = chosen.get("greenhouse_effect_k", 33.0)
+    gamma = chosen.get("lapse_rate_k_per_m", 0.0065)
+    comp = chosen.get("composition", [])
+
+    if planet_data:
+        m = planet_data.get("mass_kg")
+        r = planet_data.get("equatorial_radius_m") or planet_data.get("radius_m")
+        if m and r and m > 0.0 and r > 0.0:
+            g = physics_lite.surface_gravity(m, r)
+            if comp and len(comp) > 0:
+                f0 = str(comp[0].get("formula", "")).upper()
+                if "H2" in f0:
+                    cp = 14300.0
+                elif "CO2" in f0:
+                    cp = 850.0
+                elif "CH4" in f0:
+                    cp = 2200.0
+                else:
+                    cp = 1005.0
+                gamma = physics_lite.adiabatic_lapse_rate(g, cp=cp)
 
     suggested: Dict[str, Any] = {
-        "pressure_pa": chosen.get("pressure_pa"),
-        "greenhouse_effect_k": chosen.get("greenhouse_effect_k"),
-        "lapse_rate_k_per_m": chosen.get("lapse_rate_k_per_m"),
-        "composition": chosen.get("composition", []),
+        "pressure_pa": pres,
+        "greenhouse_effect_k": gh,
+        "lapse_rate_k_per_m": gamma,
+        "composition": comp,
     }
 
     note = f"Arquétipo: {arch_name}. Opção {idx + 1} de {len(candidates)}."
@@ -442,112 +710,4 @@ def suggest_atmosphere_fill(
         inferred_kind=planet_kind,
         candidate_index=idx,
         total_candidates=len(candidates),
-    )
-
-
-def suggest_barycenter_fill(
-    known_fields: Dict[str, Any],
-    cursor: int = 0,
-    primary_data: Optional[Dict[str, Any]] = None,
-    secondary_data: Optional[Dict[str, Any]] = None,
-    parent_data: Optional[Dict[str, Any]] = None,
-) -> SuggestionResult:
-    binaries = reference_data.get_all_binaries()
-
-    matched_binaries = binaries
-    target_tipo = None
-
-    pri_type = (primary_data.get("entity_type") if primary_data else "") or ""
-    sec_type = (secondary_data.get("entity_type") if secondary_data else "") or ""
-
-    if pri_type == "Planet" or sec_type == "Planet":
-        target_tipo = "PlanetaryBinary"
-    elif pri_type == "Star" or sec_type == "Star":
-        target_tipo = "StellarBinary"
-
-    if target_tipo:
-        filtered = [b for b in binaries if str(b.get("tipo", "")).lower() == target_tipo.lower()]
-        if filtered:
-            matched_binaries = filtered
-
-    m1 = (primary_data.get("mass_kg") if primary_data else None) or 0.0
-    m2 = (secondary_data.get("mass_kg") if secondary_data else None) or 0.0
-
-    if m1 > 0.0 and m2 > 0.0:
-        ratio = min(m1, m2) / max(m1, m2)
-        matched_binaries.sort(key=lambda b: abs(float(b.get("razao_massa", 0.5)) - ratio))
-
-    idx = cursor % len(matched_binaries) if matched_binaries else 0
-    chosen = matched_binaries[idx] if matched_binaries else {}
-    ref_name = chosen.get("nome", "Par Binário de Referência")
-
-    suggested: Dict[str, Any] = {}
-
-    if known_fields.get("internal_semi_major_axis_m") is None:
-        val = chosen.get("semi_eixo_maior_m")
-        if val is not None:
-            suggested["internal_semi_major_axis_m"] = float(val)
-        else:
-            suggested["internal_semi_major_axis_m"] = 2.0 * physics_lite.ASTRONOMICAL_UNIT
-
-    if known_fields.get("internal_eccentricity") is None:
-        val = chosen.get("excentricidade")
-        suggested["internal_eccentricity"] = float(val) if val is not None else 0.15
-
-    if known_fields.get("internal_inclination_rad") is None:
-        val = chosen.get("inclinacao_rad")
-        suggested["internal_inclination_rad"] = float(val) if val is not None else 0.0
-
-    if known_fields.get("internal_longitude_ascending_node_rad") is None:
-        suggested["internal_longitude_ascending_node_rad"] = 0.0
-
-    if known_fields.get("internal_argument_periapsis_rad") is None:
-        suggested["internal_argument_periapsis_rad"] = 0.0
-
-    if known_fields.get("internal_mean_anomaly_at_epoch_rad") is None:
-        suggested["internal_mean_anomaly_at_epoch_rad"] = 0.0
-
-    note = f"Parâmetros internos baseados em {ref_name}. Opção {idx + 1} de {len(matched_binaries)}."
-
-    if parent_data:
-        int_sma = known_fields.get("internal_semi_major_axis_m") or suggested.get("internal_semi_major_axis_m") or physics_lite.ASTRONOMICAL_UNIT
-        p_mass = parent_data.get("mass_kg") or physics_lite.SOLAR_MASS
-        inner_mass = (m1 + m2) if (m1 + m2) > 0.0 else physics_lite.SOLAR_MASS
-
-        crit_factor = physics_lite.mardling_aarseth_critical_ratio(inner_mass, p_mass, 0.05, 0.0)
-        safe_margin = max(4.0, crit_factor * 1.35)
-
-        ext_sma_candidates = [
-            safe_margin * int_sma,
-            (safe_margin * 1.8) * int_sma,
-            (safe_margin * 2.8) * int_sma,
-        ]
-
-        if known_fields.get("external_semi_major_axis_m") is None:
-            suggested["external_semi_major_axis_m"] = ext_sma_candidates[cursor % len(ext_sma_candidates)]
-
-        if known_fields.get("external_eccentricity") is None:
-            suggested["external_eccentricity"] = 0.03
-
-        if known_fields.get("external_inclination_rad") is None:
-            suggested["external_inclination_rad"] = 0.02
-
-        if known_fields.get("external_longitude_ascending_node_rad") is None:
-            suggested["external_longitude_ascending_node_rad"] = 0.0
-
-        if known_fields.get("external_argument_periapsis_rad") is None:
-            suggested["external_argument_periapsis_rad"] = 0.0
-
-        if known_fields.get("external_mean_anomaly_at_epoch_rad") is None:
-            suggested["external_mean_anomaly_at_epoch_rad"] = 0.0
-
-        note += f" Órbita externa ajustada hierarquicamente para estabilidade de Mardling-Aarseth em relação a {parent_data.get('name', 'Pai')}."
-
-    return SuggestionResult(
-        suggested_fields=suggested,
-        reference_names=[ref_name],
-        note=note,
-        inferred_kind=target_tipo,
-        candidate_index=idx,
-        total_candidates=len(matched_binaries),
     )
