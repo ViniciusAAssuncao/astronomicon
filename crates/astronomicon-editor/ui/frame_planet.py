@@ -233,6 +233,12 @@ class FramePlanet(ttk.Frame):
             "thermal_inertia": self.entry_thermal_inertia,
             "solstice_true_anomaly_rad": self.entry_solstice_ta,
             "oblateness_j2": self.entry_j2,
+            "semi_major_axis_m": self.orbital_elements_frame.entry_semi_major,
+            "eccentricity": self.orbital_elements_frame.entry_eccentricity,
+            "inclination_rad": self.orbital_elements_frame.entry_inclination,
+            "longitude_ascending_node_rad": self.orbital_elements_frame.entry_lan,
+            "argument_periapsis_rad": self.orbital_elements_frame.entry_arg_periapsis,
+            "mean_anomaly_at_epoch_rad": self.orbital_elements_frame.entry_mean_anomaly,
         }
 
         self.planet_field_labels = {
@@ -247,6 +253,12 @@ class FramePlanet(ttk.Frame):
             "thermal_inertia": "Inércia Térmica",
             "solstice_true_anomaly_rad": "Anomalia do Solstício",
             "oblateness_j2": "Achatamento J2",
+            "semi_major_axis_m": "Semi-eixo Maior",
+            "eccentricity": "Excentricidade",
+            "inclination_rad": "Inclinação",
+            "longitude_ascending_node_rad": "Nodo Ascendente",
+            "argument_periapsis_rad": "Arg. Periastro",
+            "mean_anomaly_at_epoch_rad": "Anomalia Média",
         }
 
         self.refresh_systems()
@@ -326,6 +338,13 @@ class FramePlanet(ttk.Frame):
         else:
             self.orbital_elements_frame.set_enabled(True)
 
+    def _get_parent_data(self) -> Optional[Dict[str, Any]]:
+        p_star, p_planet, p_bary = self.parent_selector.get_parent_references()
+        pid = p_star or p_planet or p_bary
+        if pid:
+            return cache.get_entity(pid)
+        return None
+
     def _gather_known_fields(self) -> Dict[str, Any]:
         kind = self.kind_var.get().strip() or None
         return {
@@ -340,16 +359,32 @@ class FramePlanet(ttk.Frame):
             "thermal_inertia": self.entry_thermal_inertia.get_si_value(),
             "solstice_true_anomaly_rad": self.entry_solstice_ta.get_si_value(),
             "oblateness_j2": self.entry_j2.get_si_value(),
+            "semi_major_axis_m": self.orbital_elements_frame.entry_semi_major.get_si_value(),
+            "eccentricity": self.orbital_elements_frame.entry_eccentricity.get_si_value(),
+            "inclination_rad": self.orbital_elements_frame.entry_inclination.get_si_value(),
+            "longitude_ascending_node_rad": self.orbital_elements_frame.entry_lan.get_si_value(),
+            "argument_periapsis_rad": self.orbital_elements_frame.entry_arg_periapsis.get_si_value(),
+            "mean_anomaly_at_epoch_rad": self.orbital_elements_frame.entry_mean_anomaly.get_si_value(),
         }
 
     def _get_next_planet_suggestion(self) -> Any:
         known = self._gather_known_fields()
+        parent_data = self._get_parent_data()
         self.planet_suggestion_cursor += 1
-        return suggestions.suggest_planet_fill(known, cursor=self.planet_suggestion_cursor)
+        return suggestions.suggest_planet_fill(
+            known,
+            cursor=self.planet_suggestion_cursor,
+            parent_data=parent_data,
+        )
 
     def open_suggestion_dialog(self) -> None:
         known = self._gather_known_fields()
-        result = suggestions.suggest_planet_fill(known, cursor=self.planet_suggestion_cursor)
+        parent_data = self._get_parent_data()
+        result = suggestions.suggest_planet_fill(
+            known,
+            cursor=self.planet_suggestion_cursor,
+            parent_data=parent_data,
+        )
         if not result.suggested_fields:
             messagebox.showinfo("Sugestão", "Todos os campos já estão preenchidos ou não há sugestões disponíveis.")
             return

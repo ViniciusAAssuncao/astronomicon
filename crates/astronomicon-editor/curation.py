@@ -1,5 +1,5 @@
 import math
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import cache
 from models import (
@@ -51,6 +51,46 @@ ROUGH_MOLAR_MASS: Dict[str, float] = {
     "TIO": 63.866,
     "VO": 66.941,
 }
+
+
+def curate_orbital_context(
+    semi_major_axis_m: Optional[float],
+    eccentricity: Optional[float],
+    body_mass_kg: Optional[float],
+    body_radius_m: Optional[float],
+    parent_data: Optional[Dict[str, Any]],
+) -> List[str]:
+    warnings: List[str] = []
+    if semi_major_axis_m is None or semi_major_axis_m <= 0.0 or parent_data is None:
+        return warnings
+
+    e = eccentricity if (eccentricity is not None and math.isfinite(eccentricity)) else 0.0
+    periapsis = semi_major_axis_m * (1.0 - max(0.0, min(0.9999, e)))
+
+    p_radius = parent_data.get("radius_m") or parent_data.get("equatorial_radius_m")
+    p_mass = parent_data.get("mass_kg")
+    p_name = parent_data.get("name", "Primário")
+
+    if p_radius is not None and p_radius > 0.0:
+        if periapsis <= p_radius:
+            warnings.append(
+                f"Periastro orbital ({periapsis:.2e} m) é menor ou igual ao raio físico de '{p_name}' ({p_radius:.2e} m), resultando em colisão física."
+            )
+        elif p_mass is not None and p_mass > 0.0:
+            p_dens = physics_lite.mean_density(p_mass, p_radius)
+            b_dens = (
+                physics_lite.mean_density(body_mass_kg, body_radius_m)
+                if (body_mass_kg is not None and body_radius_m is not None and body_mass_kg > 0.0 and body_radius_m > 0.0)
+                else 3000.0
+            )
+            if p_dens > 0.0 and b_dens > 0.0:
+                roche_fluid = physics_lite.roche_limit_fluid(p_radius, p_dens, b_dens)
+                if periapsis < roche_fluid:
+                    warnings.append(
+                        f"Periastro orbital ({periapsis:.2e} m) está abaixo do limite de Roche fluido (~{roche_fluid:.2e} m) de '{p_name}', risco de ruptura por maré."
+                    )
+
+    return warnings
 
 
 def curate_star(star: Star) -> List[str]:
@@ -136,6 +176,20 @@ def curate_star(star: Star) -> List[str]:
                     f"Temperatura efetiva ({star.effective_temperature_k:.0f} K) extraordinariamente alta para estrelas conhecidas."
                 )
 
+    p_id = star.parent_star_id or star.parent_planet_id or star.parent_barycenter_id
+    if p_id:
+        p_data = cache.get_entity(p_id)
+        if p_data:
+            warnings.extend(
+                curate_orbital_context(
+                    semi_major_axis_m=star.semi_major_axis_m,
+                    eccentricity=star.eccentricity,
+                    body_mass_kg=star.mass_kg,
+                    body_radius_m=star.radius_m,
+                    parent_data=p_data,
+                )
+            )
+
     return warnings
 
 
@@ -214,6 +268,21 @@ def curate_planet(planet: Planet) -> List[str]:
         if 90.0 < tilt_deg < 270.0:
             warnings.append(
                 f"Obliquidade axial de {tilt_deg:.1f}° indica rotação retrógrada (incomum, mas fisicamente plausível)."
+            )
+
+    p_id = planet.parent_star_id or planet.parent_planet_id or planet.parent_barycenter_id
+    if p_id:
+        p_data = cache.get_entity(p_id)
+        if p_data:
+            r_body = planet.equatorial_radius_m or planet.polar_radius_m
+            warnings.extend(
+                curate_orbital_context(
+                    semi_major_axis_m=planet.semi_major_axis_m,
+                    eccentricity=planet.eccentricity,
+                    body_mass_kg=planet.mass_kg,
+                    body_radius_m=r_body,
+                    parent_data=p_data,
+                )
             )
 
     return warnings
