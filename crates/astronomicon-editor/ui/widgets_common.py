@@ -441,8 +441,8 @@ class SuggestionDialog(tk.Toplevel):
     ) -> None:
         super().__init__(parent, **kwargs)
         self.title(title)
-        self.geometry("540x440")
-        self.minsize(460, 340)
+        self.geometry("560x450")
+        self.minsize(480, 350)
         self.transient(parent)
 
         self.current_result = initial_result
@@ -462,7 +462,7 @@ class SuggestionDialog(tk.Toplevel):
             text="",
             font=("Segoe UI", 9, "bold"),
             foreground="#1976D2",
-            wraplength=500,
+            wraplength=520,
         )
         self.note_lbl.grid(row=0, column=0, sticky="w")
 
@@ -479,8 +479,8 @@ class SuggestionDialog(tk.Toplevel):
         )
         self.tree.heading("field", text="Campo Sugerido")
         self.tree.heading("value", text="Valor")
-        self.tree.column("field", width=220, anchor="w")
-        self.tree.column("value", width=260, anchor="w")
+        self.tree.column("field", width=200, anchor="w")
+        self.tree.column("value", width=300, anchor="w")
         self.tree.grid(row=0, column=0, sticky="nsew")
 
         scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
@@ -521,7 +521,18 @@ class SuggestionDialog(tk.Toplevel):
             label = self.field_labels_map.get(field_name, field_name)
             widget = self.field_widgets_map.get(field_name)
             display_val = str(val)
-            if isinstance(widget, UnitEntry):
+
+            if isinstance(val, list):
+                parts = []
+                for item in val:
+                    if isinstance(item, dict):
+                        f = item.get("formula", "")
+                        p = item.get("percentage", 0.0)
+                        parts.append(f"{f} ({p:.2g}%)")
+                    elif isinstance(item, (list, tuple)) and len(item) == 2:
+                        parts.append(f"{item[0]} ({item[1]:.2g}%)")
+                display_val = ", ".join(parts)
+            elif isinstance(widget, UnitEntry):
                 unit_name = widget.unit_var.get()
                 conv = widget.converters.get(unit_name)
                 if conv and isinstance(val, (int, float)):
@@ -550,15 +561,14 @@ class SuggestionDialog(tk.Toplevel):
             if widget is None:
                 continue
 
-            if isinstance(widget, UnitEntry):
-                if widget.get_raw_value() is None:
-                    widget.set_si_value(val)
+            if callable(widget):
+                widget(val)
+            elif isinstance(widget, UnitEntry):
+                widget.set_si_value(val)
             elif isinstance(widget, ttk.Combobox):
-                if not widget.get().strip():
-                    widget.set(str(val))
+                widget.set(str(val))
             elif isinstance(widget, ttk.Entry):
-                if not widget.get().strip():
-                    widget.delete(0, tk.END)
-                    widget.insert(0, str(val))
+                widget.delete(0, tk.END)
+                widget.insert(0, str(val))
 
         self.destroy()

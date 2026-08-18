@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 _STARS_CACHE: Optional[List[Dict[str, Any]]] = None
 _PLANETS_CACHE: Optional[List[Dict[str, Any]]] = None
+_ATMOSPHERES_CACHE: Optional[List[Dict[str, Any]]] = None
 
 
 def _resolve_dataset_path(filename: str) -> Optional[str]:
@@ -24,14 +25,20 @@ def _resolve_dataset_path(filename: str) -> Optional[str]:
 
 def load_reference_data(
     force_reload: bool = False,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    global _STARS_CACHE, _PLANETS_CACHE
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    global _STARS_CACHE, _PLANETS_CACHE, _ATMOSPHERES_CACHE
 
-    if not force_reload and _STARS_CACHE is not None and _PLANETS_CACHE is not None:
-        return _STARS_CACHE, _PLANETS_CACHE
+    if (
+        not force_reload
+        and _STARS_CACHE is not None
+        and _PLANETS_CACHE is not None
+        and _ATMOSPHERES_CACHE is not None
+    ):
+        return _STARS_CACHE, _PLANETS_CACHE, _ATMOSPHERES_CACHE
 
     stars: List[Dict[str, Any]] = []
     planets: List[Dict[str, Any]] = []
+    atmospheres: List[Dict[str, Any]] = []
 
     stars_path = _resolve_dataset_path("stars.json")
     if stars_path:
@@ -53,19 +60,48 @@ def load_reference_data(
         except Exception:
             planets = []
 
+    atmospheres_path = _resolve_dataset_path("atmospheres.json")
+    if atmospheres_path:
+        try:
+            with open(atmospheres_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, list):
+                    atmospheres = loaded
+        except Exception:
+            atmospheres = []
+
     _STARS_CACHE = stars
     _PLANETS_CACHE = planets
-    return _STARS_CACHE, _PLANETS_CACHE
+    _ATMOSPHERES_CACHE = atmospheres
+    return _STARS_CACHE, _PLANETS_CACHE, _ATMOSPHERES_CACHE
 
 
 def get_all_stars() -> List[Dict[str, Any]]:
-    stars, _ = load_reference_data()
+    stars, _, _ = load_reference_data()
     return list(stars)
 
 
 def get_all_planets() -> List[Dict[str, Any]]:
-    _, planets = load_reference_data()
+    _, planets, _ = load_reference_data()
     return list(planets)
+
+
+def get_all_atmospheres() -> List[Dict[str, Any]]:
+    _, _, atmospheres = load_reference_data()
+    return list(atmospheres)
+
+
+def get_atmosphere_archetypes(planet_kind: Optional[str] = None) -> List[Dict[str, Any]]:
+    atmospheres = get_all_atmospheres()
+    if not planet_kind:
+        return atmospheres
+    target = planet_kind.strip().lower()
+    matched = [
+        atm
+        for atm in atmospheres
+        if any(str(k).strip().lower() == target for k in atm.get("kinds_compativeis", []))
+    ]
+    return matched if matched else atmospheres
 
 
 def get_stars_by_kind(kind: str) -> List[Dict[str, Any]]:

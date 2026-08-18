@@ -7,8 +7,9 @@ from curation import curate_atmosphere
 import elements
 from models import Atmosphere, AtmosphereGasComponent
 import sql_builder
+import suggestions
 from ui.output_panel import OutputPanel
-from ui.widgets_common import UnitEntry
+from ui.widgets_common import SuggestionDialog, UnitEntry
 import units
 from validation import validate_atmosphere
 
@@ -97,6 +98,7 @@ class FrameAtmosphere(ttk.Frame):
         self.current_atmosphere_id: str = sql_builder.generate_uuid()
         self.planets_map: Dict[str, str] = {}
         self.component_rows: List[GasComponentRow] = []
+        self.atmosphere_suggestion_cursor: int = 0
 
         self.columnconfigure(0, weight=1)
 
@@ -182,6 +184,12 @@ class FrameAtmosphere(ttk.Frame):
 
         ttk.Button(
             actions_frame,
+            text="Sugerir Preenchimento",
+            command=self.open_suggestion_dialog,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        ttk.Button(
+            actions_frame,
             text="Gerar SQL",
             command=self.generate_sql,
         ).pack(side=tk.LEFT, padx=(0, 6))
@@ -197,6 +205,20 @@ class FrameAtmosphere(ttk.Frame):
             text="Limpar Formulário",
             command=self.clear_form,
         ).pack(side=tk.LEFT)
+
+        self.atmosphere_field_widgets = {
+            "pressure_pa": self.entry_pressure,
+            "greenhouse_effect_k": self.entry_greenhouse,
+            "lapse_rate_k_per_m": self.entry_lapse_rate,
+            "composition": self.apply_composition_suggestion,
+        }
+
+        self.atmosphere_field_labels = {
+            "pressure_pa": "Pressão Superficial",
+            "greenhouse_effect_k": "Efeito Estufa (ΔT)",
+            "lapse_rate_k_per_m": "Lapse Rate (Γ)",
+            "composition": "Composição Gasosa",
+        }
 
         self.refresh_planets()
         self._add_default_gases()
@@ -273,6 +295,57 @@ class FrameAtmosphere(ttk.Frame):
                 foreground="#000000",
             )
 
+    def apply_composition_suggestion(self, composition_data: Any) -> None:
+        for r in list(self.component_rows):
+            r.destroy()
+        self.component_rows.clear()
+
+        if isinstance(composition_data, list):
+            for item in composition_data:
+                if isinstance(item, dict):
+                    f = str(item.get("formula", ""))
+                    p = str(item.get("percentage", ""))
+                    self.add_gas_row(f, p)
+                elif isinstance(item, (list, tuple)) and len(item) == 2:
+                    self.add_gas_row(str(item[0]), str(item[1]))
+
+    def _get_current_planet_entity(self) -> Optional[Dict[str, Any]]:
+        planet_id = self.planets_map.get(self.planet_var.get())
+        if planet_id:
+            return cache.get_entity(planet_id)
+        return None
+
+    def _get_next_atmosphere_suggestion(self) -> Any:
+        planet_entity = self._get_current_planet_entity()
+        kind = planet_entity.get("kind") if planet_entity else None
+        self.atmosphere_suggestion_cursor += 1
+        return suggestions.suggest_atmosphere_fill(
+            planet_kind=kind,
+            cursor=self.atmosphere_suggestion_cursor,
+            planet_data=planet_entity,
+        )
+
+    def open_suggestion_dialog(self) -> None:
+        planet_entity = self._get_current_planet_entity()
+        kind = planet_entity.get("kind") if planet_entity else None
+        result = suggestions.suggest_atmosphere_fill(
+            planet_kind=kind,
+            cursor=self.atmosphere_suggestion_cursor,
+            planet_data=planet_entity,
+        )
+        if not result.suggested_fields:
+            messagebox.showinfo("Sugestão", "Nenhuma sugestão de atmosfera disponível.")
+            return
+
+        SuggestionDialog(
+            self,
+            "Sugestão de Atmosfera",
+            initial_result=result,
+            field_widgets_map=self.atmosphere_field_widgets,
+            on_next_suggestion=self._get_next_atmosphere_suggestion,
+            field_labels_map=self.atmosphere_field_labels,
+        )
+
     def build_model(self) -> Tuple[Atmosphere, List[AtmosphereGasComponent]]:
         planet_id = self.planets_map.get(self.planet_var.get(), "")
         atm_id = self.id_var.get().strip()
@@ -342,3 +415,4 @@ class FrameAtmosphere(ttk.Frame):
             r.destroy()
         self.component_rows.clear()
         self._add_default_gases()
+        self.atmosphere_suggestion_cursor = 0

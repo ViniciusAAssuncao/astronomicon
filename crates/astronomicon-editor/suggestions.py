@@ -61,7 +61,8 @@ def _match_score(known: Dict[str, Any], item: Dict[str, Any]) -> Tuple[float, in
             total_dist += _calc_field_distance(k, float(val), float(item[k]))
             matched_count += 1
         elif k == "equatorial_radius_m" and "radius_m" in item and item["radius_m"] is not None:
-            total_dist += _calc_field_distance(k, float(val), float(item["radius_m"]))
+            total_dist += _calc_field_distance(k,
+                                               float(val), float(item["radius_m"]))
             matched_count += 1
         else:
             total_dist += 2.0
@@ -76,7 +77,8 @@ def _find_top_candidates(
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     items = dataset
     if kind_filter:
-        filtered = [x for x in items if str(x.get("kind", "")).lower() == kind_filter.lower()]
+        filtered = [x for x in items if str(
+            x.get("kind", "")).lower() == kind_filter.lower()]
         if filtered:
             items = filtered
 
@@ -114,12 +116,17 @@ def suggest_orbital_context(
     known = known_orbit or {}
 
     p_type = parent_data.get("entity_type", "")
-    p_radius = parent_data.get("radius_m") or parent_data.get("equatorial_radius_m")
+    p_radius = parent_data.get(
+        "radius_m") or parent_data.get("equatorial_radius_m")
     p_temp = parent_data.get("effective_temperature_k")
     p_mass = parent_data.get("mass_kg")
     p_name = parent_data.get("name", "Primário")
 
-    is_star_parent = (p_type == "Star") or (p_temp is not None and p_temp > 0.0) or (p_radius is not None and p_radius > 1.0e8)
+    is_star_parent = (
+        (p_type == "Star")
+        or (p_temp is not None and p_temp > 0.0)
+        or (p_radius is not None and p_radius > 1.0e8)
+    )
 
     note_context = ""
 
@@ -127,7 +134,8 @@ def suggest_orbital_context(
         if p_radius and p_temp:
             lum = physics_lite.stellar_luminosity(p_radius, p_temp)
         elif p_mass and p_mass > 0.0:
-            lum = physics_lite.SOLAR_LUMINOSITY * ((p_mass / physics_lite.SOLAR_MASS) ** 3.5)
+            lum = physics_lite.SOLAR_LUMINOSITY * \
+                ((p_mass / physics_lite.SOLAR_MASS) ** 3.5)
         else:
             lum = physics_lite.SOLAR_LUMINOSITY
 
@@ -136,7 +144,9 @@ def suggest_orbital_context(
             hz_in = 0.95 * physics_lite.ASTRONOMICAL_UNIT
             hz_out = 1.37 * physics_lite.ASTRONOMICAL_UNIT
 
-        frost_line = 2.7 * physics_lite.ASTRONOMICAL_UNIT * math.sqrt(max(1e-4, lum / physics_lite.SOLAR_LUMINOSITY))
+        frost_line = 2.7 * physics_lite.ASTRONOMICAL_UNIT * math.sqrt(
+            max(1e-4, lum / physics_lite.SOLAR_LUMINOSITY)
+        )
 
         k = (body_kind or "").strip()
         if k in ("Telluric", "CarbonPlanet"):
@@ -185,7 +195,8 @@ def suggest_orbital_context(
             chosen_sma = sma_candidates[cursor % len(sma_candidates)]
             note_context = f"Órbita configurada em relação à radiação estelar de {p_name}."
     else:
-        ref_rad = p_radius if (p_radius and p_radius > 0.0) else physics_lite.EARTH_RADIUS
+        ref_rad = p_radius if (p_radius and p_radius >
+                               0.0) else physics_lite.EARTH_RADIUS
         sma_candidates = [
             12.0 * ref_rad,
             24.0 * ref_rad,
@@ -201,27 +212,38 @@ def suggest_orbital_context(
     k = (body_kind or "").strip()
     if k == "DwarfPlanet":
         ecc_candidates = [0.15, 0.22, 0.08, 0.28]
-        inc_candidates = [math.radians(14.0), math.radians(24.0), math.radians(9.0), math.radians(18.0)]
+        inc_candidates = [math.radians(14.0), math.radians(
+            24.0), math.radians(9.0), math.radians(18.0)]
     elif k in ("GasGiant", "IceGiant"):
         ecc_candidates = [0.035, 0.048, 0.012, 0.055]
-        inc_candidates = [math.radians(1.2), math.radians(2.5), math.radians(0.4), math.radians(1.8)]
+        inc_candidates = [math.radians(1.2), math.radians(
+            2.5), math.radians(0.4), math.radians(1.8)]
     else:
         ecc_candidates = [0.016, 0.028, 0.006, 0.042]
-        inc_candidates = [math.radians(1.8), math.radians(3.5), math.radians(0.6), math.radians(5.0)]
+        inc_candidates = [math.radians(1.8), math.radians(
+            3.5), math.radians(0.6), math.radians(5.0)]
 
     if known.get("eccentricity") is None:
-        suggested["eccentricity"] = ecc_candidates[cursor % len(ecc_candidates)]
+        suggested["eccentricity"] = ecc_candidates[cursor %
+                                                   len(ecc_candidates)]
     if known.get("inclination_rad") is None:
-        suggested["inclination_rad"] = inc_candidates[cursor % len(inc_candidates)]
+        suggested["inclination_rad"] = inc_candidates[cursor %
+                                                      len(inc_candidates)]
     if known.get("longitude_ascending_node_rad") is None:
-        lan_candidates = [math.radians(0.0), math.radians(45.0), math.radians(110.0), math.radians(225.0)]
-        suggested["longitude_ascending_node_rad"] = lan_candidates[cursor % len(lan_candidates)]
+        lan_candidates = [math.radians(0.0), math.radians(
+            45.0), math.radians(110.0), math.radians(225.0)]
+        suggested["longitude_ascending_node_rad"] = lan_candidates[cursor %
+                                                                   len(lan_candidates)]
     if known.get("argument_periapsis_rad") is None:
-        arg_candidates = [math.radians(0.0), math.radians(65.0), math.radians(140.0), math.radians(280.0)]
-        suggested["argument_periapsis_rad"] = arg_candidates[cursor % len(arg_candidates)]
+        arg_candidates = [math.radians(0.0), math.radians(
+            65.0), math.radians(140.0), math.radians(280.0)]
+        suggested["argument_periapsis_rad"] = arg_candidates[cursor %
+                                                             len(arg_candidates)]
     if known.get("mean_anomaly_at_epoch_rad") is None:
-        m0_candidates = [math.radians(0.0), math.radians(90.0), math.radians(180.0), math.radians(270.0)]
-        suggested["mean_anomaly_at_epoch_rad"] = m0_candidates[cursor % len(m0_candidates)]
+        m0_candidates = [math.radians(0.0), math.radians(
+            90.0), math.radians(180.0), math.radians(270.0)]
+        suggested["mean_anomaly_at_epoch_rad"] = m0_candidates[cursor %
+                                                               len(m0_candidates)]
 
     return suggested, note_context
 
@@ -233,7 +255,8 @@ def suggest_star_fill(
 ) -> SuggestionResult:
     dataset = reference_data.get_all_stars()
     kind_filter = known_fields.get("kind")
-    top_candidates, inferred_kind = _find_top_candidates(dataset, known_fields, kind_filter, k=5)
+    top_candidates, inferred_kind = _find_top_candidates(
+        dataset, known_fields, kind_filter, k=5)
 
     if not top_candidates:
         return SuggestionResult(
@@ -298,7 +321,8 @@ def suggest_planet_fill(
 ) -> SuggestionResult:
     dataset = reference_data.get_all_planets()
     kind_filter = known_fields.get("kind")
-    top_candidates, inferred_kind = _find_top_candidates(dataset, known_fields, kind_filter, k=5)
+    top_candidates, inferred_kind = _find_top_candidates(
+        dataset, known_fields, kind_filter, k=5)
 
     if not top_candidates:
         return SuggestionResult(
@@ -337,7 +361,8 @@ def suggest_planet_fill(
                 suggested[field_name] = val
 
     if "polar_radius_m" in suggested and suggested["polar_radius_m"] is None:
-        eq = known_fields.get("equatorial_radius_m") or suggested.get("equatorial_radius_m")
+        eq = known_fields.get("equatorial_radius_m") or suggested.get(
+            "equatorial_radius_m")
         if eq is not None:
             suggested["polar_radius_m"] = eq
 
@@ -364,4 +389,48 @@ def suggest_planet_fill(
         inferred_kind=ref_kind,
         candidate_index=idx,
         total_candidates=len(top_candidates),
+    )
+
+
+def suggest_atmosphere_fill(
+    planet_kind: Optional[str] = None,
+    cursor: int = 0,
+    planet_data: Optional[Dict[str, Any]] = None,
+) -> SuggestionResult:
+    candidates = reference_data.get_atmosphere_archetypes(planet_kind)
+    if not candidates:
+        candidates = reference_data.get_all_atmospheres()
+
+    if not candidates:
+        return SuggestionResult(
+            suggested_fields={},
+            reference_names=[],
+            note="Nenhum arquétipo de atmosfera disponível.",
+            inferred_kind=planet_kind,
+            candidate_index=0,
+            total_candidates=0,
+        )
+
+    idx = cursor % len(candidates)
+    chosen = candidates[idx]
+    arch_name = chosen.get("nome", "Atmosfera Padrão")
+
+    suggested: Dict[str, Any] = {
+        "pressure_pa": chosen.get("pressure_pa"),
+        "greenhouse_effect_k": chosen.get("greenhouse_effect_k"),
+        "lapse_rate_k_per_m": chosen.get("lapse_rate_k_per_m"),
+        "composition": chosen.get("composition", []),
+    }
+
+    note = f"Arquétipo: {arch_name}. Opção {idx + 1} de {len(candidates)}."
+    if planet_data and planet_data.get("name"):
+        note += f" Adaptado para o planeta '{planet_data['name']}' ({planet_kind or 'Desconhecido'})."
+
+    return SuggestionResult(
+        suggested_fields=suggested,
+        reference_names=[arch_name],
+        note=note,
+        inferred_kind=planet_kind,
+        candidate_index=idx,
+        total_candidates=len(candidates),
     )
