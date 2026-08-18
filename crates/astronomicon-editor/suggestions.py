@@ -55,7 +55,7 @@ def _match_score(known: Dict[str, Any], item: Dict[str, Any]) -> Tuple[float, in
     total_dist = 0.0
     matched_count = 0
     for k, val in known.items():
-        if val is None or k in ("kind", "name", "id"):
+        if val is None or k in ("kind", "name", "id", "tipo"):
             continue
         if k in item and item[k] is not None:
             total_dist += _calc_field_distance(k, float(val), float(item[k]))
@@ -63,6 +63,15 @@ def _match_score(known: Dict[str, Any], item: Dict[str, Any]) -> Tuple[float, in
         elif k == "equatorial_radius_m" and "radius_m" in item and item["radius_m"] is not None:
             total_dist += _calc_field_distance(k,
                                                float(val), float(item["radius_m"]))
+            matched_count += 1
+        elif k == "internal_semi_major_axis_m" and "semi_eixo_maior_m" in item and item["semi_eixo_maior_m"] is not None:
+            total_dist += _calc_field_distance("semi_major_axis_m", float(val), float(item["semi_eixo_maior_m"]))
+            matched_count += 1
+        elif k == "internal_eccentricity" and "excentricidade" in item and item["excentricidade"] is not None:
+            total_dist += _calc_field_distance("eccentricity", float(val), float(item["excentricidade"]))
+            matched_count += 1
+        elif k == "internal_inclination_rad" and "inclinacao_rad" in item and item["inclinacao_rad"] is not None:
+            total_dist += _calc_field_distance("inclination_rad", float(val), float(item["inclinacao_rad"]))
             matched_count += 1
         else:
             total_dist += 2.0
@@ -78,13 +87,13 @@ def _find_top_candidates(
     items = dataset
     if kind_filter:
         filtered = [x for x in items if str(
-            x.get("kind", "")).lower() == kind_filter.lower()]
+            x.get("kind") or x.get("tipo") or "").lower() == kind_filter.lower()]
         if filtered:
             items = filtered
 
     scored = []
     has_known_numeric = any(
-        v is not None for k, v in known.items() if k not in ("kind", "name", "id")
+        v is not None for k, v in known.items() if k not in ("kind", "name", "id", "tipo")
     )
 
     for item in items:
@@ -101,7 +110,7 @@ def _find_top_candidates(
 
     inferred_kind = None
     if top:
-        inferred_kind = top[0].get("kind")
+        inferred_kind = top[0].get("kind") or top[0].get("tipo")
 
     return top, inferred_kind
 
@@ -433,4 +442,112 @@ def suggest_atmosphere_fill(
         inferred_kind=planet_kind,
         candidate_index=idx,
         total_candidates=len(candidates),
+    )
+
+
+def suggest_barycenter_fill(
+    known_fields: Dict[str, Any],
+    cursor: int = 0,
+    primary_data: Optional[Dict[str, Any]] = None,
+    secondary_data: Optional[Dict[str, Any]] = None,
+    parent_data: Optional[Dict[str, Any]] = None,
+) -> SuggestionResult:
+    binaries = reference_data.get_all_binaries()
+
+    matched_binaries = binaries
+    target_tipo = None
+
+    pri_type = (primary_data.get("entity_type") if primary_data else "") or ""
+    sec_type = (secondary_data.get("entity_type") if secondary_data else "") or ""
+
+    if pri_type == "Planet" or sec_type == "Planet":
+        target_tipo = "PlanetaryBinary"
+    elif pri_type == "Star" or sec_type == "Star":
+        target_tipo = "StellarBinary"
+
+    if target_tipo:
+        filtered = [b for b in binaries if str(b.get("tipo", "")).lower() == target_tipo.lower()]
+        if filtered:
+            matched_binaries = filtered
+
+    m1 = (primary_data.get("mass_kg") if primary_data else None) or 0.0
+    m2 = (secondary_data.get("mass_kg") if secondary_data else None) or 0.0
+
+    if m1 > 0.0 and m2 > 0.0:
+        ratio = min(m1, m2) / max(m1, m2)
+        matched_binaries.sort(key=lambda b: abs(float(b.get("razao_massa", 0.5)) - ratio))
+
+    idx = cursor % len(matched_binaries) if matched_binaries else 0
+    chosen = matched_binaries[idx] if matched_binaries else {}
+    ref_name = chosen.get("nome", "Par Binário de Referência")
+
+    suggested: Dict[str, Any] = {}
+
+    if known_fields.get("internal_semi_major_axis_m") is None:
+        val = chosen.get("semi_eixo_maior_m")
+        if val is not None:
+            suggested["internal_semi_major_axis_m"] = float(val)
+        else:
+            suggested["internal_semi_major_axis_m"] = 2.0 * physics_lite.ASTRONOMICAL_UNIT
+
+    if known_fields.get("internal_eccentricity") is None:
+        val = chosen.get("excentricidade")
+        suggested["internal_eccentricity"] = float(val) if val is not None else 0.15
+
+    if known_fields.get("internal_inclination_rad") is None:
+        val = chosen.get("inclinacao_rad")
+        suggested["internal_inclination_rad"] = float(val) if val is not None else 0.0
+
+    if known_fields.get("internal_longitude_ascending_node_rad") is None:
+        suggested["internal_longitude_ascending_node_rad"] = 0.0
+
+    if known_fields.get("internal_argument_periapsis_rad") is None:
+        suggested["internal_argument_periapsis_rad"] = 0.0
+
+    if known_fields.get("internal_mean_anomaly_at_epoch_rad") is None:
+        suggested["internal_mean_anomaly_at_epoch_rad"] = 0.0
+
+    note = f"Parâmetros internos baseados em {ref_name}. Opção {idx + 1} de {len(matched_binaries)}."
+
+    if parent_data:
+        int_sma = known_fields.get("internal_semi_major_axis_m") or suggested.get("internal_semi_major_axis_m") or physics_lite.ASTRONOMICAL_UNIT
+        p_mass = parent_data.get("mass_kg") or physics_lite.SOLAR_MASS
+        inner_mass = (m1 + m2) if (m1 + m2) > 0.0 else physics_lite.SOLAR_MASS
+
+        crit_factor = physics_lite.mardling_aarseth_critical_ratio(inner_mass, p_mass, 0.05, 0.0)
+        safe_margin = max(4.0, crit_factor * 1.35)
+
+        ext_sma_candidates = [
+            safe_margin * int_sma,
+            (safe_margin * 1.8) * int_sma,
+            (safe_margin * 2.8) * int_sma,
+        ]
+
+        if known_fields.get("external_semi_major_axis_m") is None:
+            suggested["external_semi_major_axis_m"] = ext_sma_candidates[cursor % len(ext_sma_candidates)]
+
+        if known_fields.get("external_eccentricity") is None:
+            suggested["external_eccentricity"] = 0.03
+
+        if known_fields.get("external_inclination_rad") is None:
+            suggested["external_inclination_rad"] = 0.02
+
+        if known_fields.get("external_longitude_ascending_node_rad") is None:
+            suggested["external_longitude_ascending_node_rad"] = 0.0
+
+        if known_fields.get("external_argument_periapsis_rad") is None:
+            suggested["external_argument_periapsis_rad"] = 0.0
+
+        if known_fields.get("external_mean_anomaly_at_epoch_rad") is None:
+            suggested["external_mean_anomaly_at_epoch_rad"] = 0.0
+
+        note += f" Órbita externa ajustada hierarquicamente para estabilidade de Mardling-Aarseth em relação a {parent_data.get('name', 'Pai')}."
+
+    return SuggestionResult(
+        suggested_fields=suggested,
+        reference_names=[ref_name],
+        note=note,
+        inferred_kind=target_tipo,
+        candidate_index=idx,
+        total_candidates=len(matched_binaries),
     )

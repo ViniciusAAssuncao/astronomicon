@@ -451,15 +451,19 @@ def curate_barycenter(barycenter: Barycenter) -> List[str]:
 
     m_pri: Optional[float] = None
     m_sec: Optional[float] = None
+    r_pri: Optional[float] = None
+    r_sec: Optional[float] = None
 
     if pri_id:
         e1 = cache.get_entity(pri_id)
-        if e1 and e1.get("mass_kg") is not None:
-            m_pri = e1["mass_kg"]
+        if e1:
+            m_pri = e1.get("mass_kg")
+            r_pri = e1.get("radius_m") or e1.get("equatorial_radius_m")
     if sec_id:
         e2 = cache.get_entity(sec_id)
-        if e2 and e2.get("mass_kg") is not None:
-            m_sec = e2["mass_kg"]
+        if e2:
+            m_sec = e2.get("mass_kg")
+            r_sec = e2.get("radius_m") or e2.get("equatorial_radius_m")
 
     if m_pri is not None and m_sec is not None:
         if m_sec > m_pri:
@@ -471,6 +475,51 @@ def curate_barycenter(barycenter: Barycenter) -> List[str]:
         warnings.append(
             f"Excentricidade interna muito alta (e = {barycenter.internal_eccentricity:.3f}), risco elevado de instabilidade orbital."
         )
+
+    int_periapsis = barycenter.internal_semi_major_axis_m * (1.0 - max(0.0, min(0.9999, barycenter.internal_eccentricity)))
+    if r_pri is not None and r_sec is not None and (r_pri + r_sec) > 0.0:
+        if int_periapsis <= (r_pri + r_sec):
+            warnings.append(
+                f"Periastro interno ({int_periapsis:.2e} m) é menor ou igual à soma dos raios dos membros ({(r_pri + r_sec):.2e} m), resultando em colisão física entre os componentes."
+            )
+
+    if barycenter.external_semi_major_axis_m is not None and barycenter.external_semi_major_axis_m > 0.0:
+        ext_e = barycenter.external_eccentricity or 0.0
+        ext_periapsis = barycenter.external_semi_major_axis_m * (1.0 - max(0.0, min(0.9999, ext_e)))
+        int_apoapsis = barycenter.internal_semi_major_axis_m * (1.0 + barycenter.internal_eccentricity)
+
+        if ext_periapsis <= int_apoapsis:
+            warnings.append(
+                f"Periastro externo ({ext_periapsis:.2e} m) cruza ou se aproxima excessivamente da órbita do par interno ({int_apoapsis:.2e} m)."
+            )
+
+        p_id = (
+            barycenter.parent_star_id
+            or barycenter.parent_planet_id
+            or barycenter.parent_barycenter_id
+        )
+        if p_id and m_pri is not None and m_sec is not None:
+            p_entity = cache.get_entity(p_id)
+            if p_entity and p_entity.get("mass_kg"):
+                m_outer = p_entity["mass_kg"]
+                m_inner_total = m_pri + m_sec
+                inc_diff = abs(barycenter.internal_inclination_rad - (barycenter.external_inclination_rad or 0.0))
+
+                crit_ratio = physics_lite.mardling_aarseth_critical_ratio(
+                    inner_mass=m_inner_total,
+                    outer_mass=m_outer,
+                    outer_eccentricity=ext_e,
+                    mutual_inclination_rad=inc_diff,
+                )
+                actual_ratio = physics_lite.mardling_aarseth_stability_ratio(
+                    inner_semi_major_axis=barycenter.internal_semi_major_axis_m,
+                    outer_periapsis=ext_periapsis,
+                )
+
+                if actual_ratio < crit_ratio:
+                    warnings.append(
+                        f"Hierarquia tripla instável a longo prazo segundo o critério de Mardling-Aarseth (razão periastro externo/semi-eixo interno: {actual_ratio:.2f} < crítica: {crit_ratio:.2f})."
+                    )
 
     return warnings
 

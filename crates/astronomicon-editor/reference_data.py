@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 _STARS_CACHE: Optional[List[Dict[str, Any]]] = None
 _PLANETS_CACHE: Optional[List[Dict[str, Any]]] = None
 _ATMOSPHERES_CACHE: Optional[List[Dict[str, Any]]] = None
+_BINARIES_CACHE: Optional[List[Dict[str, Any]]] = None
 
 
 def _resolve_dataset_path(filename: str) -> Optional[str]:
@@ -25,20 +26,22 @@ def _resolve_dataset_path(filename: str) -> Optional[str]:
 
 def load_reference_data(
     force_reload: bool = False,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
-    global _STARS_CACHE, _PLANETS_CACHE, _ATMOSPHERES_CACHE
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    global _STARS_CACHE, _PLANETS_CACHE, _ATMOSPHERES_CACHE, _BINARIES_CACHE
 
     if (
         not force_reload
         and _STARS_CACHE is not None
         and _PLANETS_CACHE is not None
         and _ATMOSPHERES_CACHE is not None
+        and _BINARIES_CACHE is not None
     ):
-        return _STARS_CACHE, _PLANETS_CACHE, _ATMOSPHERES_CACHE
+        return _STARS_CACHE, _PLANETS_CACHE, _ATMOSPHERES_CACHE, _BINARIES_CACHE
 
     stars: List[Dict[str, Any]] = []
     planets: List[Dict[str, Any]] = []
     atmospheres: List[Dict[str, Any]] = []
+    binaries: List[Dict[str, Any]] = []
 
     stars_path = _resolve_dataset_path("stars.json")
     if stars_path:
@@ -70,25 +73,41 @@ def load_reference_data(
         except Exception:
             atmospheres = []
 
+    binaries_path = _resolve_dataset_path("binaries.json")
+    if binaries_path:
+        try:
+            with open(binaries_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, list):
+                    binaries = loaded
+        except Exception:
+            binaries = []
+
     _STARS_CACHE = stars
     _PLANETS_CACHE = planets
     _ATMOSPHERES_CACHE = atmospheres
-    return _STARS_CACHE, _PLANETS_CACHE, _ATMOSPHERES_CACHE
+    _BINARIES_CACHE = binaries
+    return _STARS_CACHE, _PLANETS_CACHE, _ATMOSPHERES_CACHE, _BINARIES_CACHE
 
 
 def get_all_stars() -> List[Dict[str, Any]]:
-    stars, _, _ = load_reference_data()
+    stars, _, _, _ = load_reference_data()
     return list(stars)
 
 
 def get_all_planets() -> List[Dict[str, Any]]:
-    _, planets, _ = load_reference_data()
+    _, planets, _, _ = load_reference_data()
     return list(planets)
 
 
 def get_all_atmospheres() -> List[Dict[str, Any]]:
-    _, _, atmospheres = load_reference_data()
+    _, _, atmospheres, _ = load_reference_data()
     return list(atmospheres)
+
+
+def get_all_binaries() -> List[Dict[str, Any]]:
+    _, _, _, binaries = load_reference_data()
+    return list(binaries)
 
 
 def get_atmosphere_archetypes(planet_kind: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -114,6 +133,12 @@ def get_planets_by_kind(kind: str) -> List[Dict[str, Any]]:
     planets = get_all_planets()
     target = kind.strip().lower()
     return [p for p in planets if str(p.get("kind", "")).strip().lower() == target]
+
+
+def get_binaries_by_type(tipo: str) -> List[Dict[str, Any]]:
+    binaries = get_all_binaries()
+    target = tipo.strip().lower()
+    return [b for b in binaries if str(b.get("tipo", "")).strip().lower() == target]
 
 
 def get_star_kinds() -> List[str]:
@@ -332,6 +357,50 @@ def get_planet_statistics(kind: Optional[str] = None) -> Dict[str, Dict[str, flo
     return result
 
 
+def get_binary_statistics(tipo: Optional[str] = None) -> Dict[str, Dict[str, float]]:
+    items = get_binaries_by_type(tipo) if tipo is not None else get_all_binaries()
+
+    smas: List[float] = []
+    eccs: List[float] = []
+    incs: List[float] = []
+    q_ratios: List[float] = []
+
+    for item in items:
+        if item.get("semi_eixo_maior_m") is not None:
+            try:
+                smas.append(float(item["semi_eixo_maior_m"]))
+            except (ValueError, TypeError):
+                pass
+        if item.get("excentricidade") is not None:
+            try:
+                eccs.append(float(item["excentricidade"]))
+            except (ValueError, TypeError):
+                pass
+        if item.get("inclinacao_rad") is not None:
+            try:
+                incs.append(float(item["inclinacao_rad"]))
+            except (ValueError, TypeError):
+                pass
+        if item.get("razao_massa") is not None:
+            try:
+                q_ratios.append(float(item["razao_massa"]))
+            except (ValueError, TypeError):
+                pass
+
+    result: Dict[str, Dict[str, float]] = {}
+    for prop_name, data_list in (
+        ("semi_major_axis_m", smas),
+        ("eccentricity", eccs),
+        ("inclination_rad", incs),
+        ("mass_ratio", q_ratios),
+    ):
+        st = _calculate_property_stats(data_list)
+        if st is not None:
+            result[prop_name] = st
+
+    return result
+
+
 def get_kind_statistics(
     entity_type: str,
     kind: Optional[str] = None,
@@ -341,5 +410,7 @@ def get_kind_statistics(
         return get_star_statistics(kind=kind)
     if normalized_type in ("planet", "planets"):
         return get_planet_statistics(kind=kind)
+    if normalized_type in ("binary", "binaries", "barycenter", "barycenters"):
+        return get_binary_statistics(tipo=kind)
     raise ValueError(
         f"unknown entity type for reference statistics: '{entity_type}'")

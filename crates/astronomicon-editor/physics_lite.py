@@ -20,6 +20,9 @@ EARTH_EQUATORIAL_RADIUS: float = 6.378137e6
 JUPITER_MASS: float = 1.89813e27
 
 ROCHE_FLUID_COEFFICIENT: float = 2.44
+MARDLING_AARSETH_CRITICAL_COEFFICIENT: float = 2.8
+MARDLING_AARSETH_MASS_EXPONENT: float = 0.4
+MARDLING_AARSETH_INCLINATION_COEFFICIENT: float = 0.33
 
 
 def gravitational_parameter(mass: float) -> float:
@@ -197,3 +200,44 @@ def schwarzschild_radius(mass: float) -> float:
     if mass <= 0.0 or not math.isfinite(mass):
         return 0.0
     return (2.0 * GRAVITATIONAL_CONSTANT * mass) / (SPEED_OF_LIGHT * SPEED_OF_LIGHT)
+
+
+def mardling_aarseth_critical_ratio(
+    inner_mass: float,
+    outer_mass: float,
+    outer_eccentricity: float = 0.0,
+    mutual_inclination_rad: float = 0.0,
+) -> float:
+    if inner_mass <= 0.0 or outer_mass <= 0.0 or not math.isfinite(inner_mass) or not math.isfinite(outer_mass):
+        return 0.0
+    q = outer_mass / inner_mass
+    e_out = max(0.0, min(0.9999, outer_eccentricity if math.isfinite(outer_eccentricity) else 0.0))
+    denom = math.sqrt(max(1e-6, 1.0 - e_out))
+    bracket = (((1.0 + q) * (1.0 + e_out)) / denom) ** MARDLING_AARSETH_MASS_EXPONENT
+    inc_norm = (mutual_inclination_rad % math.pi) / math.pi if math.isfinite(mutual_inclination_rad) else 0.0
+    inc_term = 1.0 - MARDLING_AARSETH_INCLINATION_COEFFICIENT * inc_norm
+    return MARDLING_AARSETH_CRITICAL_COEFFICIENT * bracket * inc_term
+
+
+def mardling_aarseth_stability_ratio(
+    inner_semi_major_axis: float,
+    outer_periapsis: float,
+) -> float:
+    if inner_semi_major_axis <= 0.0 or not math.isfinite(inner_semi_major_axis) or outer_periapsis <= 0.0:
+        return 0.0
+    return outer_periapsis / inner_semi_major_axis
+
+
+def is_hierarchically_stable(
+    inner_semi_major_axis: float,
+    outer_periapsis: float,
+    inner_mass: float,
+    outer_mass: float,
+    outer_eccentricity: float = 0.0,
+    mutual_inclination_rad: float = 0.0,
+) -> bool:
+    actual = mardling_aarseth_stability_ratio(inner_semi_major_axis, outer_periapsis)
+    critical = mardling_aarseth_critical_ratio(
+        inner_mass, outer_mass, outer_eccentricity, mutual_inclination_rad
+    )
+    return actual >= critical

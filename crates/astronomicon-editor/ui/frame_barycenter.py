@@ -6,8 +6,9 @@ import cache
 from curation import curate_barycenter
 from models import Barycenter
 import sql_builder
+import suggestions
 from ui.output_panel import OutputPanel
-from ui.widgets_common import BarycenterMemberSelector, OrbitalElementsFrame, OrbitalParentSelector
+from ui.widgets_common import BarycenterMemberSelector, OrbitalElementsFrame, OrbitalParentSelector, SuggestionDialog
 from validation import validate_barycenter
 
 
@@ -26,6 +27,7 @@ class FrameBarycenter(ttk.Frame):
         self.current_barycenter_id: str = sql_builder.generate_uuid()
         self.systems_map: Dict[str, str] = {}
         self.load_cache_map: Dict[str, str] = {}
+        self.barycenter_suggestion_cursor: int = 0
 
         self.columnconfigure(0, weight=1)
 
@@ -119,6 +121,12 @@ class FrameBarycenter(ttk.Frame):
 
         ttk.Button(
             actions_frame,
+            text="Sugerir Preenchimento",
+            command=self.open_suggestion_dialog,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        ttk.Button(
+            actions_frame,
             text="Gerar SQL",
             command=self.generate_sql,
         ).pack(side=tk.LEFT, padx=(0, 6))
@@ -134,6 +142,36 @@ class FrameBarycenter(ttk.Frame):
             text="Limpar Formulário",
             command=self.clear_form,
         ).pack(side=tk.LEFT)
+
+        self.barycenter_field_widgets = {
+            "internal_semi_major_axis_m": self.internal_elements_frame.entry_semi_major,
+            "internal_eccentricity": self.internal_elements_frame.entry_eccentricity,
+            "internal_inclination_rad": self.internal_elements_frame.entry_inclination,
+            "internal_longitude_ascending_node_rad": self.internal_elements_frame.entry_lan,
+            "internal_argument_periapsis_rad": self.internal_elements_frame.entry_arg_periapsis,
+            "internal_mean_anomaly_at_epoch_rad": self.internal_elements_frame.entry_mean_anomaly,
+            "external_semi_major_axis_m": self.external_elements_frame.entry_semi_major,
+            "external_eccentricity": self.external_elements_frame.entry_eccentricity,
+            "external_inclination_rad": self.external_elements_frame.entry_inclination,
+            "external_longitude_ascending_node_rad": self.external_elements_frame.entry_lan,
+            "external_argument_periapsis_rad": self.external_elements_frame.entry_arg_periapsis,
+            "external_mean_anomaly_at_epoch_rad": self.external_elements_frame.entry_mean_anomaly,
+        }
+
+        self.barycenter_field_labels = {
+            "internal_semi_major_axis_m": "Semi-eixo Maior Interno",
+            "internal_eccentricity": "Excentricidade Interna",
+            "internal_inclination_rad": "Inclinação Interna",
+            "internal_longitude_ascending_node_rad": "Nodo Asc. Interno",
+            "internal_argument_periapsis_rad": "Arg. Periastro Interno",
+            "internal_mean_anomaly_at_epoch_rad": "Anomalia Média Interna",
+            "external_semi_major_axis_m": "Semi-eixo Maior Externo",
+            "external_eccentricity": "Excentricidade Externa",
+            "external_inclination_rad": "Inclinação Externa",
+            "external_longitude_ascending_node_rad": "Nodo Asc. Externo",
+            "external_argument_periapsis_rad": "Arg. Periastro Externo",
+            "external_mean_anomaly_at_epoch_rad": "Anomalia Média Externa",
+        }
 
         self.refresh_systems()
         self.refresh_cache_list()
@@ -212,6 +250,75 @@ class FrameBarycenter(ttk.Frame):
             self.external_elements_frame.clear()
         else:
             self.external_elements_frame.set_enabled(True)
+
+    def _get_primary_data(self) -> Optional[Dict[str, Any]]:
+        pid = self.primary_selector.get_entity_id()
+        return cache.get_entity(pid) if pid else None
+
+    def _get_secondary_data(self) -> Optional[Dict[str, Any]]:
+        sid = self.secondary_selector.get_entity_id()
+        return cache.get_entity(sid) if sid else None
+
+    def _get_parent_data(self) -> Optional[Dict[str, Any]]:
+        p_star, p_planet, p_bary = self.parent_selector.get_parent_references()
+        pid = p_star or p_planet or p_bary
+        return cache.get_entity(pid) if pid else None
+
+    def _gather_known_fields(self) -> Dict[str, Any]:
+        return {
+            "internal_semi_major_axis_m": self.internal_elements_frame.entry_semi_major.get_si_value(),
+            "internal_eccentricity": self.internal_elements_frame.entry_eccentricity.get_si_value(),
+            "internal_inclination_rad": self.internal_elements_frame.entry_inclination.get_si_value(),
+            "internal_longitude_ascending_node_rad": self.internal_elements_frame.entry_lan.get_si_value(),
+            "internal_argument_periapsis_rad": self.internal_elements_frame.entry_arg_periapsis.get_si_value(),
+            "internal_mean_anomaly_at_epoch_rad": self.internal_elements_frame.entry_mean_anomaly.get_si_value(),
+            "external_semi_major_axis_m": self.external_elements_frame.entry_semi_major.get_si_value(),
+            "external_eccentricity": self.external_elements_frame.entry_eccentricity.get_si_value(),
+            "external_inclination_rad": self.external_elements_frame.entry_inclination.get_si_value(),
+            "external_longitude_ascending_node_rad": self.external_elements_frame.entry_lan.get_si_value(),
+            "external_argument_periapsis_rad": self.external_elements_frame.entry_arg_periapsis.get_si_value(),
+            "external_mean_anomaly_at_epoch_rad": self.external_elements_frame.entry_mean_anomaly.get_si_value(),
+        }
+
+    def _get_next_barycenter_suggestion(self) -> Any:
+        known = self._gather_known_fields()
+        pri_data = self._get_primary_data()
+        sec_data = self._get_secondary_data()
+        parent_data = self._get_parent_data()
+        self.barycenter_suggestion_cursor += 1
+        return suggestions.suggest_barycenter_fill(
+            known,
+            cursor=self.barycenter_suggestion_cursor,
+            primary_data=pri_data,
+            secondary_data=sec_data,
+            parent_data=parent_data,
+        )
+
+    def open_suggestion_dialog(self) -> None:
+        known = self._gather_known_fields()
+        pri_data = self._get_primary_data()
+        sec_data = self._get_secondary_data()
+        parent_data = self._get_parent_data()
+
+        result = suggestions.suggest_barycenter_fill(
+            known,
+            cursor=self.barycenter_suggestion_cursor,
+            primary_data=pri_data,
+            secondary_data=sec_data,
+            parent_data=parent_data,
+        )
+        if not result.suggested_fields:
+            messagebox.showinfo("Sugestão", "Todos os campos já estão preenchidos ou não há sugestões disponíveis.")
+            return
+
+        SuggestionDialog(
+            self,
+            "Sugestão de Parâmetros de Baricentro",
+            initial_result=result,
+            field_widgets_map=self.barycenter_field_widgets,
+            on_next_suggestion=self._get_next_barycenter_suggestion,
+            field_labels_map=self.barycenter_field_labels,
+        )
 
     def build_model(self) -> Barycenter:
         sys_id = self.systems_map.get(self.system_var.get())
@@ -304,3 +411,4 @@ class FrameBarycenter(ttk.Frame):
         self.parent_selector.clear()
         self.external_elements_frame.clear()
         self.external_elements_frame.set_enabled(False)
+        self.barycenter_suggestion_cursor = 0
