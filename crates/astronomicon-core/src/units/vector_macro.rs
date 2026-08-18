@@ -61,3 +61,5 @@ macro_rules! define_vector_quantity {
         }
     };
 }
+
+pub(crate) use define_vector_quantity;

@@ -8,4 +8,5 @@ astronomicon-core = { path = "../astronomicon-core" }
 astronomicon-db = { path = "../astronomicon-db" }
 thiserror = "2.0"
 tokio = { version = "1.0", features = ["rt-multi-thread"] }
+serde = { version = "1.0.197", features = ["derive"] }
 uuid.workspace = true

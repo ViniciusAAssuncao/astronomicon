@@ -1,0 +1,587 @@
+[
+  {
+    "nome": "Zeta Ophiuchi",
+    "kind": "Star",
+    "massa_kg": 3.977e+31,
+    "raio_m": 5774310000.000001,
+    "temperatura_efetiva_k": 34000.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "O9.5V"
+  },
+  {
+    "nome": "Spica A",
+    "kind": "Star",
+    "massa_kg": 2.2728555e+31,
+    "raio_m": 5196879000.0,
+    "temperatura_efetiva_k": 25300.0,
+    "periodo_rotacao_s": 346861.44,
+    "teorica": false,
+    "classe_espectral": "B1III-IV"
+  },
+  {
+    "nome": "Sirius A",
+    "kind": "Star",
+    "massa_kg": 4.1022755000000005e+30,
+    "raio_m": 1191734100.0,
+    "temperatura_efetiva_k": 9940.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "A1V"
+  },
+  {
+    "nome": "Procyon A",
+    "kind": "Star",
+    "massa_kg": 2.9807615e+30,
+    "raio_m": 1424793600.0,
+    "temperatura_efetiva_k": 6530.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "F5IV-V"
+  },
+  {
+    "nome": "Sol",
+    "kind": "Star",
+    "massa_kg": 1.9885e+30,
+    "raio_m": 695700000.0,
+    "temperatura_efetiva_k": 5772.0,
+    "periodo_rotacao_s": 2164320.0,
+    "teorica": false,
+    "classe_espectral": "G2V"
+  },
+  {
+    "nome": "Alpha Centauri A",
+    "kind": "Star",
+    "massa_kg": 2.1451938e+30,
+    "raio_m": 847014750.0,
+    "temperatura_efetiva_k": 5790.0,
+    "periodo_rotacao_s": 1944000.0,
+    "teorica": false,
+    "classe_espectral": "G2V"
+  },
+  {
+    "nome": "Alpha Centauri B",
+    "kind": "Star",
+    "massa_kg": 1.8079442e+30,
+    "raio_m": 597675870.0,
+    "temperatura_efetiva_k": 5260.0,
+    "periodo_rotacao_s": 3110400.0,
+    "teorica": false,
+    "classe_espectral": "K1V"
+  },
+  {
+    "nome": "Proxima Centauri",
+    "kind": "Star",
+    "massa_kg": 2.4279585e+29,
+    "raio_m": 107276940.0,
+    "temperatura_efetiva_k": 3042.0,
+    "periodo_rotacao_s": 7136639.999999999,
+    "teorica": false,
+    "classe_espectral": "M5.5V"
+  },
+  {
+    "nome": "Sirius B",
+    "kind": "WhiteDwarf",
+    "massa_kg": 2.024293e+30,
+    "raio_m": 5800000.0,
+    "temperatura_efetiva_k": 25000.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "DA2"
+  },
+  {
+    "nome": "Gliese 229 B",
+    "kind": "BrownDwarf",
+    "massa_kg": 7.954e+28,
+    "raio_m": 71492000.0,
+    "temperatura_efetiva_k": 940.0,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "T7"
+  },
+  {
+    "nome": "PSR J1614-2230",
+    "kind": "NeutronStar",
+    "massa_kg": 3.917345e+30,
+    "raio_m": 13000.0,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": 0.0031508,
+    "teorica": true,
+    "classe_espectral": null
+  },
+  {
+    "nome": "Cygnus X-1",
+    "kind": "BlackHole",
+    "massa_kg": 4.21562e+31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": true,
+    "classe_espectral": null
+  },
+  {
+    "nome": "PSR J0348+0432 (Neutron Star)",
+    "kind": "NeutronStar",
+    "massa_kg": 3.98e30,
+    "raio_m": 13000.0,
+    "temperatura_efetiva_k": 300000.0,
+    "periodo_rotacao_s": 0.039,
+    "teorica": false,
+    "classe_espectral": null,
+    "nota": "Pulsar binário de 2.01 M☉, bem caracterizado."
+  },
+  {
+    "nome": "Neutron Star Típica (1.4 M☉)",
+    "kind": "NeutronStar",
+    "massa_kg": 2.784e30,
+    "raio_m": 12000.0,
+    "temperatura_efetiva_k": 100000.0,
+    "periodo_rotacao_s": 0.01,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de nêutrons canônica, raio ~12 km, massa 1.4 M☉."
+  },
+  {
+    "nome": "Neutron Star Massiva (2.5 M☉)",
+    "kind": "NeutronStar",
+    "massa_kg": 4.97e30,
+    "raio_m": 11000.0,
+    "temperatura_efetiva_k": 50000.0,
+    "periodo_rotacao_s": 0.002,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de nêutrons com massa próxima ao limite TOV."
+  },
+  {
+    "nome": "Buraco Negro Estelar (5 M☉)",
+    "kind": "BlackHole",
+    "massa_kg": 9.94e30,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Buraco negro estelar típico de 5 M☉, raio de Schwarzschild ~15 km."
+  },
+  {
+    "nome": "Buraco Negro Estelar (10 M☉)",
+    "kind": "BlackHole",
+    "massa_kg": 1.988e31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Buraco negro estelar de 10 M☉."
+  },
+  {
+    "nome": "Buraco Negro Estelar (20 M☉)",
+    "kind": "BlackHole",
+    "massa_kg": 3.976e31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Buraco negro estelar massivo de 20 M☉."
+  },
+  {
+    "nome": "Gravastar (Exótico)",
+    "kind": "Exotic",
+    "massa_kg": 3.0e30,
+    "raio_m": 15000.0,
+    "temperatura_efetiva_k": 10000.0,
+    "periodo_rotacao_s": 0.1,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Gravastar hipotético, objeto exótico sem horizonte de eventos, raio ~15 km."
+  },
+  {
+    "nome": "Estrela de Quarks (Exótica)",
+    "kind": "Exotic",
+    "massa_kg": 2.0e30,
+    "raio_m": 9000.0,
+    "temperatura_efetiva_k": 50000.0,
+    "periodo_rotacao_s": 0.005,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de quarks teórica, composta por matéria de quarks desconfínados."
+  },
+  {
+    "nome": "Estrela de Ferro (Exótica)",
+    "kind": "Exotic",
+    "massa_kg": 1.0e30,
+    "raio_m": 1000000.0,
+    "temperatura_efetiva_k": 3000.0,
+    "periodo_rotacao_s": 86400.0,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de ferro hipotética, resfriada e colapsada (estágio final de uma anã branca)."
+  },
+  {
+    "nome": "Rigel A",
+    "kind": "Star",
+    "massa_kg": 3.78e31,
+    "raio_m": 7.43e10,
+    "temperatura_efetiva_k": 12100,
+    "periodo_rotacao_s": 2.16e5,
+    "teorica": false,
+    "classe_espectral": "B8Ia"
+  },
+  {
+    "nome": "Betelgeuse",
+    "kind": "Star",
+    "massa_kg": 3.58e31,
+    "raio_m": 6.17e11,
+    "temperatura_efetiva_k": 3600,
+    "periodo_rotacao_s": 2.3e7,
+    "teorica": false,
+    "classe_espectral": "M1Ia"
+  },
+  {
+    "nome": "Antares A",
+    "kind": "Star",
+    "massa_kg": 2.68e31,
+    "raio_m": 4.73e11,
+    "temperatura_efetiva_k": 3400,
+    "periodo_rotacao_s": 1.7e7,
+    "teorica": false,
+    "classe_espectral": "M1.5Iab"
+  },
+  {
+    "nome": "Polaris A",
+    "kind": "Star",
+    "massa_kg": 1.08e31,
+    "raio_m": 3.77e10,
+    "temperatura_efetiva_k": 6015,
+    "periodo_rotacao_s": 1.2e7,
+    "teorica": false,
+    "classe_espectral": "F7Ib"
+  },
+  {
+    "nome": "Vega",
+    "kind": "Star",
+    "massa_kg": 4.16e30,
+    "raio_m": 2.36e9,
+    "temperatura_efetiva_k": 9602,
+    "periodo_rotacao_s": 5.6e4,
+    "teorica": false,
+    "classe_espectral": "A0V"
+  },
+  {
+    "nome": "Altair",
+    "kind": "Star",
+    "massa_kg": 2.39e30,
+    "raio_m": 1.48e9,
+    "temperatura_efetiva_k": 7550,
+    "periodo_rotacao_s": 2.8e4,
+    "teorica": false,
+    "classe_espectral": "A7V"
+  },
+  {
+    "nome": "Fomalhaut",
+    "kind": "Star",
+    "massa_kg": 3.02e30,
+    "raio_m": 1.47e9,
+    "temperatura_efetiva_k": 8590,
+    "periodo_rotacao_s": 8.6e4,
+    "teorica": false,
+    "classe_espectral": "A3V"
+  },
+  {
+    "nome": "Aldebaran",
+    "kind": "Star",
+    "massa_kg": 2.45e30,
+    "raio_m": 3.82e10,
+    "temperatura_efetiva_k": 3910,
+    "periodo_rotacao_s": 5.4e7,
+    "teorica": false,
+    "classe_espectral": "K5III"
+  },
+  {
+    "nome": "Arcturus",
+    "kind": "Star",
+    "massa_kg": 1.88e30,
+    "raio_m": 1.77e10,
+    "temperatura_efetiva_k": 4286,
+    "periodo_rotacao_s": 8.0e7,
+    "teorica": false,
+    "classe_espectral": "K1.5III"
+  },
+  {
+    "nome": "Barnard's Star",
+    "kind": "Star",
+    "massa_kg": 2.46e29,
+    "raio_m": 1.27e8,
+    "temperatura_efetiva_k": 3138,
+    "periodo_rotacao_s": 1.2e6,
+    "teorica": false,
+    "classe_espectral": "M4V"
+  },
+  {
+    "nome": "Gliese 581",
+    "kind": "Star",
+    "massa_kg": 5.56e29,
+    "raio_m": 2.10e8,
+    "temperatura_efetiva_k": 3480,
+    "periodo_rotacao_s": 4.7e6,
+    "teorica": false,
+    "classe_espectral": "M3V"
+  },
+  {
+    "nome": "Kepler-442",
+    "kind": "Star",
+    "massa_kg": 1.09e30,
+    "raio_m": 7.75e8,
+    "temperatura_efetiva_k": 4402,
+    "periodo_rotacao_s": 2.4e6,
+    "teorica": false,
+    "classe_espectral": "K5V"
+  },
+  {
+    "nome": "TRAPPIST-1",
+    "kind": "Star",
+    "massa_kg": 1.68e29,
+    "raio_m": 8.37e7,
+    "temperatura_efetiva_k": 2550,
+    "periodo_rotacao_s": 1.2e6,
+    "teorica": false,
+    "classe_espectral": "M8V"
+  },
+  {
+    "nome": "Van Maanen's Star",
+    "kind": "WhiteDwarf",
+    "massa_kg": 1.31e30,
+    "raio_m": 1.20e7,
+    "temperatura_efetiva_k": 6750,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "DZ"
+  },
+  {
+    "nome": "Stein 2051 B",
+    "kind": "WhiteDwarf",
+    "massa_kg": 1.25e30,
+    "raio_m": 8.30e6,
+    "temperatura_efetiva_k": 8400,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "DQ"
+  },
+  {
+    "nome": "G 99-47",
+    "kind": "WhiteDwarf",
+    "massa_kg": 1.42e30,
+    "raio_m": 6.50e6,
+    "temperatura_efetiva_k": 14000,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "DA"
+  },
+  {
+    "nome": "WD 0346+246",
+    "kind": "WhiteDwarf",
+    "massa_kg": 1.02e30,
+    "raio_m": 9.80e6,
+    "temperatura_efetiva_k": 3800,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "DC"
+  },
+  {
+    "nome": "PSR B1257+12",
+    "kind": "NeutronStar",
+    "massa_kg": 2.78e30,
+    "raio_m": 1.30e4,
+    "temperatura_efetiva_k": 2.0e6,
+    "periodo_rotacao_s": 0.006219,
+    "teorica": false,
+    "classe_espectral": null
+  },
+  {
+    "nome": "PSR B1919+21",
+    "kind": "NeutronStar",
+    "massa_kg": 2.58e30,
+    "raio_m": 1.20e4,
+    "temperatura_efetiva_k": 1.2e6,
+    "periodo_rotacao_s": 1.3373,
+    "teorica": false,
+    "classe_espectral": null
+  },
+  {
+    "nome": "PSR J1824-2452A",
+    "kind": "NeutronStar",
+    "massa_kg": 3.12e30,
+    "raio_m": 1.15e4,
+    "temperatura_efetiva_k": 8.0e5,
+    "periodo_rotacao_s": 0.003054,
+    "teorica": false,
+    "classe_espectral": null
+  },
+  {
+    "nome": "PSR J0030+0451",
+    "kind": "NeutronStar",
+    "massa_kg": 2.72e30,
+    "raio_m": 1.28e4,
+    "temperatura_efetiva_k": 9.0e5,
+    "periodo_rotacao_s": 0.004865,
+    "teorica": false,
+    "classe_espectral": null
+  },
+  {
+    "nome": "XTE J1739-285",
+    "kind": "NeutronStar",
+    "massa_kg": 3.76e30,
+    "raio_m": 1.10e4,
+    "temperatura_efetiva_k": 1.5e6,
+    "periodo_rotacao_s": 0.001842,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de nêutrons com rotação extremamente rápida, próxima do limite."
+  },
+  {
+    "nome": "Buraco Negro Cygnus X-1",
+    "kind": "BlackHole",
+    "massa_kg": 2.96e31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": null
+  },
+  {
+    "nome": "Buraco Negro LMC X-3",
+    "kind": "BlackHole",
+    "massa_kg": 1.33e31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": null
+  },
+  {
+    "nome": "Buraco Negro V404 Cygni",
+    "kind": "BlackHole",
+    "massa_kg": 1.84e31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": null
+  },
+  {
+    "nome": "Buraco Negro XTE J1118+480",
+    "kind": "BlackHole",
+    "massa_kg": 1.28e31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": null
+  },
+  {
+    "nome": "Buraco Negro M33 X-7",
+    "kind": "BlackHole",
+    "massa_kg": 3.04e31,
+    "raio_m": null,
+    "temperatura_efetiva_k": null,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": null
+  },
+  {
+    "nome": "Gliese 229 A",
+    "kind": "BrownDwarf",
+    "massa_kg": 1.59e29,
+    "raio_m": 6.10e7,
+    "temperatura_efetiva_k": 950,
+    "periodo_rotacao_s": 2.0e5,
+    "teorica": false,
+    "classe_espectral": "T0"
+  },
+  {
+    "nome": "WISE 0855-0714",
+    "kind": "BrownDwarf",
+    "massa_kg": 5.0e28,
+    "raio_m": 3.50e7,
+    "temperatura_efetiva_k": 250,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "Y"
+  },
+  {
+    "nome": "SDSS J1416+1348",
+    "kind": "BrownDwarf",
+    "massa_kg": 3.50e28,
+    "raio_m": 4.00e7,
+    "temperatura_efetiva_k": 500,
+    "periodo_rotacao_s": null,
+    "teorica": false,
+    "classe_espectral": "T8"
+  },
+  {
+    "nome": "HD 98264 B",
+    "kind": "BrownDwarf",
+    "massa_kg": 2.20e28,
+    "raio_m": 3.80e7,
+    "temperatura_efetiva_k": 1300,
+    "periodo_rotacao_s": 1.2e5,
+    "teorica": false,
+    "classe_espectral": "L5"
+  },
+  {
+    "nome": "Gravastar de 2.5 M☉",
+    "kind": "Exotic",
+    "massa_kg": 4.97e30,
+    "raio_m": 2.00e4,
+    "temperatura_efetiva_k": 15000,
+    "periodo_rotacao_s": 0.025,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Gravastar hipotético, objeto exótico sem horizonte de eventos."
+  },
+  {
+    "nome": "Estrela de Quarks (1.8 M☉)",
+    "kind": "Exotic",
+    "massa_kg": 3.58e30,
+    "raio_m": 1.10e4,
+    "temperatura_efetiva_k": 80000,
+    "periodo_rotacao_s": 0.003,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de quarks teórica, composta por matéria de quarks desconfinados."
+  },
+  {
+    "nome": "Estrela de Ferro (0.8 M☉)",
+    "kind": "Exotic",
+    "massa_kg": 1.59e30,
+    "raio_m": 8.50e5,
+    "temperatura_efetiva_k": 3200,
+    "periodo_rotacao_s": 72000,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Estrela de ferro hipotética, resfriada e colapsada (estágio final de uma anã branca)."
+  },
+  {
+    "nome": "Estrela de Matéria Escura (1 M☉)",
+    "kind": "Exotic",
+    "massa_kg": 1.99e30,
+    "raio_m": 1.20e6,
+    "temperatura_efetiva_k": 2800,
+    "periodo_rotacao_s": 54000,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Hipotética estrela formada por matéria escura (modelo bosônico)."
+  },
+  {
+    "nome": "Estrela de Préons (2 M☉)",
+    "kind": "Exotic",
+    "massa_kg": 3.98e30,
+    "raio_m": 9.00e3,
+    "temperatura_efetiva_k": 100000,
+    "periodo_rotacao_s": 0.002,
+    "teorica": true,
+    "classe_espectral": null,
+    "nota": "Hipotética estrela de préons, matéria ultradensa."
+  }
+]

@@ -1,0 +1,289 @@
+use crate::domain::orbital_elements::OrbitalElements;
+use crate::domain::orbital_parent::OrbitalParent;
+use crate::error::{DomainError, DomainResult};
+use crate::units::{Angle, Duration, Length, Mass, Temperature};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StarKind {
+    Star,
+    WhiteDwarf,
+    NeutronStar,
+    BlackHole,
+    BrownDwarf,
+    Exotic,
+}
+
+#[derive(Debug, Clone)]
+pub struct StarBuilder {
+    id: Uuid,
+    name: String,
+    mass: Mass,
+    kind: StarKind,
+    orbital_parent: OrbitalParent,
+    star_system_id: Option<Uuid>,
+    radius: Option<Length>,
+    effective_temperature: Option<Temperature>,
+    rotation_period: Option<Duration>,
+    obliquity: Option<Angle>,
+    orbital_elements: Option<OrbitalElements>,
+    oblateness_j2: Option<f64>,
+}
+
+impl StarBuilder {
+    pub fn new(
+        id: Uuid,
+        name: impl Into<String>,
+        mass: Mass,
+        kind: StarKind,
+        orbital_parent: OrbitalParent,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            mass,
+            kind,
+            orbital_parent,
+            star_system_id: None,
+            radius: None,
+            effective_temperature: None,
+            rotation_period: None,
+            obliquity: None,
+            orbital_elements: None,
+            oblateness_j2: None,
+        }
+    }
+
+    pub fn with_star_system_id(mut self, star_system_id: impl Into<Option<Uuid>>) -> Self {
+        self.star_system_id = star_system_id.into();
+        self
+    }
+
+    pub fn with_radius(mut self, radius: impl Into<Option<Length>>) -> Self {
+        self.radius = radius.into();
+        self
+    }
+
+    pub fn with_effective_temperature(
+        mut self,
+        effective_temperature: impl Into<Option<Temperature>>,
+    ) -> Self {
+        self.effective_temperature = effective_temperature.into();
+        self
+    }
+
+    pub fn with_rotation_period(mut self, rotation_period: impl Into<Option<Duration>>) -> Self {
+        self.rotation_period = rotation_period.into();
+        self
+    }
+
+    pub fn with_obliquity(mut self, obliquity: impl Into<Option<Angle>>) -> Self {
+        self.obliquity = obliquity.into();
+        self
+    }
+
+    pub fn with_orbital_elements(
+        mut self,
+        orbital_elements: impl Into<Option<OrbitalElements>>,
+    ) -> Self {
+        self.orbital_elements = orbital_elements.into();
+        self
+    }
+
+    pub fn with_oblateness_j2(mut self, oblateness_j2: impl Into<Option<f64>>) -> Self {
+        self.oblateness_j2 = oblateness_j2.into();
+        self
+    }
+
+    pub fn build(self) -> DomainResult<Star> {
+        if self.name.trim().is_empty() {
+            return Err(DomainError::InvalidInvariant {
+                field: "name".to_string(),
+                reason: "cannot be empty".to_string(),
+            });
+        }
+
+        if !self.mass.value().is_finite() || self.mass.value() <= 0.0 {
+            return Err(DomainError::InvalidInvariant {
+                field: "mass".to_string(),
+                reason: "must be positive and finite".to_string(),
+            });
+        }
+
+        if let Some(r) = self.radius {
+            if !r.value().is_finite() || r.value() <= 0.0 {
+                return Err(DomainError::InvalidInvariant {
+                    field: "radius".to_string(),
+                    reason: "must be positive and finite".to_string(),
+                });
+            }
+        }
+
+        if let Some(t) = self.effective_temperature {
+            if !t.value().is_finite() || t.value() <= 0.0 {
+                return Err(DomainError::InvalidInvariant {
+                    field: "effective_temperature".to_string(),
+                    reason: "must be positive and finite".to_string(),
+                });
+            }
+        }
+
+        if let Some(rot) = self.rotation_period {
+            if !rot.value().is_finite() || rot.value() <= 0.0 {
+                return Err(DomainError::InvalidInvariant {
+                    field: "rotation_period".to_string(),
+                    reason: "must be positive and finite".to_string(),
+                });
+            }
+        }
+
+        if let Some(ob) = self.obliquity {
+            if !ob.value().is_finite() {
+                return Err(DomainError::InvalidInvariant {
+                    field: "obliquity".to_string(),
+                    reason: "must be finite".to_string(),
+                });
+            }
+        }
+
+        if let Some(j2) = self.oblateness_j2 {
+            if !j2.is_finite() {
+                return Err(DomainError::InvalidInvariant {
+                    field: "oblateness_j2".to_string(),
+                    reason: "must be finite".to_string(),
+                });
+            }
+        }
+
+        if self.orbital_parent == OrbitalParent::Fixed && self.orbital_elements.is_some() {
+            return Err(DomainError::InvalidInvariant {
+                field: "orbital_elements".to_string(),
+                reason: "fixed star cannot have orbital elements".to_string(),
+            });
+        }
+
+        if self.orbital_parent != OrbitalParent::Fixed && self.orbital_elements.is_none() {
+            return Err(DomainError::InvalidInvariant {
+                field: "orbital_elements".to_string(),
+                reason: "non-fixed orbiting star must have orbital elements".to_string(),
+            });
+        }
+
+        Ok(Star {
+            id: self.id,
+            star_system_id: self.star_system_id,
+            orbital_parent: self.orbital_parent,
+            kind: self.kind,
+            name: self.name,
+            mass: self.mass,
+            radius: self.radius,
+            effective_temperature: self.effective_temperature,
+            rotation_period: self.rotation_period,
+            obliquity: self.obliquity,
+            orbital_elements: self.orbital_elements,
+            oblateness_j2: self.oblateness_j2,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Star {
+    id: Uuid,
+    star_system_id: Option<Uuid>,
+    orbital_parent: OrbitalParent,
+    kind: StarKind,
+    name: String,
+    mass: Mass,
+    radius: Option<Length>,
+    effective_temperature: Option<Temperature>,
+    rotation_period: Option<Duration>,
+    obliquity: Option<Angle>,
+    orbital_elements: Option<OrbitalElements>,
+    oblateness_j2: Option<f64>,
+}
+
+impl Star {
+    pub fn builder(
+        id: Uuid,
+        name: impl Into<String>,
+        mass: Mass,
+        kind: StarKind,
+        orbital_parent: OrbitalParent,
+    ) -> StarBuilder {
+        StarBuilder::new(id, name, mass, kind, orbital_parent)
+    }
+
+    pub fn new(
+        id: Uuid,
+        star_system_id: Option<Uuid>,
+        orbital_parent: OrbitalParent,
+        kind: StarKind,
+        name: String,
+        mass: Mass,
+        radius: Option<Length>,
+        effective_temperature: Option<Temperature>,
+        rotation_period: Option<Duration>,
+        obliquity: Option<Angle>,
+        orbital_elements: Option<OrbitalElements>,
+        oblateness_j2: Option<f64>,
+    ) -> DomainResult<Self> {
+        Self::builder(id, name, mass, kind, orbital_parent)
+            .with_star_system_id(star_system_id)
+            .with_radius(radius)
+            .with_effective_temperature(effective_temperature)
+            .with_rotation_period(rotation_period)
+            .with_obliquity(obliquity)
+            .with_orbital_elements(orbital_elements)
+            .with_oblateness_j2(oblateness_j2)
+            .build()
+    }
+
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+
+    pub fn star_system_id(&self) -> Option<Uuid> {
+        self.star_system_id
+    }
+
+    pub fn orbital_parent(&self) -> OrbitalParent {
+        self.orbital_parent
+    }
+
+    pub fn kind(&self) -> StarKind {
+        self.kind
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn mass(&self) -> Mass {
+        self.mass
+    }
+
+    pub fn radius(&self) -> Option<Length> {
+        self.radius
+    }
+
+    pub fn effective_temperature(&self) -> Option<Temperature> {
+        self.effective_temperature
+    }
+
+    pub fn rotation_period(&self) -> Option<Duration> {
+        self.rotation_period
+    }
+
+    pub fn obliquity(&self) -> Option<Angle> {
+        self.obliquity
+    }
+
+    pub fn orbital_elements(&self) -> Option<OrbitalElements> {
+        self.orbital_elements
+    }
+
+    pub fn oblateness_j2(&self) -> Option<f64> {
+        self.oblateness_j2
+    }
+}

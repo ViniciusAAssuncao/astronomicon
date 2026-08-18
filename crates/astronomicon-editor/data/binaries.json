@@ -1,0 +1,110 @@
+[
+    {
+        "nome": "Alpha Centauri AB",
+        "tipo": "StellarBinary",
+        "massa_primaria_kg": 2.145e30,
+        "massa_secundaria_kg": 1.808e30,
+        "razao_massa": 0.843,
+        "semi_eixo_maior_m": 3530509748520.0,
+        "excentricidade": 0.5179,
+        "inclinacao_rad": 1.3828,
+        "periodo_orbital_s": 2521190400.0,
+        "nota": "Binária estelar próxima clássica de tipo solar (G2V + K1V) com alta excentricidade."
+    },
+    {
+        "nome": "Sirius AB",
+        "tipo": "StellarBinary",
+        "massa_primaria_kg": 4.102e30,
+        "massa_secundaria_kg": 2.024e30,
+        "razao_massa": 0.493,
+        "semi_eixo_maior_m": 1113008158008.0,
+        "excentricidade": 0.5914,
+        "inclinacao_rad": 2.3837,
+        "periodo_orbital_s": 1582236480.0,
+        "nota": "Par binário composto por estrela de sequência principal A1V e anã branca DA2."
+    },
+    {
+        "nome": "Procyon AB",
+        "tipo": "StellarBinary",
+        "massa_primaria_kg": 2.981e30,
+        "massa_secundaria_kg": 1.193e30,
+        "razao_massa": 0.400,
+        "semi_eixo_maior_m": 2228908273430.0,
+        "excentricidade": 0.407,
+        "inclinacao_rad": 0.5428,
+        "periodo_orbital_s": 1289196000.0,
+        "nota": "Binária próxima composta por subgigante F5IV-V e anã branca DQZ."
+    },
+    {
+        "nome": "61 Cygni AB",
+        "tipo": "StellarBinary",
+        "massa_primaria_kg": 1.392e30,
+        "massa_secundaria_kg": 1.253e30,
+        "razao_massa": 0.900,
+        "semi_eixo_maior_m": 12970135389690.0,
+        "excentricidade": 0.48,
+        "inclinacao_rad": 0.9425,
+        "periodo_orbital_s": 21422736000.0,
+        "nota": "Binária visual ampla de anãs laranjas (K5V + K7V)."
+    },
+    {
+        "nome": "Kepler-16 (AB)",
+        "tipo": "StellarBinary",
+        "massa_primaria_kg": 1.371e30,
+        "massa_secundaria_kg": 4.027e29,
+        "razao_massa": 0.294,
+        "semi_eixo_maior_m": 33509923037.0,
+        "excentricidade": 0.1594,
+        "inclinacao_rad": 1.5768,
+        "periodo_orbital_s": 3574972.8,
+        "nota": "Binária eclipsante compacta hospedeira de planeta circumbinário (K + M)."
+    },
+    {
+        "nome": "Plutão-Caronte",
+        "tipo": "PlanetaryBinary",
+        "massa_primaria_kg": 1.303e22,
+        "massa_secundaria_kg": 1.586e21,
+        "razao_massa": 0.122,
+        "semi_eixo_maior_m": 19596000.0,
+        "excentricidade": 0.00005,
+        "inclinacao_rad": 0.0001,
+        "periodo_orbital_s": 551856.7,
+        "nota": "Sistema planetário anão duplamente sincronizado com baricentro fora do corpo primário."
+    },
+    {
+        "nome": "Luhman 16 AB",
+        "tipo": "BrownDwarfBinary",
+        "massa_primaria_kg": 6.70e28,
+        "massa_secundaria_kg": 5.70e28,
+        "razao_massa": 0.851,
+        "semi_eixo_maior_m": 531072440985.0,
+        "excentricidade": 0.343,
+        "inclinacao_rad": 1.3858,
+        "periodo_orbital_s": 852768000.0,
+        "nota": "Binária de anãs marrons (L7.5 + T0.5) próxima ao Sol."
+    },
+    {
+        "nome": "Spica AB",
+        "tipo": "StellarBinary",
+        "massa_primaria_kg": 2.273e31,
+        "massa_secundaria_kg": 1.432e31,
+        "razao_massa": 0.630,
+        "semi_eixo_maior_m": 18540000000.0,
+        "excentricidade": 0.145,
+        "inclinacao_rad": 1.1519,
+        "periodo_orbital_s": 346861.44,
+        "nota": "Binária espectroscópica massiva e cerrada de estrelas azuis tipo B."
+    },
+    {
+        "nome": "HD 80606 / HD 80607",
+        "tipo": "StellarBinary",
+        "massa_primaria_kg": 2.187e30,
+        "massa_secundaria_kg": 2.088e30,
+        "razao_massa": 0.955,
+        "semi_eixo_maior_m": 179517444840000.0,
+        "excentricidade": 0.55,
+        "inclinacao_rad": 0.7854,
+        "periodo_orbital_s": 631152000000.0,
+        "nota": "Binária muito ampla com perturbações Kozai-Lidov no planeta excêntrico HD 80606 b."
+    }
+]

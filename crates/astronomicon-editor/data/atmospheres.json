@@ -1,0 +1,268 @@
+[
+    {
+        "nome": "Terrana (N2/O2)",
+        "kinds_compativeis": [
+            "Telluric"
+        ],
+        "pressure_pa": 101325.0,
+        "greenhouse_effect_k": 33.0,
+        "lapse_rate_k_per_m": 0.0065,
+        "composition": [
+            {
+                "formula": "N2",
+                "percentage": 78.08
+            },
+            {
+                "formula": "O2",
+                "percentage": 20.95
+            },
+            {
+                "formula": "Ar",
+                "percentage": 0.93
+            },
+            {
+                "formula": "CO2",
+                "percentage": 0.04
+            }
+        ]
+    },
+    {
+        "nome": "Venusiana (CO2 Densa)",
+        "kinds_compativeis": [
+            "Telluric"
+        ],
+        "pressure_pa": 9200000.0,
+        "greenhouse_effect_k": 464.0,
+        "lapse_rate_k_per_m": 0.0077,
+        "composition": [
+            {
+                "formula": "CO2",
+                "percentage": 96.5
+            },
+            {
+                "formula": "N2",
+                "percentage": 3.5
+            },
+            {
+                "formula": "SO2",
+                "percentage": 0.015
+            }
+        ]
+    },
+    {
+        "nome": "Marciana (CO2 Rarefeita)",
+        "kinds_compativeis": [
+            "Telluric",
+            "DwarfPlanet"
+        ],
+        "pressure_pa": 610.0,
+        "greenhouse_effect_k": 5.0,
+        "lapse_rate_k_per_m": 0.0025,
+        "composition": [
+            {
+                "formula": "CO2",
+                "percentage": 95.32
+            },
+            {
+                "formula": "N2",
+                "percentage": 2.6
+            },
+            {
+                "formula": "Ar",
+                "percentage": 1.9
+            },
+            {
+                "formula": "O2",
+                "percentage": 0.13
+            },
+            {
+                "formula": "CO",
+                "percentage": 0.08
+            }
+        ]
+    },
+    {
+        "nome": "Titânica (N2/CH4 Criogênica)",
+        "kinds_compativeis": [
+            "IcyBody",
+            "Telluric",
+            "DwarfPlanet"
+        ],
+        "pressure_pa": 146700.0,
+        "greenhouse_effect_k": 21.0,
+        "lapse_rate_k_per_m": 0.0014,
+        "composition": [
+            {
+                "formula": "N2",
+                "percentage": 95.0
+            },
+            {
+                "formula": "CH4",
+                "percentage": 4.9
+            },
+            {
+                "formula": "H2",
+                "percentage": 0.1
+            }
+        ]
+    },
+    {
+        "nome": "Gigante Gasoso (H2/He)",
+        "kinds_compativeis": [
+            "GasGiant"
+        ],
+        "pressure_pa": 200000.0,
+        "greenhouse_effect_k": 0.0,
+        "lapse_rate_k_per_m": 0.0020,
+        "composition": [
+            {
+                "formula": "H2",
+                "percentage": 89.8
+            },
+            {
+                "formula": "He",
+                "percentage": 10.2
+            },
+            {
+                "formula": "CH4",
+                "percentage": 0.3
+            },
+            {
+                "formula": "NH3",
+                "percentage": 0.026
+            }
+        ]
+    },
+    {
+        "nome": "Gigante de Gelo (H2/He/CH4)",
+        "kinds_compativeis": [
+            "IceGiant"
+        ],
+        "pressure_pa": 100000.0,
+        "greenhouse_effect_k": 0.0,
+        "lapse_rate_k_per_m": 0.0008,
+        "composition": [
+            {
+                "formula": "H2",
+                "percentage": 82.5
+            },
+            {
+                "formula": "He",
+                "percentage": 15.2
+            },
+            {
+                "formula": "CH4",
+                "percentage": 2.3
+            }
+        ]
+    },
+    {
+        "nome": "Planeta de Carbono (CO/CH4)",
+        "kinds_compativeis": [
+            "CarbonPlanet",
+            "Telluric"
+        ],
+        "pressure_pa": 500000.0,
+        "greenhouse_effect_k": 45.0,
+        "lapse_rate_k_per_m": 0.0050,
+        "composition": [
+            {
+                "formula": "CO",
+                "percentage": 65.0
+            },
+            {
+                "formula": "CH4",
+                "percentage": 25.0
+            },
+            {
+                "formula": "N2",
+                "percentage": 8.0
+            },
+            {
+                "formula": "HCN",
+                "percentage": 2.0
+            }
+        ]
+    },
+    {
+        "nome": "Plutoniana (N2/CH4 Rarefeita)",
+        "kinds_compativeis": [
+            "DwarfPlanet",
+            "IcyBody"
+        ],
+        "pressure_pa": 1.0,
+        "greenhouse_effect_k": 3.0,
+        "lapse_rate_k_per_m": 0.0005,
+        "composition": [
+            {
+                "formula": "N2",
+                "percentage": 97.0
+            },
+            {
+                "formula": "CH4",
+                "percentage": 2.5
+            },
+            {
+                "formula": "CO",
+                "percentage": 0.5
+            }
+        ]
+    },
+    {
+        "nome": "Super-Terra de Vapor/H2",
+        "kinds_compativeis": [
+            "Telluric",
+            "IceGiant",
+            "Exotic"
+        ],
+        "pressure_pa": 1000000.0,
+        "greenhouse_effect_k": 120.0,
+        "lapse_rate_k_per_m": 0.0055,
+        "composition": [
+            {
+                "formula": "H2O",
+                "percentage": 60.0
+            },
+            {
+                "formula": "H2",
+                "percentage": 25.0
+            },
+            {
+                "formula": "CO2",
+                "percentage": 10.0
+            },
+            {
+                "formula": "N2",
+                "percentage": 5.0
+            }
+        ]
+    },
+    {
+        "nome": "Ctoniano Residual (Vapor Mineral)",
+        "kinds_compativeis": [
+            "Chthonian",
+            "Exotic"
+        ],
+        "pressure_pa": 100.0,
+        "greenhouse_effect_k": 10.0,
+        "lapse_rate_k_per_m": 0.0010,
+        "composition": [
+            {
+                "formula": "Na",
+                "percentage": 40.0
+            },
+            {
+                "formula": "O2",
+                "percentage": 30.0
+            },
+            {
+                "formula": "SiO",
+                "percentage": 20.0
+            },
+            {
+                "formula": "Fe",
+                "percentage": 10.0
+            }
+        ]
+    }
+]

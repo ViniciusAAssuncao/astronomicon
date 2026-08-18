@@ -1,0 +1,1046 @@
+[
+  {
+    "nome": "Mercurio",
+    "kind": "Telluric",
+    "massa_kg": 3.3011e+23,
+    "raio_equatorial_m": 2439700.0,
+    "raio_polar_m": 2438400.0,
+    "periodo_rotacao_s": 5067031.68,
+    "obliquidade_rad": 0.000593411945678072,
+    "albedo_geometrico": 0.142,
+    "albedo_bond": 0.088,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.3871,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Venus",
+    "kind": "Telluric",
+    "massa_kg": 4.8675e+24,
+    "raio_equatorial_m": 6051800.0,
+    "raio_polar_m": 6051800.0,
+    "periodo_rotacao_s": -20997152.64,
+    "obliquidade_rad": 3.095515961337143,
+    "albedo_geometrico": 0.689,
+    "albedo_bond": 0.75,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.72333,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Terra",
+    "kind": "Telluric",
+    "massa_kg": 5.9722e+24,
+    "raio_equatorial_m": 6378100.0,
+    "raio_polar_m": 6356800.0,
+    "periodo_rotacao_s": 86164.0905,
+    "obliquidade_rad": 0.4090929593627069,
+    "albedo_geometrico": 0.367,
+    "albedo_bond": 0.306,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 1.0,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Marte",
+    "kind": "Telluric",
+    "massa_kg": 6.4171e+23,
+    "raio_equatorial_m": 3396200.0,
+    "raio_polar_m": 3376200.0,
+    "periodo_rotacao_s": 88642.663,
+    "obliquidade_rad": 0.4396484385773716,
+    "albedo_geometrico": 0.17,
+    "albedo_bond": 0.25,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 1.52368,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Lua",
+    "kind": "Telluric",
+    "massa_kg": 7.3477e+22,
+    "raio_equatorial_m": 1738100.0,
+    "raio_polar_m": 1736000.0,
+    "periodo_rotacao_s": 2360591.5104,
+    "obliquidade_rad": 0.02691995838276054,
+    "albedo_geometrico": 0.12,
+    "albedo_bond": 0.11,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.00257,
+      "corpo_pai": "Terra",
+      "massa_pai_kg": 5.9722e+24,
+      "tipo_pai": "planeta"
+    }
+  },
+  {
+    "nome": "Io",
+    "kind": "Telluric",
+    "massa_kg": 8.9319e+22,
+    "raio_equatorial_m": 1821600.0,
+    "raio_polar_m": 1815200.0,
+    "periodo_rotacao_s": 152853.5232,
+    "obliquidade_rad": 0.0,
+    "albedo_geometrico": 0.63,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.002819,
+      "corpo_pai": "Jupiter",
+      "massa_pai_kg": 1.89813e+27,
+      "tipo_pai": "planeta"
+    }
+  },
+  {
+    "nome": "Kepler-37 b",
+    "kind": "Telluric",
+    "massa_kg": 1.79166e+23,
+    "raio_equatorial_m": 1977211.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": null,
+    "albedo_bond": null,
+    "massa_estimada": true,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.1003,
+      "corpo_pai": "Kepler-37",
+      "massa_pai_kg": 1.5908e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Kepler-10 b",
+    "kind": "Telluric",
+    "massa_kg": 1.9887426e+25,
+    "raio_equatorial_m": 9375807.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": null,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.01685,
+      "corpo_pai": "Kepler-10",
+      "massa_pai_kg": 1.8095350000000002e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Jupiter",
+    "kind": "GasGiant",
+    "massa_kg": 1.89813e+27,
+    "raio_equatorial_m": 71492000.0,
+    "raio_polar_m": 66854000.0,
+    "periodo_rotacao_s": 35730.0,
+    "obliquidade_rad": 0.054628805587422516,
+    "albedo_geometrico": 0.503,
+    "albedo_bond": 0.503,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 5.2029,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Saturno",
+    "kind": "GasGiant",
+    "massa_kg": 5.6834e+26,
+    "raio_equatorial_m": 60268000.0,
+    "raio_polar_m": 54364000.0,
+    "periodo_rotacao_s": 38362.32,
+    "obliquidade_rad": 0.4665265090580843,
+    "albedo_geometrico": 0.499,
+    "albedo_bond": 0.342,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 9.5826,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "51 Pegasi b",
+    "kind": "GasGiant",
+    "massa_kg": 8.9591736e+26,
+    "raio_equatorial_m": null,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": null,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.0527,
+      "corpo_pai": "51 Pegasi",
+      "massa_pai_kg": 2.207235e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "HD 209458 b",
+    "kind": "GasGiant",
+    "massa_kg": 1.3097097e+27,
+    "raio_equatorial_m": 97157628.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": null,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.04747,
+      "corpo_pai": "HD 209458",
+      "massa_pai_kg": 2.2827979999999997e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "WASP-12 b",
+    "kind": "GasGiant",
+    "massa_kg": 2.7902511e+27,
+    "raio_equatorial_m": 135834800.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": null,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.0234,
+      "corpo_pai": "WASP-12",
+      "massa_pai_kg": 2.843555e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Urano",
+    "kind": "IceGiant",
+    "massa_kg": 8.6813e+25,
+    "raio_equatorial_m": 25559000.0,
+    "raio_polar_m": 24973000.0,
+    "periodo_rotacao_s": -62063.99999999999,
+    "obliquidade_rad": 1.706408409674856,
+    "albedo_geometrico": 0.488,
+    "albedo_bond": 0.3,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 19.1913,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Netuno",
+    "kind": "IceGiant",
+    "massa_kg": 1.02413e+26,
+    "raio_equatorial_m": 24764000.0,
+    "raio_polar_m": 24342000.0,
+    "periodo_rotacao_s": 57996.0,
+    "obliquidade_rad": 0.4942772441647941,
+    "albedo_geometrico": 0.422,
+    "albedo_bond": 0.29,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 30.069,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "GJ 1214 b",
+    "kind": "IceGiant",
+    "massa_kg": 3.911791e+25,
+    "raio_equatorial_m": 17093308.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": null,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.0149,
+      "corpo_pai": "GJ 1214",
+      "massa_pai_kg": 3.599185e+29,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "GJ 436 b",
+    "kind": "IceGiant",
+    "massa_kg": 1.3855504e+26,
+    "raio_equatorial_m": 27617173.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": null,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.0291,
+      "corpo_pai": "GJ 436",
+      "massa_pai_kg": 8.98802e+29,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "HAT-P-11 b",
+    "kind": "IceGiant",
+    "massa_kg": 1.5408276000000001e+26,
+    "raio_equatorial_m": 30168413.000000004,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": null,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.053,
+      "corpo_pai": "HAT-P-11",
+      "massa_pai_kg": 1.610685e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Plutao",
+    "kind": "DwarfPlanet",
+    "massa_kg": 1.3025e+22,
+    "raio_equatorial_m": 1188300.0,
+    "raio_polar_m": 1188300.0,
+    "periodo_rotacao_s": -551856.672,
+    "obliquidade_rad": 2.138551932468652,
+    "albedo_geometrico": 0.52,
+    "albedo_bond": 0.72,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 39.482,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Eris",
+    "kind": "DwarfPlanet",
+    "massa_kg": 1.6466e+22,
+    "raio_equatorial_m": 1163000.0,
+    "raio_polar_m": 1163000.0,
+    "periodo_rotacao_s": 1363901.76,
+    "obliquidade_rad": 1.36659280431156,
+    "albedo_geometrico": 0.96,
+    "albedo_bond": 0.99,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 67.648,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Ceres",
+    "kind": "DwarfPlanet",
+    "massa_kg": 9.3839e+20,
+    "raio_equatorial_m": 479700.0,
+    "raio_polar_m": 444400.0,
+    "periodo_rotacao_s": 32667.012000000002,
+    "obliquidade_rad": 0.06981317007977318,
+    "albedo_geometrico": 0.09,
+    "albedo_bond": 0.034,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 2.7675,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Haumea",
+    "kind": "DwarfPlanet",
+    "massa_kg": 4.006e+21,
+    "raio_equatorial_m": 1006500.0,
+    "raio_polar_m": 513000.0,
+    "periodo_rotacao_s": 14095.2276,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.66,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 43.13,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Makemake",
+    "kind": "DwarfPlanet",
+    "massa_kg": 3.1e+21,
+    "raio_equatorial_m": 715000.0,
+    "raio_polar_m": 715000.0,
+    "periodo_rotacao_s": 82175.76,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.77,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 45.79,
+      "corpo_pai": "Sol",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    }
+  },
+  {
+    "nome": "Europa",
+    "kind": "IcyBody",
+    "massa_kg": 4.7998e+22,
+    "raio_equatorial_m": 1560800.0,
+    "raio_polar_m": 1560800.0,
+    "periodo_rotacao_s": 306822.0384,
+    "obliquidade_rad": 0.0,
+    "albedo_geometrico": 0.67,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.00449,
+      "corpo_pai": "Jupiter",
+      "massa_pai_kg": 1.89813e+27,
+      "tipo_pai": "planeta"
+    }
+  },
+  {
+    "nome": "Ganimedes",
+    "kind": "IcyBody",
+    "massa_kg": 1.4819e+23,
+    "raio_equatorial_m": 2634100.0,
+    "raio_polar_m": 2634100.0,
+    "periodo_rotacao_s": 618153.3792,
+    "obliquidade_rad": 0.0,
+    "albedo_geometrico": 0.43,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.00715,
+      "corpo_pai": "Jupiter",
+      "massa_pai_kg": 1.89813e+27,
+      "tipo_pai": "planeta"
+    }
+  },
+  {
+    "nome": "Calisto",
+    "kind": "IcyBody",
+    "massa_kg": 1.0759e+23,
+    "raio_equatorial_m": 2410300.0,
+    "raio_polar_m": 2410300.0,
+    "periodo_rotacao_s": 1441931.1552000002,
+    "obliquidade_rad": 0.004886921905584123,
+    "albedo_geometrico": 0.2,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.01259,
+      "corpo_pai": "Jupiter",
+      "massa_pai_kg": 1.89813e+27,
+      "tipo_pai": "planeta"
+    }
+  },
+  {
+    "nome": "Tita",
+    "kind": "IcyBody",
+    "massa_kg": 1.3452e+23,
+    "raio_equatorial_m": 2574700.0,
+    "raio_polar_m": 2574700.0,
+    "periodo_rotacao_s": 1377648.0,
+    "obliquidade_rad": 0.005235987755982988,
+    "albedo_geometrico": 0.21,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.00817,
+      "corpo_pai": "Saturno",
+      "massa_pai_kg": 5.6834e+26,
+      "tipo_pai": "planeta"
+    }
+  },
+  {
+    "nome": "Encelado",
+    "kind": "IcyBody",
+    "massa_kg": 1.0802e+20,
+    "raio_equatorial_m": 252100.0,
+    "raio_polar_m": 248300.0,
+    "periodo_rotacao_s": 118386.8352,
+    "obliquidade_rad": 0.0,
+    "albedo_geometrico": 1.375,
+    "albedo_bond": 0.81,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.00159,
+      "corpo_pai": "Saturno",
+      "massa_pai_kg": 5.6834e+26,
+      "tipo_pai": "planeta"
+    }
+  },
+  {
+    "nome": "Tritao",
+    "kind": "IcyBody",
+    "massa_kg": 2.139e+22,
+    "raio_equatorial_m": 1353400.0,
+    "raio_polar_m": 1353400.0,
+    "periodo_rotacao_s": -507760.18559999997,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.756,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.002371,
+      "corpo_pai": "Netuno",
+      "massa_pai_kg": 1.02413e+26,
+      "tipo_pai": "planeta"
+    }
+  },
+  {
+    "nome": "55 Cancri e",
+    "kind": "CarbonPlanet",
+    "massa_kg": 4.6224828e+25,
+    "raio_equatorial_m": 11837753.600000001,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": null,
+    "albedo_bond": null,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.01596,
+      "corpo_pai": "55 Cancri A",
+      "massa_pai_kg": 1.8095350000000002e+30,
+      "tipo_pai": "estrela"
+    },
+    "teorica": true
+  },
+  {
+    "nome": "Chthonian Típico (1 M⊕)",
+    "kind": "Chthonian",
+    "massa_kg": 5.972e24,
+    "raio_equatorial_m": 6371000.0,
+    "raio_polar_m": 6356800.0,
+    "periodo_rotacao_s": 86400.0,
+    "obliquidade_rad": 0.0,
+    "albedo_geometrico": 0.1,
+    "albedo_bond": 0.05,
+    "teorica": true,
+    "nota": "Planeta ctoniano remanescente de um gigante gasoso evaporado, núcleo de ferro."
+  },
+  {
+    "nome": "Chthonian Massivo (10 M⊕)",
+    "kind": "Chthonian",
+    "massa_kg": 5.972e25,
+    "raio_equatorial_m": 15000000.0,
+    "raio_polar_m": 14800000.0,
+    "periodo_rotacao_s": 43200.0,
+    "obliquidade_rad": 0.1,
+    "albedo_geometrico": 0.15,
+    "albedo_bond": 0.08,
+    "teorica": true,
+    "nota": "Super-Chthonian, núcleo denso de um gigante gasoso de alta massa."
+  },
+  {
+    "nome": "Planeta de Carbono (2 M⊕)",
+    "kind": "CarbonPlanet",
+    "massa_kg": 1.1944e25,
+    "raio_equatorial_m": 9000000.0,
+    "raio_polar_m": 8900000.0,
+    "periodo_rotacao_s": 60000.0,
+    "obliquidade_rad": 0.2,
+    "albedo_geometrico": 0.2,
+    "albedo_bond": 0.15,
+    "teorica": true,
+    "nota": "Planeta de carbono com composição rica em carbonetos, grafite e diamante."
+  },
+  {
+    "nome": "Planeta de Diamante (1 M⊕)",
+    "kind": "CarbonPlanet",
+    "massa_kg": 5.972e24,
+    "raio_equatorial_m": 7000000.0,
+    "raio_polar_m": 6950000.0,
+    "periodo_rotacao_s": 72000.0,
+    "obliquidade_rad": 0.05,
+    "albedo_geometrico": 0.3,
+    "albedo_bond": 0.25,
+    "teorica": true,
+    "nota": "Planeta de carbono com alta pressão, superfície de diamante."
+  },
+  {
+    "nome": "Planeta Oceano (Exótico)",
+    "kind": "Exotic",
+    "massa_kg": 8.0e24,
+    "raio_equatorial_m": 12000000.0,
+    "raio_polar_m": 11800000.0,
+    "periodo_rotacao_s": 36000.0,
+    "obliquidade_rad": 0.3,
+    "albedo_geometrico": 0.4,
+    "albedo_bond": 0.35,
+    "teorica": true,
+    "nota": "Planeta oceano com manto de água líquida e gelo de alta pressão."
+  },
+  {
+    "nome": "Planeta de Lava (Exótico)",
+    "kind": "Exotic",
+    "massa_kg": 3.0e24,
+    "raio_equatorial_m": 5500000.0,
+    "raio_polar_m": 5400000.0,
+    "periodo_rotacao_s": 80000.0,
+    "obliquidade_rad": 0.01,
+    "albedo_geometrico": 0.05,
+    "albedo_bond": 0.02,
+    "teorica": true,
+    "nota": "Planeta coberto por oceanos de lava, com atmosfera de silicatos."
+  },
+  {
+    "nome": "TRAPPIST-1e",
+    "kind": "Telluric",
+    "massa_kg": 4.115e+24,
+    "raio_equatorial_m": 4900000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.2,
+    "albedo_bond": 0.18,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.02815,
+      "corpo_pai": "TRAPPIST-1",
+      "massa_pai_kg": 1.512e+29,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Planeta rochoso na zona habitável da anã M TRAPPIST-1."
+  },
+  {
+    "nome": "TRAPPIST-1f",
+    "kind": "Telluric",
+    "massa_kg": 5.552e+24,
+    "raio_equatorial_m": 6650000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.22,
+    "albedo_bond": 0.2,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.0371,
+      "corpo_pai": "TRAPPIST-1",
+      "massa_pai_kg": 1.512e+29,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Super-Terra na zona habitável, possivelmente coberta por água."
+  },
+  {
+    "nome": "TRAPPIST-1g",
+    "kind": "Telluric",
+    "massa_kg": 6.868e+24,
+    "raio_equatorial_m": 7180000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.23,
+    "albedo_bond": 0.21,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.0451,
+      "corpo_pai": "TRAPPIST-1",
+      "massa_pai_kg": 1.512e+29,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Super-Terra mais massiva do sistema, possivelmente com gelo de alta pressão."
+  },
+  {
+    "nome": "TRAPPIST-1h",
+    "kind": "IcyBody",
+    "massa_kg": 1.97e+24,
+    "raio_equatorial_m": 4810000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.3,
+    "albedo_bond": 0.28,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.061,
+      "corpo_pai": "TRAPPIST-1",
+      "massa_pai_kg": 1.512e+29,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Corpo gelado na borda externa do sistema TRAPPIST-1."
+  },
+  {
+    "nome": "Proxima Centauri b",
+    "kind": "Telluric",
+    "massa_kg": 7.582e+24,
+    "raio_equatorial_m": 6810000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.3,
+    "albedo_bond": 0.25,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.0485,
+      "corpo_pai": "Proxima Centauri",
+      "massa_pai_kg": 2.428e+29,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Exoplaneta mais próximo do Sol, na zona habitável de uma anã M."
+  },
+  {
+    "nome": "Kepler-442b",
+    "kind": "Telluric",
+    "massa_kg": 1.409e+25,
+    "raio_equatorial_m": 8530000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.32,
+    "albedo_bond": 0.28,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.409,
+      "corpo_pai": "Kepler-442",
+      "massa_pai_kg": 1.038e+30,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Super-Terra na zona habitável, considerada um dos melhores candidatos para habitabilidade."
+  },
+  {
+    "nome": "Kepler-452b",
+    "kind": "Telluric",
+    "massa_kg": 2.986e+25,
+    "raio_equatorial_m": 10400000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.3,
+    "albedo_bond": 0.25,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 1.046,
+      "corpo_pai": "Kepler-452",
+      "massa_pai_kg": 1.9885e+30,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Super-Terra orbitando uma estrela análoga ao Sol, na zona habitável."
+  },
+  {
+    "nome": "Kepler-186f",
+    "kind": "Telluric",
+    "massa_kg": 8.36e+24,
+    "raio_equatorial_m": 7450000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.28,
+    "albedo_bond": 0.24,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.432,
+      "corpo_pai": "Kepler-186",
+      "massa_pai_kg": 8.458e+29,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Primeiro planeta do tamanho da Terra encontrado na zona habitável de uma anã M."
+  },
+  {
+    "nome": "HD 40307 g",
+    "kind": "Telluric",
+    "massa_kg": 4.243e+25,
+    "raio_equatorial_m": 12100000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.3,
+    "albedo_bond": 0.25,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.6,
+      "corpo_pai": "HD 40307",
+      "massa_pai_kg": 1.278e+30,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Super-Terra na zona habitável de uma estrela K."
+  },
+  {
+    "nome": "Luyten b",
+    "kind": "Telluric",
+    "massa_kg": 1.732e+25,
+    "raio_equatorial_m": 8900000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.3,
+    "albedo_bond": 0.25,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.091,
+      "corpo_pai": "Luyten's Star",
+      "massa_pai_kg": 2.208e+29,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Planeta potencialmente habitável orbitando uma anã M próxima."
+  },
+  {
+    "nome": "GJ 1132 b",
+    "kind": "Telluric",
+    "massa_kg": 9.68e+24,
+    "raio_equatorial_m": 7390000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.1,
+    "albedo_bond": 0.08,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.0153,
+      "corpo_pai": "GJ 1132",
+      "massa_pai_kg": 2.278e+29,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Planeta rochoso quente, possivelmente com atmosfera fina."
+  },
+  {
+    "nome": "K2-18 b",
+    "kind": "IceGiant",
+    "massa_kg": 5.136e+25,
+    "raio_equatorial_m": 16500000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.2,
+    "albedo_bond": 0.15,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.142,
+      "corpo_pai": "K2-18",
+      "massa_pai_kg": 8.484e+29,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Mini-Netuno na zona habitável, com evidências de água na atmosfera."
+  },
+  {
+    "nome": "HD 219134 b",
+    "kind": "Telluric",
+    "massa_kg": 2.808e+25,
+    "raio_equatorial_m": 10200000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.2,
+    "albedo_bond": 0.15,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.038,
+      "corpo_pai": "HD 219134",
+      "massa_pai_kg": 1.269e+30,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Super-Terra em órbita curta, com trânsito detectado."
+  },
+  {
+    "nome": "Kepler-36 b",
+    "kind": "Telluric",
+    "massa_kg": 2.689e+25,
+    "raio_equatorial_m": 9500000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.25,
+    "albedo_bond": 0.2,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.115,
+      "corpo_pai": "Kepler-36",
+      "massa_pai_kg": 1.738e+30,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Planeta rochoso com vizinho gasoso em ressonância próxima."
+  },
+  {
+    "nome": "Kepler-36 c",
+    "kind": "IceGiant",
+    "massa_kg": 4.840e+25,
+    "raio_equatorial_m": 23400000.0,
+    "raio_polar_m": null,
+    "periodo_rotacao_s": null,
+    "obliquidade_rad": null,
+    "albedo_geometrico": 0.3,
+    "albedo_bond": 0.25,
+    "contexto_orbital": {
+      "semi_eixo_maior_au": 0.128,
+      "corpo_pai": "Kepler-36",
+      "massa_pai_kg": 1.738e+30,
+      "tipo_pai": "estrela"
+    },
+    "teorica": false,
+    "nota": "Mini-Netuno em ressonância com Kepler-36 b."
+  },
+  {
+    "nome": "LavaWorld (Exótico)",
+    "kind": "Exotic",
+    "massa_kg": 7.166e+24,
+    "raio_equatorial_m": 7000000.0,
+    "raio_polar_m": 6800000.0,
+    "periodo_rotacao_s": 43200.0,
+    "obliquidade_rad": 0.02,
+    "albedo_geometrico": 0.05,
+    "albedo_bond": 0.02,
+    "teorica": true,
+    "nota": "Planeta coberto por magma em erupção constante, com atmosfera de silicatos."
+  },
+  {
+    "nome": "DesertWorld",
+    "kind": "Telluric",
+    "massa_kg": 4.777e+24,
+    "raio_equatorial_m": 5730000.0,
+    "raio_polar_m": 5700000.0,
+    "periodo_rotacao_s": 72000.0,
+    "obliquidade_rad": 0.1,
+    "albedo_geometrico": 0.25,
+    "albedo_bond": 0.2,
+    "teorica": true,
+    "nota": "Planeta desértico com dunas extensas, atmosfera fina e CO2."
+  },
+  {
+    "nome": "OceanWorld",
+    "kind": "Exotic",
+    "massa_kg": 1.194e+25,
+    "raio_equatorial_m": 9550000.0,
+    "raio_polar_m": 9400000.0,
+    "periodo_rotacao_s": 57600.0,
+    "obliquidade_rad": 0.25,
+    "albedo_geometrico": 0.45,
+    "albedo_bond": 0.4,
+    "teorica": true,
+    "nota": "Planeta completamente coberto por água líquida, com profundos oceanos."
+  },
+  {
+    "nome": "PuffyPlanet",
+    "kind": "GasGiant",
+    "massa_kg": 5.694e+26,
+    "raio_equatorial_m": 107000000.0,
+    "raio_polar_m": 102000000.0,
+    "periodo_rotacao_s": 24000.0,
+    "obliquidade_rad": 0.05,
+    "albedo_geometrico": 0.4,
+    "albedo_bond": 0.35,
+    "teorica": true,
+    "nota": "Gigante gasoso inflado (puffy), com baixa densidade e órbita curta."
+  },
+  {
+    "nome": "IronPlanet",
+    "kind": "Chthonian",
+    "massa_kg": 2.986e+25,
+    "raio_equatorial_m": 5100000.0,
+    "raio_polar_m": 5080000.0,
+    "periodo_rotacao_s": 64800.0,
+    "obliquidade_rad": 0.03,
+    "albedo_geometrico": 0.12,
+    "albedo_bond": 0.06,
+    "teorica": true,
+    "nota": "Planeta essencialmente metálico, remanescente de um gigante gasoso evaporado."
+  },
+  {
+    "nome": "FrozenWorld",
+    "kind": "IcyBody",
+    "massa_kg": 2.986e+24,
+    "raio_equatorial_m": 5090000.0,
+    "raio_polar_m": 5060000.0,
+    "periodo_rotacao_s": 120000.0,
+    "obliquidade_rad": 0.4,
+    "albedo_geometrico": 0.7,
+    "albedo_bond": 0.65,
+    "teorica": true,
+    "nota": "Mundo gelado com superfície de água congelada e possíveis criovulcões."
+  },
+  {
+    "nome": "HyceanWorld",
+    "kind": "Exotic",
+    "massa_kg": 3.583e+25,
+    "raio_equatorial_m": 14000000.0,
+    "raio_polar_m": 13800000.0,
+    "periodo_rotacao_s": 48000.0,
+    "obliquidade_rad": 0.15,
+    "albedo_geometrico": 0.35,
+    "albedo_bond": 0.3,
+    "teorica": true,
+    "nota": "Mundo Hycean: oceano profundo sob atmosfera rica em hidrogênio, habitável."
+  },
+  {
+    "nome": "GasDwarf",
+    "kind": "IceGiant",
+    "massa_kg": 9.956e+24,
+    "raio_equatorial_m": 9500000.0,
+    "raio_polar_m": 9300000.0,
+    "periodo_rotacao_s": 54000.0,
+    "obliquidade_rad": 0.1,
+    "albedo_geometrico": 0.2,
+    "albedo_bond": 0.15,
+    "teorica": true,
+    "nota": "Planeta gasoso de baixa massa, entre Super-Terra e Netuno."
+  },
+  {
+    "nome": "LavaOceanWorld",
+    "kind": "Exotic",
+    "massa_kg": 4.777e+24,
+    "raio_equatorial_m": 6000000.0,
+    "raio_polar_m": 5900000.0,
+    "periodo_rotacao_s": 36000.0,
+    "obliquidade_rad": 0.05,
+    "albedo_geometrico": 0.03,
+    "albedo_bond": 0.01,
+    "teorica": true,
+    "nota": "Planeta com oceanos de lava e atmosfera de rocha vaporizada."
+  },
+  {
+    "nome": "SulfurWorld",
+    "kind": "Exotic",
+    "massa_kg": 3.583e+24,
+    "raio_equatorial_m": 5400000.0,
+    "raio_polar_m": 5300000.0,
+    "periodo_rotacao_s": 90000.0,
+    "obliquidade_rad": 0.2,
+    "albedo_geometrico": 0.08,
+    "albedo_bond": 0.04,
+    "teorica": true,
+    "nota": "Planeta com atmosfera de dióxido de enxofre e superfície de enxofre fundido."
+  },
+  {
+    "nome": "IceGiantCompact",
+    "kind": "IceGiant",
+    "massa_kg": 6.145e+25,
+    "raio_equatorial_m": 18000000.0,
+    "raio_polar_m": 17700000.0,
+    "periodo_rotacao_s": 60000.0,
+    "obliquidade_rad": 0.6,
+    "albedo_geometrico": 0.5,
+    "albedo_bond": 0.45,
+    "teorica": true,
+    "nota": "Gigante de gelo compacto, com alta densidade devido a núcleo rochoso."
+  },
+  {
+    "nome": "CarbonDwarf",
+    "kind": "CarbonPlanet",
+    "massa_kg": 7.166e+24,
+    "raio_equatorial_m": 7200000.0,
+    "raio_polar_m": 7100000.0,
+    "periodo_rotacao_s": 80000.0,
+    "obliquidade_rad": 0.08,
+    "albedo_geometrico": 0.15,
+    "albedo_bond": 0.12,
+    "teorica": true,
+    "nota": "Planeta anão de carbono, superfície dominada por grafite e silicatos."
+  },
+  {
+    "nome": "ChthonianLava",
+    "kind": "Chthonian",
+    "massa_kg": 1.194e+25,
+    "raio_equatorial_m": 4800000.0,
+    "raio_polar_m": 4750000.0,
+    "periodo_rotacao_s": 50000.0,
+    "obliquidade_rad": 0.01,
+    "albedo_geometrico": 0.07,
+    "albedo_bond": 0.03,
+    "teorica": true,
+    "nota": "Núcleo ctoniano com atividade vulcânica intensa, superfície parcialmente fundida."
+  }
+]
