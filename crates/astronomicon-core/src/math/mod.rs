@@ -1,6 +1,7 @@
 pub mod atmosphere;
 pub mod circulation;
 pub mod climate;
+pub mod geophysics;
 pub mod gravity;
 pub mod kepler;
 pub mod lagrange;
@@ -17,6 +18,7 @@ pub mod wind;
 pub use atmosphere::*;
 pub use circulation::*;
 pub use climate::*;
+pub use geophysics::*;
 pub use gravity::*;
 pub use kepler::*;
 pub use lagrange::*;
