@@ -8,6 +8,7 @@ use astronomicon_core::math::circulation::{
 };
 use astronomicon_core::math::climate::{
     advective_local_temperature, atmospheric_column_heat_capacity, blended_local_temperature,
+    combined_column_heat_capacity, combined_thermal_redistribution_efficiency,
     day_length_half_angle, local_radiative_equilibrium_temperature, mean_daily_insolation_factor,
     solar_declination, temperature_at_altitude, thermal_redistribution_efficiency,
 };
@@ -34,7 +35,8 @@ use astronomicon_core::units::{
     TemperatureGradient,
 };
 use astronomicon_db::repositories::{
-    atmosphere_repository, barycenter_repository, planet_repository, star_repository,
+    atmosphere_repository, barycenter_repository, hydrosphere_repository, planet_repository,
+    star_repository,
 };
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
@@ -240,12 +242,29 @@ pub async fn resolve_global_mean_temperature(
 
     let orbital_distance = (planet_pos - star_pos).magnitude();
 
-    let eq_temp = equilibrium_temperature(star_temp, star_radius, orbital_distance, bond_albedo);
-
     let greenhouse = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
         Some(atmosphere) => atmosphere.greenhouse_effect(),
         None => Temperature::new(0.0),
     };
+
+    let effective_albedo = if let Some(hydrosphere) =
+        hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?
+    {
+        let base_eq =
+            equilibrium_temperature(star_temp, star_radius, orbital_distance, bond_albedo);
+        let base_surface_temp = base_eq + greenhouse;
+        let pressure = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
+            Some(atm) => atm.surface_pressure(),
+            None => Pressure::new(0.0),
+        };
+        let initial_state = hydrosphere.matter_state(base_surface_temp, pressure)?;
+        hydrosphere.dynamic_albedo(bond_albedo, initial_state)?
+    } else {
+        bond_albedo
+    };
+
+    let eq_temp =
+        equilibrium_temperature(star_temp, star_radius, orbital_distance, effective_albedo);
 
     Ok(eq_temp + greenhouse)
 }
@@ -519,7 +538,7 @@ pub async fn resolve_planetary_circulation(
     let global_mean =
         resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
 
-    let (scale_h, col_heat_cap) =
+    let (scale_h, atm_col_heat_cap) =
         if let Some(atmosphere) = atmosphere_repository::get_by_planet_id(pool, &planet_id).await?
         {
             let h = atmosphere.scale_height(g, global_mean)?;
@@ -554,7 +573,24 @@ pub async fn resolve_planetary_circulation(
     let l_beta = rhines_scale(char_u, beta_eq);
 
     let cells = circulation_cells_per_hemisphere(radius, l_beta);
-    let efficiency = thermal_redistribution_efficiency(col_heat_cap, cells);
+
+    let (efficiency, col_heat_cap) = if let Some(hydrosphere) =
+        hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?
+    {
+        let oce_col_heat_cap = hydrosphere.oceanic_column_heat_capacity()?;
+        let cov = hydrosphere.surface_coverage_fraction();
+        let eff = combined_thermal_redistribution_efficiency(
+            atm_col_heat_cap,
+            oce_col_heat_cap,
+            cov,
+            cells,
+        );
+        let comb_cap = combined_column_heat_capacity(atm_col_heat_cap, oce_col_heat_cap, cov);
+        (eff, comb_cap)
+    } else {
+        let eff = thermal_redistribution_efficiency(atm_col_heat_cap, cells);
+        (eff, atm_col_heat_cap)
+    };
 
     Ok(PlanetaryCirculationDiagnostic {
         angular_velocity: omega,
