@@ -1,6 +1,7 @@
 pub mod atmosphere;
 pub mod circulation;
 pub mod climate;
+pub mod geology;
 pub mod geophysics;
 pub mod gravity;
 pub mod hydrosphere;
@@ -22,6 +23,7 @@ pub mod wind;
 pub use atmosphere::*;
 pub use circulation::*;
 pub use climate::*;
+pub use geology::*;
 pub use geophysics::*;
 pub use gravity::*;
 pub use hydrosphere::*;

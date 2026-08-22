@@ -10,7 +10,11 @@ pub use domain::{
     OrbitalElements, OrbitalParent, Planet, PlanetBuilder, PlanetKind, Star, StarBuilder,
     StarKind, StarSystem, UniverseState,
 };
-pub use math::{HydrosphereStructure, MatterState, ResonanceState, SecularPrecessionRates};
+pub use math::{
+    crust_thermal_conductivity, lithosphere_thickness, lithosphere_thickness_for_planet,
+    mantle_solidus_temperature, HydrosphereStructure, MatterState, ResonanceState,
+    SecularPrecessionRates,
+};
 pub use units::{
     Acceleration, AccelerationVector, Angle, AngularVelocity, Density, Duration, Energy, Frequency,
     GravitationalParameter, HeatFlux, Irradiance, Length, Luminosity, MagneticDipoleMoment,
