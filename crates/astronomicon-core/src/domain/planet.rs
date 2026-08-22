@@ -1,7 +1,7 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
 use crate::error::{DomainError, DomainResult};
-use crate::units::{Angle, Duration, Length, Mass};
+use crate::units::{Angle, Duration, Length, MagneticFluxDensity, Mass};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::TAU;
 use uuid::Uuid;
@@ -37,6 +37,9 @@ pub struct PlanetBuilder {
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
     hydrosphere_fraction: Option<f64>,
+    core_mass_fraction: Option<f64>,
+    radioactive_heating_rate: Option<f64>,
+    magnetic_field_locked: Option<MagneticFluxDensity>,
 }
 
 impl PlanetBuilder {
@@ -65,6 +68,9 @@ impl PlanetBuilder {
             orbital_elements: None,
             oblateness_j2: None,
             hydrosphere_fraction: None,
+            core_mass_fraction: None,
+            radioactive_heating_rate: None,
+            magnetic_field_locked: None,
         }
     }
 
@@ -137,6 +143,30 @@ impl PlanetBuilder {
         hydrosphere_fraction: impl Into<Option<f64>>,
     ) -> Self {
         self.hydrosphere_fraction = hydrosphere_fraction.into();
+        self
+    }
+
+    pub fn with_core_mass_fraction(
+        mut self,
+        core_mass_fraction: impl Into<Option<f64>>,
+    ) -> Self {
+        self.core_mass_fraction = core_mass_fraction.into();
+        self
+    }
+
+    pub fn with_radioactive_heating_rate(
+        mut self,
+        radioactive_heating_rate: impl Into<Option<f64>>,
+    ) -> Self {
+        self.radioactive_heating_rate = radioactive_heating_rate.into();
+        self
+    }
+
+    pub fn with_magnetic_field_locked(
+        mut self,
+        magnetic_field_locked: impl Into<Option<MagneticFluxDensity>>,
+    ) -> Self {
+        self.magnetic_field_locked = magnetic_field_locked.into();
         self
     }
 
@@ -259,6 +289,33 @@ impl PlanetBuilder {
             }
         }
 
+        if let Some(cmf) = self.core_mass_fraction {
+            if !cmf.is_finite() || !(0.0..=1.0).contains(&cmf) {
+                return Err(DomainError::InvalidInvariant {
+                    field: "core_mass_fraction".to_string(),
+                    reason: "must be between 0.0 and 1.0".to_string(),
+                });
+            }
+        }
+
+        if let Some(rhr) = self.radioactive_heating_rate {
+            if !rhr.is_finite() || rhr < 0.0 {
+                return Err(DomainError::InvalidInvariant {
+                    field: "radioactive_heating_rate".to_string(),
+                    reason: "must be non-negative and finite".to_string(),
+                });
+            }
+        }
+
+        if let Some(b) = self.magnetic_field_locked {
+            if !b.value().is_finite() || b.value() < 0.0 {
+                return Err(DomainError::InvalidInvariant {
+                    field: "magnetic_field_locked".to_string(),
+                    reason: "must be non-negative and finite".to_string(),
+                });
+            }
+        }
+
         let solstice_true_anomaly = self
             .solstice_true_anomaly
             .map(|angle| Angle::new(angle.value().rem_euclid(TAU)));
@@ -281,6 +338,9 @@ impl PlanetBuilder {
             orbital_elements: self.orbital_elements,
             oblateness_j2: self.oblateness_j2,
             hydrosphere_fraction: self.hydrosphere_fraction,
+            core_mass_fraction: self.core_mass_fraction,
+            radioactive_heating_rate: self.radioactive_heating_rate,
+            magnetic_field_locked: self.magnetic_field_locked,
         })
     }
 }
@@ -304,6 +364,9 @@ pub struct Planet {
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
     hydrosphere_fraction: Option<f64>,
+    core_mass_fraction: Option<f64>,
+    radioactive_heating_rate: Option<f64>,
+    magnetic_field_locked: Option<MagneticFluxDensity>,
 }
 
 impl Planet {
@@ -335,6 +398,9 @@ impl Planet {
         orbital_elements: Option<OrbitalElements>,
         oblateness_j2: Option<f64>,
         hydrosphere_fraction: Option<f64>,
+        core_mass_fraction: Option<f64>,
+        radioactive_heating_rate: Option<f64>,
+        magnetic_field_locked: Option<MagneticFluxDensity>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
             .with_star_system_id(star_system_id)
@@ -349,6 +415,9 @@ impl Planet {
             .with_orbital_elements(orbital_elements)
             .with_oblateness_j2(oblateness_j2)
             .with_hydrosphere_fraction(hydrosphere_fraction)
+            .with_core_mass_fraction(core_mass_fraction)
+            .with_radioactive_heating_rate(radioactive_heating_rate)
+            .with_magnetic_field_locked(magnetic_field_locked)
             .build()
     }
 
@@ -418,5 +487,17 @@ impl Planet {
 
     pub fn hydrosphere_fraction(&self) -> Option<f64> {
         self.hydrosphere_fraction
+    }
+
+    pub fn core_mass_fraction(&self) -> Option<f64> {
+        self.core_mass_fraction
+    }
+
+    pub fn radioactive_heating_rate(&self) -> Option<f64> {
+        self.radioactive_heating_rate
+    }
+
+    pub fn magnetic_field_locked(&self) -> Option<MagneticFluxDensity> {
+        self.magnetic_field_locked
     }
 }
