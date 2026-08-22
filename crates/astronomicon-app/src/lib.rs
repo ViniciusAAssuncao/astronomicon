@@ -5,6 +5,7 @@ pub mod error;
 pub mod geophysics;
 pub mod gravity;
 pub mod lagrange;
+pub mod radiation;
 pub mod resonance;
 pub mod shape;
 
@@ -15,6 +16,7 @@ pub use error::{AppError, AppResult};
 pub use geophysics::*;
 pub use gravity::*;
 pub use lagrange::*;
+pub use radiation::*;
 pub use resonance::*;
 pub use shape::*;
 

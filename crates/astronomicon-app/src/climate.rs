@@ -72,7 +72,7 @@ pub struct StellarWindDiagnostic {
     pub dynamic_pressure: Pressure,
 }
 
-async fn collect_stars_from_barycenter(
+pub(crate) async fn collect_stars_from_barycenter(
     pool: &SqlitePool,
     barycenter_id: &Uuid,
     visited: &mut std::collections::HashSet<Uuid>,
@@ -119,7 +119,7 @@ async fn collect_stars_from_barycenter(
     Ok(stars)
 }
 
-async fn find_parent_star(pool: &SqlitePool, planet: &Planet) -> AppResult<Star> {
+pub(crate) async fn find_parent_star(pool: &SqlitePool, planet: &Planet) -> AppResult<Star> {
     let mut current_parent = planet.orbital_parent();
     let mut visited_barycenters = std::collections::HashSet::new();
 
