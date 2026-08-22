@@ -1,63 +1,11 @@
 use crate::domain::{PlanetKind, PlanetRheology, TectonicRegime};
 use crate::math::hydrosphere::HydrosphereStructure;
 use crate::units::constants::{
-    BASE_LITHOSPHERE_YIELD_STRESS, CARBON_CRUST_THERMAL_CONDUCTIVITY, CARBON_SOLIDUS_BASE_K,
-    EARTH_MASS, HEAT_PIPE_HEAT_FLUX_THRESHOLD, ICE_CRUST_THERMAL_CONDUCTIVITY, ICE_SOLIDUS_BASE_K,
-    MANTLE_CONVECTIVE_STRESS_COEFFICIENT, MANTLE_DENSITY_REFERENCE, MANTLE_THERMAL_EXPANSION,
-    PLATE_VELOCITY_SCALING_COEFFICIENT, SILICATE_CRUST_THERMAL_CONDUCTIVITY,
-    SILICATE_SOLIDUS_BASE_K, TECTONIC_PLATE_COUNT_COEFFICIENT,
+    HEAT_PIPE_HEAT_FLUX_THRESHOLD, MANTLE_CONVECTIVE_STRESS_COEFFICIENT,
+    PLATE_VELOCITY_SCALING_COEFFICIENT, TECTONIC_PLATE_COUNT_COEFFICIENT,
     WATER_YIELD_STRESS_REDUCTION_FACTOR,
 };
-use crate::units::{Acceleration, Density, HeatFlux, Length, Mass, Pressure, Speed, Temperature};
-
-pub fn crust_thermal_conductivity(kind: PlanetKind, rheology: Option<&PlanetRheology>) -> f64 {
-    if let Some(r) = rheology {
-        r.mean_thermal_conductivity()
-    } else {
-        match kind {
-            PlanetKind::Telluric | PlanetKind::Chthonian => SILICATE_CRUST_THERMAL_CONDUCTIVITY,
-            PlanetKind::CarbonPlanet => CARBON_CRUST_THERMAL_CONDUCTIVITY,
-            PlanetKind::IcyBody | PlanetKind::IceGiant | PlanetKind::DwarfPlanet => {
-                ICE_CRUST_THERMAL_CONDUCTIVITY
-            }
-            PlanetKind::GasGiant | PlanetKind::Exotic => SILICATE_CRUST_THERMAL_CONDUCTIVITY,
-        }
-    }
-}
-
-pub fn mantle_solidus_temperature(
-    kind: PlanetKind,
-    mass: Mass,
-    rheology: Option<&PlanetRheology>,
-) -> Temperature {
-    let m = mass.value();
-    if m <= 0.0 || !m.is_finite() {
-        return Temperature::new(0.0);
-    }
-
-    let base_solidus = if let Some(r) = rheology {
-        r.mean_solidus_temperature().value()
-    } else {
-        match kind {
-            PlanetKind::Telluric | PlanetKind::Chthonian => SILICATE_SOLIDUS_BASE_K,
-            PlanetKind::CarbonPlanet => CARBON_SOLIDUS_BASE_K,
-            PlanetKind::IcyBody | PlanetKind::IceGiant | PlanetKind::DwarfPlanet => {
-                ICE_SOLIDUS_BASE_K
-            }
-            PlanetKind::GasGiant | PlanetKind::Exotic => SILICATE_SOLIDUS_BASE_K,
-        }
-    };
-
-    let mass_ratio = m / EARTH_MASS;
-    let scaling = (1.0 + 0.05 * (1.0 + mass_ratio).ln().max(0.0)).max(0.1);
-    let t_solidus = base_solidus * scaling;
-
-    if !t_solidus.is_finite() || t_solidus <= 0.0 {
-        Temperature::new(0.0)
-    } else {
-        Temperature::new(t_solidus)
-    }
-}
+use crate::units::{Acceleration, Density, HeatFlux, Length, Pressure, Speed, Temperature};
 
 pub fn lithosphere_thickness(
     base_temperature: Temperature,
@@ -94,16 +42,36 @@ pub fn lithosphere_thickness(
     }
 }
 
-pub fn lithosphere_thickness_for_planet(
-    kind: PlanetKind,
-    mass: Mass,
+pub fn brittle_ductile_transition_depth(
+    lithosphere_thickness: Length,
     surface_temperature: Temperature,
-    surface_heat_flux: HeatFlux,
-    rheology: Option<&PlanetRheology>,
+    base_temperature: Temperature,
+    solidus_temperature: Temperature,
 ) -> Length {
-    let t_solidus = mantle_solidus_temperature(kind, mass, rheology);
-    let k = crust_thermal_conductivity(kind, rheology);
-    lithosphere_thickness(t_solidus, surface_temperature, surface_heat_flux, k)
+    let z_l = lithosphere_thickness.value();
+    let t_surf = surface_temperature.value();
+    let t_base = base_temperature.value();
+    let t_sol = solidus_temperature.value();
+
+    if !z_l.is_finite()
+        || z_l <= 0.0
+        || !t_surf.is_finite()
+        || !t_base.is_finite()
+        || !t_sol.is_finite()
+        || t_base <= t_surf
+    {
+        return Length::new(0.0);
+    }
+
+    let delta_t = t_base - t_surf;
+    let delta_t_brittle = 0.5 * t_sol - t_surf;
+
+    if delta_t_brittle <= 0.0 {
+        return Length::new(0.0);
+    }
+
+    let fraction = (delta_t_brittle / delta_t).clamp(0.0, 1.0);
+    Length::new(z_l * fraction)
 }
 
 pub fn mantle_convective_stress(
@@ -176,7 +144,7 @@ pub fn determine_tectonic_regime(
     tidal_heat_flux: HeatFlux,
     has_water: bool,
     hydrosphere_structure: Option<&HydrosphereStructure>,
-    rheology: Option<&PlanetRheology>,
+    rheology: &PlanetRheology,
 ) -> TectonicRegime {
     if surface_heat_flux.value() >= HEAT_PIPE_HEAT_FLUX_THRESHOLD {
         return TectonicRegime::HeatPipe;
@@ -212,18 +180,8 @@ pub fn determine_tectonic_regime(
         return TectonicRegime::Inactive;
     }
 
-    let mantle_density = if let Some(r) = rheology {
-        r.mean_density()
-    } else {
-        Density::new(MANTLE_DENSITY_REFERENCE)
-    };
-
-    let thermal_expansion = if let Some(r) = rheology {
-        r.mean_thermal_expansion()
-    } else {
-        MANTLE_THERMAL_EXPANSION
-    };
-
+    let mantle_density = rheology.mean_density();
+    let thermal_expansion = rheology.mean_thermal_expansion();
     let conv_stress = mantle_convective_stress(
         surface_gravity,
         surface_heat_flux,
@@ -231,12 +189,7 @@ pub fn determine_tectonic_regime(
         thermal_expansion,
     );
 
-    let base_yield = if let Some(r) = rheology {
-        r.mean_base_yield_stress()
-    } else {
-        Pressure::new(BASE_LITHOSPHERE_YIELD_STRESS)
-    };
-
+    let base_yield = rheology.mean_base_yield_stress();
     let yield_strength = lithosphere_yield_strength(base_yield, has_water);
 
     if conv_stress.value() >= yield_strength.value() {

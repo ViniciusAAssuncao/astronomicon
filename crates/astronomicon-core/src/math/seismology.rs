@@ -1,7 +1,7 @@
 use crate::domain::TectonicRegime;
 use crate::math::hydrosphere::spherical_shell_volume;
 use crate::units::{
-    Acceleration, Density, Duration, HeatFlux, Length, Luminosity, Mass, Pressure, Speed,
+    Acceleration, Density, HeatFlux, Length, Luminosity, Mass, Pressure, Speed,
 };
 use std::f64::consts::PI;
 
@@ -74,43 +74,52 @@ pub fn radial_tidal_stress_amplitude(
     }
 }
 
+pub fn seismic_efficiency(yield_stress: Pressure, shear_modulus: Pressure) -> f64 {
+    let sigma_y = yield_stress.value();
+    let mu = shear_modulus.value();
+
+    if sigma_y <= 0.0 || mu <= 0.0 || !sigma_y.is_finite() || !mu.is_finite() {
+        return 0.001;
+    }
+
+    let eff = (0.1 * sigma_y) / (2.0 * mu);
+    if !eff.is_finite() {
+        return 0.001;
+    }
+
+    eff.clamp(0.001, 0.1)
+}
+
 pub fn tidal_seismic_energy_rate(
-    tidal_stress_amplitude: Pressure,
+    total_tidal_power: Luminosity,
     planet_radius: Length,
-    lithosphere_thickness: Length,
-    orbital_period: Duration,
-    shear_modulus: f64,
+    brittle_thickness: Length,
     seismic_efficiency: f64,
 ) -> Luminosity {
-    let delta_sigma = tidal_stress_amplitude.value();
+    let p_tide = total_tidal_power.value();
     let r = planet_radius.value();
-    let z_l = lithosphere_thickness.value();
-    let period = orbital_period.value();
-    let mu = shear_modulus;
+    let z_b = brittle_thickness.value();
     let eta = seismic_efficiency.clamp(0.0, 1.0);
 
-    if delta_sigma <= 0.0
+    if p_tide <= 0.0
         || r <= 0.0
-        || z_l <= 0.0
-        || period <= 0.0
-        || mu <= 0.0
-        || !delta_sigma.is_finite()
+        || z_b <= 0.0
+        || !p_tide.is_finite()
         || !r.is_finite()
-        || !z_l.is_finite()
-        || !period.is_finite()
-        || !mu.is_finite()
+        || !z_b.is_finite()
     {
         return Luminosity::new(0.0);
     }
 
-    let v_lith = spherical_shell_volume(planet_radius, lithosphere_thickness, 1.0);
-    if v_lith <= 0.0 || !v_lith.is_finite() {
+    let v_planet = (4.0 / 3.0) * PI * r.powi(3);
+    let v_brittle = spherical_shell_volume(planet_radius, brittle_thickness, 1.0);
+
+    if v_planet <= 0.0 || !v_planet.is_finite() {
         return Luminosity::new(0.0);
     }
 
-    let strain_energy_density = (delta_sigma * delta_sigma) / (2.0 * mu);
-    let total_elastic_energy = strain_energy_density * v_lith;
-    let power = (total_elastic_energy * eta) / period;
+    let volume_fraction = (v_brittle / v_planet).clamp(0.0, 1.0);
+    let power = p_tide * volume_fraction * eta;
 
     if !power.is_finite() || power <= 0.0 {
         Luminosity::new(0.0)
@@ -161,22 +170,28 @@ pub fn thermal_contraction_strain_rate(
 pub fn tectonic_seismic_energy_rate(
     regime: TectonicRegime,
     plate_velocity: Speed,
-    lithosphere_thickness: Length,
+    brittle_thickness: Length,
     planet_radius: Length,
     planet_mass: Mass,
     surface_heat_flux: HeatFlux,
     lithosphere_yield_stress: Pressure,
+    shear_modulus: Pressure,
     plate_count: u32,
     thermal_expansion: f64,
     specific_heat_capacity: f64,
-    seismic_efficiency: f64,
 ) -> Luminosity {
-    let eta = seismic_efficiency.clamp(0.0, 1.0);
+    let eta = seismic_efficiency(lithosphere_yield_stress, shear_modulus);
     let sigma_y = lithosphere_yield_stress.value();
     let r = planet_radius.value();
-    let z_l = lithosphere_thickness.value();
+    let z_b = brittle_thickness.value();
 
-    if sigma_y <= 0.0 || r <= 0.0 || z_l <= 0.0 || !sigma_y.is_finite() || !r.is_finite() || !z_l.is_finite() {
+    if sigma_y <= 0.0
+        || r <= 0.0
+        || z_b <= 0.0
+        || !sigma_y.is_finite()
+        || !r.is_finite()
+        || !z_b.is_finite()
+    {
         return Luminosity::new(0.0);
     }
 
@@ -189,7 +204,7 @@ pub fn tectonic_seismic_energy_rate(
 
             let n_plates = plate_count.max(2) as f64;
             let boundary_length = n_plates.sqrt() * PI * r;
-            let fault_area_rate = boundary_length * z_l.min(r) * v;
+            let fault_area_rate = boundary_length * z_b.min(r) * v;
             let power = sigma_y * fault_area_rate * eta;
 
             if !power.is_finite() || power <= 0.0 {
@@ -211,8 +226,8 @@ pub fn tectonic_seismic_energy_rate(
                 return Luminosity::new(0.0);
             }
 
-            let v_lith = spherical_shell_volume(planet_radius, lithosphere_thickness, 1.0);
-            let power = sigma_y * v_lith * strain_rate * eta;
+            let v_brittle = spherical_shell_volume(planet_radius, brittle_thickness, 1.0);
+            let power = sigma_y * v_brittle * strain_rate * eta;
 
             if !power.is_finite() || power <= 0.0 {
                 Luminosity::new(0.0)
