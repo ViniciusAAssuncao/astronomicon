@@ -1,0 +1,2 @@
+ALTER TABLE planets ADD COLUMN love_number_k2 REAL CHECK (love_number_k2 IS NULL OR love_number_k2 > 0.0);
+ALTER TABLE planets ADD COLUMN tidal_dissipation_factor_q REAL CHECK (tidal_dissipation_factor_q IS NULL OR tidal_dissipation_factor_q > 0.0);

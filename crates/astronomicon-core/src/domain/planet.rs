@@ -1,8 +1,8 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
-use crate::error::{ DomainError, DomainResult };
-use crate::units::{ Angle, Duration, Length, MagneticFluxDensity, Mass };
-use serde::{ Deserialize, Serialize };
+use crate::error::{DomainError, DomainResult};
+use crate::units::{Angle, Duration, Length, MagneticFluxDensity, Mass};
+use serde::{Deserialize, Serialize};
 use std::f64::consts::TAU;
 use uuid::Uuid;
 
@@ -39,6 +39,8 @@ pub struct PlanetBuilder {
     core_mass_fraction: Option<f64>,
     radioactive_heating_rate: Option<f64>,
     magnetic_field_locked: Option<MagneticFluxDensity>,
+    love_number_k2: Option<f64>,
+    tidal_dissipation_factor_q: Option<f64>,
 }
 
 impl PlanetBuilder {
@@ -47,7 +49,7 @@ impl PlanetBuilder {
         name: impl Into<String>,
         mass: Mass,
         kind: PlanetKind,
-        orbital_parent: OrbitalParent
+        orbital_parent: OrbitalParent,
     ) -> Self {
         Self {
             id,
@@ -69,6 +71,8 @@ impl PlanetBuilder {
             core_mass_fraction: None,
             radioactive_heating_rate: None,
             magnetic_field_locked: None,
+            love_number_k2: None,
+            tidal_dissipation_factor_q: None,
         }
     }
 
@@ -114,7 +118,7 @@ impl PlanetBuilder {
 
     pub fn with_solstice_true_anomaly(
         mut self,
-        solstice_true_anomaly: impl Into<Option<Angle>>
+        solstice_true_anomaly: impl Into<Option<Angle>>,
     ) -> Self {
         self.solstice_true_anomaly = solstice_true_anomaly.into();
         self
@@ -122,7 +126,7 @@ impl PlanetBuilder {
 
     pub fn with_orbital_elements(
         mut self,
-        orbital_elements: impl Into<Option<OrbitalElements>>
+        orbital_elements: impl Into<Option<OrbitalElements>>,
     ) -> Self {
         self.orbital_elements = orbital_elements.into();
         self
@@ -140,7 +144,7 @@ impl PlanetBuilder {
 
     pub fn with_radioactive_heating_rate(
         mut self,
-        radioactive_heating_rate: impl Into<Option<f64>>
+        radioactive_heating_rate: impl Into<Option<f64>>,
     ) -> Self {
         self.radioactive_heating_rate = radioactive_heating_rate.into();
         self
@@ -148,9 +152,22 @@ impl PlanetBuilder {
 
     pub fn with_magnetic_field_locked(
         mut self,
-        magnetic_field_locked: impl Into<Option<MagneticFluxDensity>>
+        magnetic_field_locked: impl Into<Option<MagneticFluxDensity>>,
     ) -> Self {
         self.magnetic_field_locked = magnetic_field_locked.into();
+        self
+    }
+
+    pub fn with_love_number_k2(mut self, love_number_k2: impl Into<Option<f64>>) -> Self {
+        self.love_number_k2 = love_number_k2.into();
+        self
+    }
+
+    pub fn with_tidal_dissipation_factor_q(
+        mut self,
+        tidal_dissipation_factor_q: impl Into<Option<f64>>,
+    ) -> Self {
+        self.tidal_dissipation_factor_q = tidal_dissipation_factor_q.into();
         self
     }
 
@@ -291,9 +308,27 @@ impl PlanetBuilder {
             }
         }
 
-        let solstice_true_anomaly = self.solstice_true_anomaly.map(|angle|
-            Angle::new(angle.value().rem_euclid(TAU))
-        );
+        if let Some(k2) = self.love_number_k2 {
+            if !k2.is_finite() || k2 <= 0.0 {
+                return Err(DomainError::InvalidInvariant {
+                    field: "love_number_k2".to_string(),
+                    reason: "must be positive and finite".to_string(),
+                });
+            }
+        }
+
+        if let Some(q) = self.tidal_dissipation_factor_q {
+            if !q.is_finite() || q <= 0.0 {
+                return Err(DomainError::InvalidInvariant {
+                    field: "tidal_dissipation_factor_q".to_string(),
+                    reason: "must be positive and finite".to_string(),
+                });
+            }
+        }
+
+        let solstice_true_anomaly = self
+            .solstice_true_anomaly
+            .map(|angle| Angle::new(angle.value().rem_euclid(TAU)));
 
         Ok(Planet {
             id: self.id,
@@ -315,6 +350,8 @@ impl PlanetBuilder {
             core_mass_fraction: self.core_mass_fraction,
             radioactive_heating_rate: self.radioactive_heating_rate,
             magnetic_field_locked: self.magnetic_field_locked,
+            love_number_k2: self.love_number_k2,
+            tidal_dissipation_factor_q: self.tidal_dissipation_factor_q,
         })
     }
 }
@@ -340,6 +377,8 @@ pub struct Planet {
     core_mass_fraction: Option<f64>,
     radioactive_heating_rate: Option<f64>,
     magnetic_field_locked: Option<MagneticFluxDensity>,
+    love_number_k2: Option<f64>,
+    tidal_dissipation_factor_q: Option<f64>,
 }
 
 impl Planet {
@@ -348,7 +387,7 @@ impl Planet {
         name: impl Into<String>,
         mass: Mass,
         kind: PlanetKind,
-        orbital_parent: OrbitalParent
+        orbital_parent: OrbitalParent,
     ) -> PlanetBuilder {
         PlanetBuilder::new(id, name, mass, kind, orbital_parent)
     }
@@ -372,7 +411,9 @@ impl Planet {
         oblateness_j2: Option<f64>,
         core_mass_fraction: Option<f64>,
         radioactive_heating_rate: Option<f64>,
-        magnetic_field_locked: Option<MagneticFluxDensity>
+        magnetic_field_locked: Option<MagneticFluxDensity>,
+        love_number_k2: Option<f64>,
+        tidal_dissipation_factor_q: Option<f64>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
             .with_star_system_id(star_system_id)
@@ -389,6 +430,8 @@ impl Planet {
             .with_core_mass_fraction(core_mass_fraction)
             .with_radioactive_heating_rate(radioactive_heating_rate)
             .with_magnetic_field_locked(magnetic_field_locked)
+            .with_love_number_k2(love_number_k2)
+            .with_tidal_dissipation_factor_q(tidal_dissipation_factor_q)
             .build()
     }
 
@@ -466,5 +509,13 @@ impl Planet {
 
     pub fn magnetic_field_locked(&self) -> Option<MagneticFluxDensity> {
         self.magnetic_field_locked
+    }
+
+    pub fn love_number_k2(&self) -> Option<f64> {
+        self.love_number_k2
+    }
+
+    pub fn tidal_dissipation_factor_q(&self) -> Option<f64> {
+        self.tidal_dissipation_factor_q
     }
 }

@@ -33,6 +33,8 @@ pub struct PlanetRow {
     pub core_mass_fraction: Option<f64>,
     pub radioactive_heating_rate: Option<f64>,
     pub magnetic_field_locked: Option<f64>,
+    pub love_number_k2: Option<f64>,
+    pub tidal_dissipation_factor_q: Option<f64>,
 }
 
 fn parse_orbital_parent(
@@ -145,6 +147,8 @@ impl TryFrom<PlanetRow> for Planet {
             .with_core_mass_fraction(row.core_mass_fraction)
             .with_radioactive_heating_rate(row.radioactive_heating_rate)
             .with_magnetic_field_locked(row.magnetic_field_locked.map(MagneticFluxDensity::new))
+            .with_love_number_k2(row.love_number_k2)
+            .with_tidal_dissipation_factor_q(row.tidal_dissipation_factor_q)
             .build()?;
 
         Ok(planet)
