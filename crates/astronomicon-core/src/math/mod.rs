@@ -10,6 +10,7 @@ pub mod resonance;
 pub mod rotation;
 pub mod shape;
 pub mod stability;
+pub mod stellar_wind;
 pub mod tidal;
 pub mod wind;
 
@@ -25,5 +26,6 @@ pub use resonance::*;
 pub use rotation::*;
 pub use shape::*;
 pub use stability::*;
+pub use stellar_wind::*;
 pub use tidal::*;
 pub use wind::*;

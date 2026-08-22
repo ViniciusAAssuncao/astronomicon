@@ -11,6 +11,6 @@ pub use domain::{
 pub use math::{ResonanceState, SecularPrecessionRates};
 pub use units::{
     Acceleration, AccelerationVector, Angle, AngularVelocity, Density, Duration,
-    GravitationalParameter, Irradiance, Length, Luminosity, Mass, MolarMass, Position, Pressure,
-    Speed, Temperature, TemperatureGradient, Vector3, Velocity,
+    GravitationalParameter, Irradiance, Length, Luminosity, Mass, MassRate, MolarMass, Position,
+    Pressure, Speed, Temperature, TemperatureGradient, Vector3, Velocity,
 };
