@@ -1,8 +1,8 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
-use crate::error::{DomainError, DomainResult};
-use crate::units::{Angle, Duration, Length, MagneticFluxDensity, Mass};
-use serde::{Deserialize, Serialize};
+use crate::error::{ DomainError, DomainResult };
+use crate::units::{ Angle, Duration, Length, MagneticFluxDensity, Mass };
+use serde::{ Deserialize, Serialize };
 use std::f64::consts::TAU;
 use uuid::Uuid;
 
@@ -36,7 +36,6 @@ pub struct PlanetBuilder {
     solstice_true_anomaly: Option<Angle>,
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
-    hydrosphere_fraction: Option<f64>,
     core_mass_fraction: Option<f64>,
     radioactive_heating_rate: Option<f64>,
     magnetic_field_locked: Option<MagneticFluxDensity>,
@@ -48,7 +47,7 @@ impl PlanetBuilder {
         name: impl Into<String>,
         mass: Mass,
         kind: PlanetKind,
-        orbital_parent: OrbitalParent,
+        orbital_parent: OrbitalParent
     ) -> Self {
         Self {
             id,
@@ -67,7 +66,6 @@ impl PlanetBuilder {
             solstice_true_anomaly: None,
             orbital_elements: None,
             oblateness_j2: None,
-            hydrosphere_fraction: None,
             core_mass_fraction: None,
             radioactive_heating_rate: None,
             magnetic_field_locked: None,
@@ -79,10 +77,7 @@ impl PlanetBuilder {
         self
     }
 
-    pub fn with_equatorial_radius(
-        mut self,
-        equatorial_radius: impl Into<Option<Length>>,
-    ) -> Self {
+    pub fn with_equatorial_radius(mut self, equatorial_radius: impl Into<Option<Length>>) -> Self {
         self.equatorial_radius = equatorial_radius.into();
         self
     }
@@ -119,7 +114,7 @@ impl PlanetBuilder {
 
     pub fn with_solstice_true_anomaly(
         mut self,
-        solstice_true_anomaly: impl Into<Option<Angle>>,
+        solstice_true_anomaly: impl Into<Option<Angle>>
     ) -> Self {
         self.solstice_true_anomaly = solstice_true_anomaly.into();
         self
@@ -127,7 +122,7 @@ impl PlanetBuilder {
 
     pub fn with_orbital_elements(
         mut self,
-        orbital_elements: impl Into<Option<OrbitalElements>>,
+        orbital_elements: impl Into<Option<OrbitalElements>>
     ) -> Self {
         self.orbital_elements = orbital_elements.into();
         self
@@ -138,25 +133,14 @@ impl PlanetBuilder {
         self
     }
 
-    pub fn with_hydrosphere_fraction(
-        mut self,
-        hydrosphere_fraction: impl Into<Option<f64>>,
-    ) -> Self {
-        self.hydrosphere_fraction = hydrosphere_fraction.into();
-        self
-    }
-
-    pub fn with_core_mass_fraction(
-        mut self,
-        core_mass_fraction: impl Into<Option<f64>>,
-    ) -> Self {
+    pub fn with_core_mass_fraction(mut self, core_mass_fraction: impl Into<Option<f64>>) -> Self {
         self.core_mass_fraction = core_mass_fraction.into();
         self
     }
 
     pub fn with_radioactive_heating_rate(
         mut self,
-        radioactive_heating_rate: impl Into<Option<f64>>,
+        radioactive_heating_rate: impl Into<Option<f64>>
     ) -> Self {
         self.radioactive_heating_rate = radioactive_heating_rate.into();
         self
@@ -164,7 +148,7 @@ impl PlanetBuilder {
 
     pub fn with_magnetic_field_locked(
         mut self,
-        magnetic_field_locked: impl Into<Option<MagneticFluxDensity>>,
+        magnetic_field_locked: impl Into<Option<MagneticFluxDensity>>
     ) -> Self {
         self.magnetic_field_locked = magnetic_field_locked.into();
         self
@@ -280,15 +264,6 @@ impl PlanetBuilder {
             }
         }
 
-        if let Some(hf) = self.hydrosphere_fraction {
-            if !hf.is_finite() || !(0.0..=1.0).contains(&hf) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "hydrosphere_fraction".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
-        }
-
         if let Some(cmf) = self.core_mass_fraction {
             if !cmf.is_finite() || !(0.0..=1.0).contains(&cmf) {
                 return Err(DomainError::InvalidInvariant {
@@ -316,9 +291,9 @@ impl PlanetBuilder {
             }
         }
 
-        let solstice_true_anomaly = self
-            .solstice_true_anomaly
-            .map(|angle| Angle::new(angle.value().rem_euclid(TAU)));
+        let solstice_true_anomaly = self.solstice_true_anomaly.map(|angle|
+            Angle::new(angle.value().rem_euclid(TAU))
+        );
 
         Ok(Planet {
             id: self.id,
@@ -337,7 +312,6 @@ impl PlanetBuilder {
             solstice_true_anomaly,
             orbital_elements: self.orbital_elements,
             oblateness_j2: self.oblateness_j2,
-            hydrosphere_fraction: self.hydrosphere_fraction,
             core_mass_fraction: self.core_mass_fraction,
             radioactive_heating_rate: self.radioactive_heating_rate,
             magnetic_field_locked: self.magnetic_field_locked,
@@ -363,7 +337,6 @@ pub struct Planet {
     solstice_true_anomaly: Option<Angle>,
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
-    hydrosphere_fraction: Option<f64>,
     core_mass_fraction: Option<f64>,
     radioactive_heating_rate: Option<f64>,
     magnetic_field_locked: Option<MagneticFluxDensity>,
@@ -375,7 +348,7 @@ impl Planet {
         name: impl Into<String>,
         mass: Mass,
         kind: PlanetKind,
-        orbital_parent: OrbitalParent,
+        orbital_parent: OrbitalParent
     ) -> PlanetBuilder {
         PlanetBuilder::new(id, name, mass, kind, orbital_parent)
     }
@@ -397,10 +370,9 @@ impl Planet {
         solstice_true_anomaly: Option<Angle>,
         orbital_elements: Option<OrbitalElements>,
         oblateness_j2: Option<f64>,
-        hydrosphere_fraction: Option<f64>,
         core_mass_fraction: Option<f64>,
         radioactive_heating_rate: Option<f64>,
-        magnetic_field_locked: Option<MagneticFluxDensity>,
+        magnetic_field_locked: Option<MagneticFluxDensity>
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
             .with_star_system_id(star_system_id)
@@ -414,7 +386,6 @@ impl Planet {
             .with_solstice_true_anomaly(solstice_true_anomaly)
             .with_orbital_elements(orbital_elements)
             .with_oblateness_j2(oblateness_j2)
-            .with_hydrosphere_fraction(hydrosphere_fraction)
             .with_core_mass_fraction(core_mass_fraction)
             .with_radioactive_heating_rate(radioactive_heating_rate)
             .with_magnetic_field_locked(magnetic_field_locked)
@@ -483,10 +454,6 @@ impl Planet {
 
     pub fn oblateness_j2(&self) -> Option<f64> {
         self.oblateness_j2
-    }
-
-    pub fn hydrosphere_fraction(&self) -> Option<f64> {
-        self.hydrosphere_fraction
     }
 
     pub fn core_mass_fraction(&self) -> Option<f64> {
