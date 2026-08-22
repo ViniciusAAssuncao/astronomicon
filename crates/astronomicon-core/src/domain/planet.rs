@@ -36,6 +36,7 @@ pub struct PlanetBuilder {
     solstice_true_anomaly: Option<Angle>,
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
+    hydrosphere_fraction: Option<f64>,
 }
 
 impl PlanetBuilder {
@@ -63,6 +64,7 @@ impl PlanetBuilder {
             solstice_true_anomaly: None,
             orbital_elements: None,
             oblateness_j2: None,
+            hydrosphere_fraction: None,
         }
     }
 
@@ -127,6 +129,14 @@ impl PlanetBuilder {
 
     pub fn with_oblateness_j2(mut self, oblateness_j2: impl Into<Option<f64>>) -> Self {
         self.oblateness_j2 = oblateness_j2.into();
+        self
+    }
+
+    pub fn with_hydrosphere_fraction(
+        mut self,
+        hydrosphere_fraction: impl Into<Option<f64>>,
+    ) -> Self {
+        self.hydrosphere_fraction = hydrosphere_fraction.into();
         self
     }
 
@@ -240,6 +250,15 @@ impl PlanetBuilder {
             }
         }
 
+        if let Some(hf) = self.hydrosphere_fraction {
+            if !hf.is_finite() || !(0.0..=1.0).contains(&hf) {
+                return Err(DomainError::InvalidInvariant {
+                    field: "hydrosphere_fraction".to_string(),
+                    reason: "must be between 0.0 and 1.0".to_string(),
+                });
+            }
+        }
+
         let solstice_true_anomaly = self
             .solstice_true_anomaly
             .map(|angle| Angle::new(angle.value().rem_euclid(TAU)));
@@ -261,6 +280,7 @@ impl PlanetBuilder {
             solstice_true_anomaly,
             orbital_elements: self.orbital_elements,
             oblateness_j2: self.oblateness_j2,
+            hydrosphere_fraction: self.hydrosphere_fraction,
         })
     }
 }
@@ -283,6 +303,7 @@ pub struct Planet {
     solstice_true_anomaly: Option<Angle>,
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
+    hydrosphere_fraction: Option<f64>,
 }
 
 impl Planet {
@@ -313,6 +334,7 @@ impl Planet {
         solstice_true_anomaly: Option<Angle>,
         orbital_elements: Option<OrbitalElements>,
         oblateness_j2: Option<f64>,
+        hydrosphere_fraction: Option<f64>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
             .with_star_system_id(star_system_id)
@@ -326,6 +348,7 @@ impl Planet {
             .with_solstice_true_anomaly(solstice_true_anomaly)
             .with_orbital_elements(orbital_elements)
             .with_oblateness_j2(oblateness_j2)
+            .with_hydrosphere_fraction(hydrosphere_fraction)
             .build()
     }
 
@@ -391,5 +414,9 @@ impl Planet {
 
     pub fn oblateness_j2(&self) -> Option<f64> {
         self.oblateness_j2
+    }
+
+    pub fn hydrosphere_fraction(&self) -> Option<f64> {
+        self.hydrosphere_fraction
     }
 }

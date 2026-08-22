@@ -30,6 +30,7 @@ pub struct PlanetRow {
     pub argument_periapsis_rad: Option<f64>,
     pub mean_anomaly_at_epoch_rad: Option<f64>,
     pub oblateness_j2: Option<f64>,
+    pub hydrosphere_fraction: Option<f64>,
 }
 
 fn parse_orbital_parent(
@@ -139,6 +140,7 @@ impl TryFrom<PlanetRow> for Planet {
             .with_solstice_true_anomaly(row.solstice_true_anomaly_rad.map(Angle::new))
             .with_orbital_elements(orbital_elements)
             .with_oblateness_j2(row.oblateness_j2)
+            .with_hydrosphere_fraction(row.hydrosphere_fraction)
             .build()?;
 
         Ok(planet)

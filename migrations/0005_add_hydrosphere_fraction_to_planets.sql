@@ -1,0 +1,1 @@
+ALTER TABLE planets ADD COLUMN hydrosphere_fraction REAL DEFAULT 0.0;
