@@ -1,5 +1,5 @@
 use crate::error::{DomainError, DomainResult};
-use crate::units::{Pressure, Temperature};
+use crate::units::{Density, Pressure, Temperature};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -13,6 +13,9 @@ pub struct SolventProperties {
     pub critical_pressure: Pressure,
     pub normal_boiling_point: Temperature,
     pub normal_melting_point: Temperature,
+    pub liquid_density: Density,
+    pub solid_density: Density,
+    pub solid_thermal_conductivity: f64,
 }
 
 impl SolventProperties {
@@ -26,6 +29,9 @@ impl SolventProperties {
         critical_pressure: Pressure,
         normal_boiling_point: Temperature,
         normal_melting_point: Temperature,
+        liquid_density: Density,
+        solid_density: Density,
+        solid_thermal_conductivity: f64,
     ) -> Self {
         Self {
             enthalpy_of_vaporization,
@@ -37,6 +43,9 @@ impl SolventProperties {
             critical_pressure,
             normal_boiling_point,
             normal_melting_point,
+            liquid_density,
+            solid_density,
+            solid_thermal_conductivity,
         }
     }
 }
@@ -53,6 +62,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Pressure::new(22.064e6),
             Temperature::new(373.15),
             Temperature::new(273.15),
+            Density::new(1000.0),
+            Density::new(917.0),
+            2.2,
         )),
         "CH4" => Some(SolventProperties::new(
             8170.0,
@@ -64,6 +76,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Pressure::new(4.5992e6),
             Temperature::new(111.66),
             Temperature::new(90.69),
+            Density::new(422.8),
+            Density::new(490.0),
+            0.3,
         )),
         "NH3" => Some(SolventProperties::new(
             23350.0,
@@ -75,6 +90,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Pressure::new(11.333e6),
             Temperature::new(239.82),
             Temperature::new(195.42),
+            Density::new(681.9),
+            Density::new(817.0),
+            0.5,
         )),
         "N2" => Some(SolventProperties::new(
             5560.0,
@@ -86,6 +104,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Pressure::new(3.39e6),
             Temperature::new(77.36),
             Temperature::new(63.15),
+            Density::new(808.0),
+            Density::new(947.0),
+            0.25,
         )),
         "CO2" => Some(SolventProperties::new(
             15300.0,
@@ -97,6 +118,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Pressure::new(7.3773e6),
             Temperature::new(216.58),
             Temperature::new(216.58),
+            Density::new(1101.0),
+            Density::new(1562.0),
+            0.6,
         )),
         _ => None,
     }
@@ -121,6 +145,9 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
     let mut p_crit = 0.0;
     let mut t_boil = 0.0;
     let mut t_melt = 0.0;
+    let mut rho_liq = 0.0;
+    let mut rho_sol = 0.0;
+    let mut k_therm = 0.0;
 
     for (formula, percentage) in composition {
         let props = solvent_properties_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
@@ -138,6 +165,9 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
         p_crit += props.critical_pressure.value() * fraction;
         t_boil += props.normal_boiling_point.value() * fraction;
         t_melt += props.normal_melting_point.value() * fraction;
+        rho_liq += props.liquid_density.value() * fraction;
+        rho_sol += props.solid_density.value() * fraction;
+        k_therm += props.solid_thermal_conductivity * fraction;
     }
 
     Ok(SolventProperties::new(
@@ -150,6 +180,9 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
         Pressure::new(p_crit),
         Temperature::new(t_boil),
         Temperature::new(t_melt),
+        Density::new(rho_liq),
+        Density::new(rho_sol),
+        k_therm,
     ))
 }
 
@@ -171,4 +204,16 @@ pub fn triple_point_of(formula: &str) -> Option<(Temperature, Pressure)> {
 
 pub fn critical_point_of(formula: &str) -> Option<(Temperature, Pressure)> {
     solvent_properties_of(formula).map(|p| (p.critical_temperature, p.critical_pressure))
+}
+
+pub fn liquid_density_of(formula: &str) -> Option<Density> {
+    solvent_properties_of(formula).map(|p| p.liquid_density)
+}
+
+pub fn solid_density_of(formula: &str) -> Option<Density> {
+    solvent_properties_of(formula).map(|p| p.solid_density)
+}
+
+pub fn solid_thermal_conductivity_of(formula: &str) -> Option<f64> {
+    solvent_properties_of(formula).map(|p| p.solid_thermal_conductivity)
 }

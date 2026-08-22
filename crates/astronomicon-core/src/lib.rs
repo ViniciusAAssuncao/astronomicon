@@ -10,7 +10,7 @@ pub use domain::{
     OrbitalElements, OrbitalParent, Planet, PlanetBuilder, PlanetKind, Star, StarBuilder,
     StarKind, StarSystem, UniverseState,
 };
-pub use math::{MatterState, ResonanceState, SecularPrecessionRates};
+pub use math::{HydrosphereStructure, MatterState, ResonanceState, SecularPrecessionRates};
 pub use units::{
     Acceleration, AccelerationVector, Angle, AngularVelocity, Density, Duration, Energy, Frequency,
     GravitationalParameter, HeatFlux, Irradiance, Length, Luminosity, MagneticDipoleMoment,

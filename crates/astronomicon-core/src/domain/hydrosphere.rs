@@ -1,12 +1,16 @@
 use crate::chemistry::molecular_formula::parse;
 use crate::chemistry::solvent::{mean_solvent_properties, SolventProperties};
 use crate::error::{DomainError, DomainResult};
+use crate::math::hydrosphere::{
+    analyze_hydrosphere_structure, equilibrium_ice_thickness, hydrosphere_mass,
+    spherical_shell_volume, HydrosphereStructure,
+};
 use crate::math::thermodynamics::{
     depressed_freezing_point, determine_hydrosphere_state, dynamic_boiling_point, MatterState,
     DEFAULT_SOLUTE_MOLAR_MASS_KG, DEFAULT_VAN_T_HOFF_FACTOR,
 };
 use crate::units::constants::ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE;
-use crate::units::{Length, Pressure, Temperature};
+use crate::units::{HeatFlux, Length, Mass, Pressure, Temperature};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -172,5 +176,59 @@ impl Hydrosphere {
         surface_pressure: Pressure,
     ) -> DomainResult<MatterState> {
         determine_hydrosphere_state(temperature, surface_pressure, self)
+    }
+
+    pub fn total_volume_m3(&self, planet_radius: Length) -> f64 {
+        spherical_shell_volume(
+            planet_radius,
+            self.average_depth,
+            self.surface_coverage_fraction,
+        )
+    }
+
+    pub fn total_mass(&self, planet_radius: Length) -> DomainResult<Mass> {
+        let props = self.mean_solvent_properties()?;
+        Ok(hydrosphere_mass(
+            planet_radius,
+            self.average_depth,
+            self.surface_coverage_fraction,
+            props.liquid_density,
+            self.salinity_or_solute_mass_fraction,
+        ))
+    }
+
+    pub fn equilibrium_ice_thickness(
+        &self,
+        surface_temperature: Temperature,
+        geothermal_heat_flux: HeatFlux,
+    ) -> DomainResult<Length> {
+        let props = self.mean_solvent_properties()?;
+        let t_freeze = self.freezing_point()?;
+        Ok(equilibrium_ice_thickness(
+            surface_temperature,
+            t_freeze,
+            geothermal_heat_flux,
+            props.solid_thermal_conductivity,
+        ))
+    }
+
+    pub fn layer_structure(
+        &self,
+        planet_radius: Length,
+        surface_temperature: Temperature,
+        geothermal_heat_flux: HeatFlux,
+    ) -> DomainResult<HydrosphereStructure> {
+        let props = self.mean_solvent_properties()?;
+        let t_freeze = self.freezing_point()?;
+        Ok(analyze_hydrosphere_structure(
+            planet_radius,
+            self.average_depth,
+            self.surface_coverage_fraction,
+            surface_temperature,
+            t_freeze,
+            geothermal_heat_flux,
+            &props,
+            self.salinity_or_solute_mass_fraction,
+        ))
     }
 }
