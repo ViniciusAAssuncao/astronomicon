@@ -151,11 +151,14 @@ pub async fn resolve_planetary_core(
 
     let r_c = core_r.value();
     let r_p = radius.value();
-    let q_surf_internal = if r_p > 0.0 {
-        HeatFlux::new(q_cmb.value() * (r_c * r_c) / (r_p * r_p))
+    let q_surf_core = if r_p > 0.0 {
+        q_cmb.value() * (r_c * r_c) / (r_p * r_p)
     } else {
-        q_cmb
+        q_cmb.value()
     };
+
+    let mantle_mass_fraction = (1.0 - cmf).max(0.0);
+    let q_surf_internal = HeatFlux::new(q_surf_core + q_rad.value() * mantle_mass_fraction * 4.0);
 
     let total_surf_q = total_surface_geothermal_heat_flux(q_surf_internal, tidal_heat_flux);
 
