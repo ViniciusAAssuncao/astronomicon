@@ -1,7 +1,12 @@
 use crate::chemistry::molecular_formula::parse;
+use crate::chemistry::solvent::{mean_solvent_properties, SolventProperties};
 use crate::error::{DomainError, DomainResult};
+use crate::math::thermodynamics::{
+    depressed_freezing_point, determine_hydrosphere_state, dynamic_boiling_point, MatterState,
+    DEFAULT_SOLUTE_MOLAR_MASS_KG, DEFAULT_VAN_T_HOFF_FACTOR,
+};
 use crate::units::constants::ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE;
-use crate::units::Length;
+use crate::units::{Length, Pressure, Temperature};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -134,5 +139,38 @@ impl Hydrosphere {
 
     pub fn composition(&self) -> &[HydrosphereComponent] {
         &self.composition
+    }
+
+    pub fn mean_solvent_properties(&self) -> DomainResult<SolventProperties> {
+        let mapped: Vec<(String, f64)> = self
+            .composition
+            .iter()
+            .map(|c| (c.formula().to_string(), c.percentage()))
+            .collect();
+        mean_solvent_properties(&mapped)
+    }
+
+    pub fn freezing_point(&self) -> DomainResult<Temperature> {
+        let props = self.mean_solvent_properties()?;
+        Ok(depressed_freezing_point(
+            props.normal_melting_point,
+            self.salinity_or_solute_mass_fraction,
+            props.cryoscopic_constant,
+            DEFAULT_SOLUTE_MOLAR_MASS_KG,
+            DEFAULT_VAN_T_HOFF_FACTOR,
+        ))
+    }
+
+    pub fn boiling_point(&self, surface_pressure: Pressure) -> DomainResult<Temperature> {
+        let props = self.mean_solvent_properties()?;
+        Ok(dynamic_boiling_point(surface_pressure, &props))
+    }
+
+    pub fn matter_state(
+        &self,
+        temperature: Temperature,
+        surface_pressure: Pressure,
+    ) -> DomainResult<MatterState> {
+        determine_hydrosphere_state(temperature, surface_pressure, self)
     }
 }
