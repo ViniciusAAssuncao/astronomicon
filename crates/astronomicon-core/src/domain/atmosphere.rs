@@ -1,4 +1,4 @@
-use crate::chemistry::molar_mass::mean_molar_mass;
+use crate::chemistry::molar_mass::{mean_molar_mass, mean_specific_heat_capacity};
 use crate::domain::gas_component::GasComponent;
 use crate::error::{ DomainError, DomainResult };
 use crate::units::constants::{ ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT };
@@ -115,6 +115,23 @@ impl Atmosphere {
             .map(|c| (c.formula().to_string(), c.percentage()))
             .collect();
         mean_molar_mass(&mapped)
+    }
+
+    pub fn mean_specific_heat_capacity(&self) -> DomainResult<f64> {
+        let mapped: Vec<(String, f64)> = self.composition
+            .iter()
+            .map(|c| (c.formula().to_string(), c.percentage()))
+            .collect();
+        mean_specific_heat_capacity(&mapped)
+    }
+
+    pub fn column_heat_capacity(&self, gravity: Acceleration) -> DomainResult<f64> {
+        let cp_gas = self.mean_specific_heat_capacity()?;
+        Ok(crate::math::climate::atmospheric_column_heat_capacity(
+            self.surface_pressure,
+            gravity,
+            cp_gas,
+        ))
     }
 
     pub fn density_at_surface(&self, surface_temperature: Temperature) -> DomainResult<Density> {
