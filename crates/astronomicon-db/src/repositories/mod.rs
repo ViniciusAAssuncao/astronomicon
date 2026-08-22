@@ -1,6 +1,7 @@
 pub mod atmosphere_repository;
 pub mod barycenter_repository;
 pub mod hydrosphere_repository;
+pub mod lithosphere_repository;
 pub mod material_repository;
 pub mod planet_repository;
 pub mod rheology_repository;
@@ -11,6 +12,7 @@ pub mod universe_state_repository;
 pub use atmosphere_repository as atmosphere;
 pub use barycenter_repository as barycenter;
 pub use hydrosphere_repository as hydrosphere;
+pub use lithosphere_repository as lithosphere;
 pub use material_repository as material;
 pub use planet_repository as planet;
 pub use rheology_repository as rheology;

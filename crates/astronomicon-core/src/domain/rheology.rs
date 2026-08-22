@@ -1,4 +1,5 @@
 use crate::domain::material::MaterialProperties;
+use crate::domain::planet::PlanetKind;
 use crate::error::{DomainError, DomainResult};
 use crate::units::constants::ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE;
 use crate::units::{Density, Pressure, Temperature};
@@ -42,6 +43,48 @@ pub struct PlanetRheology {
 }
 
 impl PlanetRheology {
+    pub fn fallback_for_kind(kind: PlanetKind) -> Self {
+        let (name, density, shear, yield_s, k, cp, alpha, t_sol, t_liq) = match kind {
+            PlanetKind::IcyBody | PlanetKind::IceGiant | PlanetKind::DwarfPlanet => (
+                "Water Ice",
+                Density::new(920.0),
+                Pressure::new(3.5e9),
+                Pressure::new(1.0e6),
+                2.2,
+                2000.0,
+                5.0e-5,
+                Temperature::new(273.15),
+                Temperature::new(273.15),
+            ),
+            _ => (
+                "Silicate Rock",
+                Density::new(3000.0),
+                Pressure::new(3.0e10),
+                Pressure::new(1.0e8),
+                3.0,
+                1200.0,
+                3.0e-5,
+                Temperature::new(1373.15),
+                Temperature::new(1673.15),
+            ),
+        };
+        let mat = MaterialProperties::new(
+            Uuid::nil(),
+            name,
+            density,
+            shear,
+            yield_s,
+            k,
+            cp,
+            alpha,
+            t_sol,
+            t_liq,
+        )
+        .expect("valid fallback material");
+        let comp = LithosphereComponent::new(mat, 100.0).expect("valid fallback component");
+        Self::new(vec![comp]).expect("valid fallback rheology")
+    }
+
     pub fn new(components: Vec<LithosphereComponent>) -> DomainResult<Self> {
         if components.is_empty() {
             return Err(DomainError::InvalidInvariant {

@@ -4,36 +4,33 @@ use crate::geophysics::resolve_planetary_core;
 use crate::gravity::resolve_entity_effective_mass;
 use crate::hydrosphere::resolve_hydrosphere_diagnostics;
 use crate::shape::planet_mean_density;
-use astronomicon_core::domain::{OrbitalParent, Planet, Star};
+use crate::tidal::resolve_tidal_diagnostics;
+use astronomicon_core::domain::{OrbitalParent, Planet, PlanetRheology, Star, TectonicRegime};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::geology::{
-    determine_tectonic_regime, lithosphere_thickness_for_planet,
+    brittle_ductile_transition_depth, determine_tectonic_regime, lithosphere_thickness,
     lithosphere_yield_strength, plate_rms_velocity, tectonic_plate_count,
 };
-use astronomicon_core::math::gravity::{
-    combined_gravitational_parameter, gravitational_parameter, surface_gravity,
-};
-use astronomicon_core::math::kepler::orbital_period;
+use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
+use astronomicon_core::math::hydrosphere::HydrosphereStructure;
 use astronomicon_core::math::seismology::{
-    equilibrium_tidal_bulge_height, radial_tidal_stress_amplitude,
+    equilibrium_tidal_bulge_height, radial_tidal_stress_amplitude, seismic_efficiency,
     tectonic_seismic_energy_rate, tidal_seismic_energy_rate,
 };
 use astronomicon_core::math::tidal::fallback_love_number_k2;
-use astronomicon_core::units::constants::{
-    BASE_LITHOSPHERE_YIELD_STRESS, CRUST_DENSITY_REFERENCE, LITHOSPHERE_SHEAR_MODULUS,
-    MANTLE_THERMAL_EXPANSION, SEISMIC_EFFICIENCY_FACTOR, SPECIFIC_HEAT_CAPACITY_ROCK,
-};
 use astronomicon_core::units::{
-    Angle, Density, Duration, Length, Luminosity, Mass, Pressure, Speed,
+    Angle, Duration, Length, Luminosity, Mass, Pressure, Speed,
 };
-use astronomicon_db::repositories::{hydrosphere_repository, planet_repository, star_repository};
+use astronomicon_db::repositories::{
+    hydrosphere_repository, lithosphere_repository, planet_repository, star_repository,
+};
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SeismicDiagnostic {
-    pub tectonic_regime: astronomicon_core::domain::TectonicRegime,
+    pub tectonic_regime: TectonicRegime,
     pub lithosphere_thickness: Length,
     pub plate_rms_velocity: Speed,
     pub tectonic_plate_count: u32,
@@ -98,6 +95,11 @@ pub async fn resolve_seismic_diagnostics(
             reason: format!("planet '{}' has no equatorial radius", planet_id),
         })?;
 
+    let rheology = match lithosphere_repository::get_by_planet_id(pool, &planet_id).await? {
+        Some(r) => r,
+        None => PlanetRheology::fallback_for_kind(planet.kind()),
+    };
+
     let mu_planet = gravitational_parameter(planet.mass());
     let g = surface_gravity(mu_planet, radius);
 
@@ -111,11 +113,18 @@ pub async fn resolve_seismic_diagnostics(
     )
     .await?;
 
-    let z_lith = lithosphere_thickness_for_planet(
-        planet.kind(),
-        planet.mass(),
+    let z_lith = lithosphere_thickness(
+        rheology.mean_solidus_temperature(),
         surf_temp,
         core_diag.total_surface_heat_flux,
+        rheology.mean_thermal_conductivity(),
+    );
+
+    let z_brittle = brittle_ductile_transition_depth(
+        z_lith,
+        surf_temp,
+        rheology.mean_solidus_temperature(),
+        rheology.mean_solidus_temperature(),
     );
 
     let has_water = hydrosphere_repository::get_by_planet_id(pool, &planet_id)
@@ -125,7 +134,7 @@ pub async fn resolve_seismic_diagnostics(
     let hydro_diag =
         resolve_hydrosphere_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
 
-    let hydro_structure = hydro_diag.map(|h| astronomicon_core::math::HydrosphereStructure {
+    let hydro_structure = hydro_diag.map(|h| HydrosphereStructure {
         total_volume_m3: 0.0,
         total_mass: h.total_mass,
         ice_thickness: h.ice_thickness,
@@ -144,29 +153,33 @@ pub async fn resolve_seismic_diagnostics(
         core_diag.tidal_heat_flux,
         has_water,
         hydro_structure.as_ref(),
+        &rheology,
     );
 
     let v_plate = plate_rms_velocity(core_diag.convective_heat_flux, regime);
     let plate_count = tectonic_plate_count(radius, z_lith, regime);
 
     let yield_strength = lithosphere_yield_strength(
-        Pressure::new(BASE_LITHOSPHERE_YIELD_STRESS),
+        rheology.mean_base_yield_stress(),
         has_water,
     );
 
     let tectonic_energy = tectonic_seismic_energy_rate(
         regime,
         v_plate,
-        z_lith,
+        z_brittle,
         radius,
         planet.mass(),
         core_diag.total_surface_heat_flux,
         yield_strength,
+        rheology.mean_shear_modulus(),
         plate_count,
-        MANTLE_THERMAL_EXPANSION,
-        SPECIFIC_HEAT_CAPACITY_ROCK,
-        SEISMIC_EFFICIENCY_FACTOR,
+        rheology.mean_thermal_expansion(),
+        rheology.mean_specific_heat_capacity(),
     );
+
+    let tidal_diag =
+        resolve_tidal_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
 
     let (parent_mass, semi_major_axis, eccentricity) = match (
         planet.orbital_parent(),
@@ -196,7 +209,7 @@ pub async fn resolve_seismic_diagnostics(
         }
     };
 
-    let (h_tide, delta_sigma, tidal_energy) = if parent_mass.value() > 0.0
+    let (h_tide, delta_sigma) = if parent_mass.value() > 0.0
         && semi_major_axis.value() > 0.0
         && eccentricity > 0.0
     {
@@ -213,29 +226,24 @@ pub async fn resolve_seismic_diagnostics(
             k2,
         );
 
-        let crust_rho = Density::new(CRUST_DENSITY_REFERENCE);
+        let crust_rho = rheology.mean_density();
         let d_sigma = radial_tidal_stress_amplitude(eccentricity, crust_rho, g, h_bulge);
 
-        let mu_orb = combined_gravitational_parameter(planet.mass(), parent_mass);
-        let p_orb = orbital_period(semi_major_axis, mu_orb).unwrap_or(Duration::new(86400.0));
-
-        let energy = tidal_seismic_energy_rate(
-            d_sigma,
-            radius,
-            z_lith,
-            p_orb,
-            LITHOSPHERE_SHEAR_MODULUS,
-            SEISMIC_EFFICIENCY_FACTOR,
-        );
-
-        (h_bulge, d_sigma, energy)
+        (h_bulge, d_sigma)
     } else {
         (
             Length::new(0.0),
             Pressure::new(0.0),
-            Luminosity::new(0.0),
         )
     };
+
+    let seismic_eff = seismic_efficiency(yield_strength, rheology.mean_shear_modulus());
+    let tidal_energy = tidal_seismic_energy_rate(
+        tidal_diag.tidal_heating_energy,
+        radius,
+        z_brittle,
+        seismic_eff,
+    );
 
     let total_energy = tectonic_energy + tidal_energy;
 
