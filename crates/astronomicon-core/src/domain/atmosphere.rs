@@ -1,17 +1,16 @@
-use crate::chemistry::molar_mass::{mean_molar_mass, mean_specific_heat_capacity};
+use crate::chemistry::molar_mass::{
+    mean_mass_attenuation_coefficient, mean_molar_mass, mean_specific_heat_capacity,
+};
 use crate::domain::gas_component::GasComponent;
-use crate::error::{ DomainError, DomainResult };
-use crate::units::constants::{ ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT };
+use crate::error::{DomainError, DomainResult};
+use crate::units::constants::{
+    ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT,
+};
 use crate::units::{
-    Acceleration,
-    Density,
-    Length,
-    MolarMass,
-    Pressure,
-    Temperature,
+    Acceleration, Density, Length, MassAttenuationCoefficient, MolarMass, Pressure, Temperature,
     TemperatureGradient,
 };
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -32,7 +31,7 @@ impl Atmosphere {
         surface_pressure: Pressure,
         greenhouse_effect: Temperature,
         lapse_rate: TemperatureGradient,
-        composition: Vec<GasComponent>
+        composition: Vec<GasComponent>,
     ) -> DomainResult<Self> {
         if !surface_pressure.value().is_finite() || surface_pressure.value() < 0.0 {
             return Err(DomainError::InvalidInvariant {
@@ -110,7 +109,8 @@ impl Atmosphere {
     }
 
     pub fn mean_molar_mass(&self) -> DomainResult<MolarMass> {
-        let mapped: Vec<(String, f64)> = self.composition
+        let mapped: Vec<(String, f64)> = self
+            .composition
             .iter()
             .map(|c| (c.formula().to_string(), c.percentage()))
             .collect();
@@ -118,11 +118,31 @@ impl Atmosphere {
     }
 
     pub fn mean_specific_heat_capacity(&self) -> DomainResult<f64> {
-        let mapped: Vec<(String, f64)> = self.composition
+        let mapped: Vec<(String, f64)> = self
+            .composition
             .iter()
             .map(|c| (c.formula().to_string(), c.percentage()))
             .collect();
         mean_specific_heat_capacity(&mapped)
+    }
+
+    pub fn mean_mass_attenuation_coefficient(&self) -> DomainResult<MassAttenuationCoefficient> {
+        let mapped: Vec<(String, f64)> = self
+            .composition
+            .iter()
+            .map(|c| (c.formula().to_string(), c.percentage()))
+            .collect();
+        mean_mass_attenuation_coefficient(&mapped)
+    }
+
+    pub fn mass_column(&self, gravity: Acceleration) -> f64 {
+        crate::math::radiation::atmospheric_mass_column(self.surface_pressure, gravity)
+    }
+
+    pub fn radiation_transmission(&self, gravity: Acceleration) -> DomainResult<f64> {
+        let mu = self.mean_mass_attenuation_coefficient()?;
+        let mass_col = self.mass_column(gravity);
+        Ok(crate::math::radiation::atmospheric_transmission(mass_col, mu))
     }
 
     pub fn column_heat_capacity(&self, gravity: Acceleration) -> DomainResult<f64> {
@@ -139,16 +159,15 @@ impl Atmosphere {
             return Ok(Density::new(0.0));
         }
         let molar_mass = self.mean_molar_mass()?;
-        let rho =
-            (self.surface_pressure.value() * molar_mass.value()) /
-            (UNIVERSAL_GAS_CONSTANT * surface_temperature.value());
+        let rho = (self.surface_pressure.value() * molar_mass.value())
+            / (UNIVERSAL_GAS_CONSTANT * surface_temperature.value());
         Ok(Density::new(rho))
     }
 
     pub fn scale_height(
         &self,
         gravity: Acceleration,
-        surface_temperature: Temperature
+        surface_temperature: Temperature,
     ) -> DomainResult<Length> {
         let molar_mass = self.mean_molar_mass()?;
         let denom = molar_mass.value() * gravity.value();

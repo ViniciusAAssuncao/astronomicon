@@ -1,8 +1,8 @@
 use crate::chemistry::molecular_formula;
-use crate::chemistry::periodic_table::atomic_weight;
+use crate::chemistry::periodic_table::{atomic_number, atomic_weight};
 use crate::error::DomainResult;
 use crate::units::constants::UNIVERSAL_GAS_CONSTANT;
-use crate::units::MolarMass;
+use crate::units::{MassAttenuationCoefficient, MolarMass};
 
 pub fn molar_mass_of(formula: &str) -> DomainResult<MolarMass> {
     let parsed = molecular_formula::parse(formula)?;
@@ -89,4 +89,54 @@ pub fn mean_specific_heat_capacity(composition: &[(String, f64)]) -> DomainResul
     }
 
     Ok(mean_molar_cp / mean_molar_mass_val)
+}
+
+pub fn mass_attenuation_coefficient_of(formula: &str) -> DomainResult<MassAttenuationCoefficient> {
+    let parsed = molecular_formula::parse(formula)?;
+    let mut total_electrons = 0.0;
+    let mut total_atomic_mass = 0.0;
+    let mut total_z_sq = 0.0;
+
+    for (symbol, count) in parsed {
+        let count_f = count as f64;
+        if let Some(weight) = atomic_weight(&symbol) {
+            total_atomic_mass += weight * count_f;
+        }
+        if let Some(z) = atomic_number(&symbol) {
+            let z_f = z as f64;
+            total_electrons += z_f * count_f;
+            total_z_sq += z_f * z_f * count_f;
+        }
+    }
+
+    if total_atomic_mass <= 0.0 || total_electrons <= 0.0 {
+        return Ok(MassAttenuationCoefficient::new(0.0));
+    }
+
+    let z_eff = total_z_sq / total_electrons;
+    let z_over_a = total_electrons / total_atomic_mass;
+    let base_mu = 0.001;
+    let coeff = base_mu * z_over_a * 2.0 * (1.0 + 0.02 * z_eff);
+
+    Ok(MassAttenuationCoefficient::new(coeff))
+}
+
+pub fn mean_mass_attenuation_coefficient(
+    composition: &[(String, f64)],
+) -> DomainResult<MassAttenuationCoefficient> {
+    let total_percentage: f64 = composition.iter().map(|(_, p)| p).sum();
+
+    if total_percentage <= 0.0 {
+        return Ok(MassAttenuationCoefficient::new(0.0));
+    }
+
+    let mut mean_val = 0.0;
+
+    for (formula, percentage) in composition {
+        let coeff = mass_attenuation_coefficient_of(formula)?;
+        let fraction = percentage / total_percentage;
+        mean_val += coeff.value() * fraction;
+    }
+
+    Ok(MassAttenuationCoefficient::new(mean_val))
 }
