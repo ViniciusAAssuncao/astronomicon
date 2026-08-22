@@ -121,15 +121,7 @@ pub async fn resolve_hydrosphere_diagnostics(
 
     let core_diag = resolve_planetary_core(pool, planet_id, universe_epoch, at_epoch).await;
     let q_geo = match core_diag {
-        Ok(core) => {
-            let r_c = core.core_radius.value();
-            let r_p = radius.value();
-            if r_p > 0.0 {
-                HeatFlux::new(core.cmb_heat_flux.value() * (r_c * r_c) / (r_p * r_p))
-            } else {
-                core.cmb_heat_flux
-            }
-        }
+        Ok(core) => core.total_surface_heat_flux,
         Err(_) => HeatFlux::new(0.05),
     };
 

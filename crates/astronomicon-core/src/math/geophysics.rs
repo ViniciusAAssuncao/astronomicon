@@ -117,6 +117,34 @@ pub fn core_mantle_boundary_heat_flux(
     }
 }
 
+pub fn radiogenic_heat_flux(
+    planet_mass: Mass,
+    radioactive_heating_rate: f64,
+    age: Duration,
+) -> HeatFlux {
+    let m_p = planet_mass.value();
+    if m_p <= 0.0 || !m_p.is_finite() {
+        return HeatFlux::new(0.0);
+    }
+
+    let mass_ratio = m_p / EARTH_MASS;
+    let t_sec = age.value().max(0.0);
+
+    let r_rate = if radioactive_heating_rate.is_finite() && radioactive_heating_rate > 0.0 {
+        radioactive_heating_rate
+    } else {
+        0.0
+    };
+    let tau_rad = CORE_RADIOGENIC_DECAY_TIMESCALE_YEARS * SECONDS_PER_YEAR;
+    let q_rad = CORE_RADIOGENIC_HEAT_FLUX_REF * r_rate * mass_ratio.powf(1.0 / 3.0) * (-t_sec / tau_rad).exp();
+
+    if !q_rad.is_finite() || q_rad <= 0.0 {
+        HeatFlux::new(0.0)
+    } else {
+        HeatFlux::new(q_rad)
+    }
+}
+
 pub fn core_adiabatic_heat_flux(core_mass: Mass, core_radius: Length) -> HeatFlux {
     let m_c = core_mass.value();
     let r_c = core_radius.value();
@@ -164,4 +192,22 @@ pub fn convective_core_heat_flux(
     } else {
         HeatFlux::new(q_conv)
     }
+}
+
+pub fn total_surface_geothermal_heat_flux(
+    internal_heat_flux: HeatFlux,
+    tidal_heat_flux: HeatFlux,
+) -> HeatFlux {
+    let q_int = if internal_heat_flux.value().is_finite() && internal_heat_flux.value() > 0.0 {
+        internal_heat_flux.value()
+    } else {
+        0.0
+    };
+    let q_tide = if tidal_heat_flux.value().is_finite() && tidal_heat_flux.value() > 0.0 {
+        tidal_heat_flux.value()
+    } else {
+        0.0
+    };
+
+    HeatFlux::new(q_int + q_tide)
 }

@@ -9,6 +9,7 @@ pub mod lagrange;
 pub mod radiation;
 pub mod resonance;
 pub mod shape;
+pub mod tidal;
 
 pub use climate::*;
 pub use context::{build_context, AppContext};
@@ -21,6 +22,7 @@ pub use lagrange::*;
 pub use radiation::*;
 pub use resonance::*;
 pub use shape::*;
+pub use tidal::*;
 
 pub fn run() -> AppResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
