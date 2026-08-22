@@ -1,13 +1,12 @@
 use crate::chemistry::solvent::{solvent_properties_of, SolventProperties};
 use crate::domain::Hydrosphere;
 use crate::error::{DomainError, DomainResult};
-use crate::units::constants::UNIVERSAL_GAS_CONSTANT;
+use crate::units::constants::{
+    UNIVERSAL_GAS_CONSTANT, STANDARD_ATMOSPHERE_PRESSURE, DEFAULT_SOLUTE_MOLAR_MASS_KG,
+    DEFAULT_VAN_T_HOFF_FACTOR,
+};
 use crate::units::{Pressure, Temperature};
 use serde::{Deserialize, Serialize};
-
-pub const STANDARD_ATMOSPHERE_PRESSURE: f64 = 101_325.0;
-pub const DEFAULT_SOLUTE_MOLAR_MASS_KG: f64 = 0.05844;
-pub const DEFAULT_VAN_T_HOFF_FACTOR: f64 = 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MatterState {
