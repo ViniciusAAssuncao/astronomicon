@@ -197,6 +197,30 @@ impl Hydrosphere {
         ))
     }
 
+    pub fn oceanic_column_heat_capacity(&self) -> DomainResult<f64> {
+        let props = self.mean_solvent_properties()?;
+        Ok(crate::math::climate::oceanic_column_heat_capacity(
+            self.average_depth,
+            props.liquid_density,
+            props.liquid_specific_heat_capacity,
+        ))
+    }
+
+    pub fn dynamic_albedo(
+        &self,
+        base_land_albedo: f64,
+        state: MatterState,
+    ) -> DomainResult<f64> {
+        let props = self.mean_solvent_properties()?;
+        Ok(crate::math::climate::dynamic_surface_albedo(
+            base_land_albedo,
+            state,
+            self.surface_coverage_fraction,
+            props.liquid_albedo,
+            props.solid_albedo,
+        ))
+    }
+
     pub fn equilibrium_ice_thickness(
         &self,
         surface_temperature: Temperature,

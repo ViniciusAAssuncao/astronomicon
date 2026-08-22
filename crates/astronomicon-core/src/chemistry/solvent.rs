@@ -16,6 +16,9 @@ pub struct SolventProperties {
     pub liquid_density: Density,
     pub solid_density: Density,
     pub solid_thermal_conductivity: f64,
+    pub liquid_specific_heat_capacity: f64,
+    pub liquid_albedo: f64,
+    pub solid_albedo: f64,
 }
 
 impl SolventProperties {
@@ -32,6 +35,9 @@ impl SolventProperties {
         liquid_density: Density,
         solid_density: Density,
         solid_thermal_conductivity: f64,
+        liquid_specific_heat_capacity: f64,
+        liquid_albedo: f64,
+        solid_albedo: f64,
     ) -> Self {
         Self {
             enthalpy_of_vaporization,
@@ -46,6 +52,9 @@ impl SolventProperties {
             liquid_density,
             solid_density,
             solid_thermal_conductivity,
+            liquid_specific_heat_capacity,
+            liquid_albedo,
+            solid_albedo,
         }
     }
 }
@@ -65,6 +74,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Density::new(1000.0),
             Density::new(917.0),
             2.2,
+            4184.0,
+            0.06,
+            0.65,
         )),
         "CH4" => Some(SolventProperties::new(
             8170.0,
@@ -79,6 +91,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Density::new(422.8),
             Density::new(490.0),
             0.3,
+            3400.0,
+            0.10,
+            0.50,
         )),
         "NH3" => Some(SolventProperties::new(
             23350.0,
@@ -93,6 +108,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Density::new(681.9),
             Density::new(817.0),
             0.5,
+            4700.0,
+            0.08,
+            0.65,
         )),
         "N2" => Some(SolventProperties::new(
             5560.0,
@@ -107,6 +125,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Density::new(808.0),
             Density::new(947.0),
             0.25,
+            2040.0,
+            0.10,
+            0.70,
         )),
         "CO2" => Some(SolventProperties::new(
             15300.0,
@@ -121,6 +142,9 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             Density::new(1101.0),
             Density::new(1562.0),
             0.6,
+            2200.0,
+            0.10,
+            0.75,
         )),
         _ => None,
     }
@@ -148,6 +172,9 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
     let mut rho_liq = 0.0;
     let mut rho_sol = 0.0;
     let mut k_therm = 0.0;
+    let mut cp_liq = 0.0;
+    let mut alb_liq = 0.0;
+    let mut alb_sol = 0.0;
 
     for (formula, percentage) in composition {
         let props = solvent_properties_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
@@ -168,6 +195,9 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
         rho_liq += props.liquid_density.value() * fraction;
         rho_sol += props.solid_density.value() * fraction;
         k_therm += props.solid_thermal_conductivity * fraction;
+        cp_liq += props.liquid_specific_heat_capacity * fraction;
+        alb_liq += props.liquid_albedo * fraction;
+        alb_sol += props.solid_albedo * fraction;
     }
 
     Ok(SolventProperties::new(
@@ -183,6 +213,9 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
         Density::new(rho_liq),
         Density::new(rho_sol),
         k_therm,
+        cp_liq,
+        alb_liq,
+        alb_sol,
     ))
 }
 
@@ -216,4 +249,16 @@ pub fn solid_density_of(formula: &str) -> Option<Density> {
 
 pub fn solid_thermal_conductivity_of(formula: &str) -> Option<f64> {
     solvent_properties_of(formula).map(|p| p.solid_thermal_conductivity)
+}
+
+pub fn liquid_specific_heat_capacity_of(formula: &str) -> Option<f64> {
+    solvent_properties_of(formula).map(|p| p.liquid_specific_heat_capacity)
+}
+
+pub fn liquid_albedo_of(formula: &str) -> Option<f64> {
+    solvent_properties_of(formula).map(|p| p.liquid_albedo)
+}
+
+pub fn solid_albedo_of(formula: &str) -> Option<f64> {
+    solvent_properties_of(formula).map(|p| p.solid_albedo)
 }
