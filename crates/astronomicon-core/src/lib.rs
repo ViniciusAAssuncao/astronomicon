@@ -8,11 +8,13 @@ pub use chemistry::SolventProperties;
 pub use domain::{
     Atmosphere, Barycenter, BarycenterMember, GasComponent, Hydrosphere, HydrosphereComponent,
     OrbitalElements, OrbitalParent, Planet, PlanetBuilder, PlanetKind, Star, StarBuilder,
-    StarKind, StarSystem, UniverseState,
+    StarKind, StarSystem, TectonicRegime, UniverseState,
 };
 pub use math::{
-    crust_thermal_conductivity, lithosphere_thickness, lithosphere_thickness_for_planet,
-    mantle_solidus_temperature, HydrosphereStructure, MatterState, ResonanceState,
+    convective_to_yield_stress_ratio, crust_thermal_conductivity, determine_tectonic_regime,
+    lithosphere_thickness, lithosphere_thickness_for_planet, lithosphere_yield_strength,
+    mantle_convective_stress, mantle_solidus_temperature, plate_rms_velocity,
+    tectonic_plate_count, HydrosphereStructure, MatterState, ResonanceState,
     SecularPrecessionRates,
 };
 pub use units::{

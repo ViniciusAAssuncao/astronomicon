@@ -6,6 +6,15 @@ use serde::{Deserialize, Serialize};
 use std::f64::consts::TAU;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TectonicRegime {
+    StagnantLid,
+    PlateTectonics,
+    HeatPipe,
+    IceTectonics,
+    Inactive,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlanetKind {
     Telluric,

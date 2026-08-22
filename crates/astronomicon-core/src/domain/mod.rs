@@ -16,6 +16,6 @@ pub use gas_component::GasComponent;
 pub use hydrosphere::{Hydrosphere, HydrosphereComponent};
 pub use orbital_elements::OrbitalElements;
 pub use orbital_parent::OrbitalParent;
-pub use planet::{Planet, PlanetBuilder, PlanetKind};
+pub use planet::{Planet, PlanetBuilder, PlanetKind, TectonicRegime};
 pub use star::{Star, StarBuilder, StarKind};
 pub use star_system::StarSystem;
