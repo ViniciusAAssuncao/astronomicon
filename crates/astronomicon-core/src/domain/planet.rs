@@ -1,5 +1,6 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
+use crate::domain::rheology::PlanetRheology;
 use crate::error::{DomainError, DomainResult};
 use crate::units::{Angle, Duration, Length, MagneticFluxDensity, Mass};
 use serde::{Deserialize, Serialize};
@@ -51,6 +52,7 @@ pub struct PlanetBuilder {
     love_number_k2: Option<f64>,
     tidal_dissipation_factor_q: Option<f64>,
     mantle_hydration_fraction: Option<f64>,
+    rheology: Option<PlanetRheology>,
 }
 
 impl PlanetBuilder {
@@ -84,6 +86,7 @@ impl PlanetBuilder {
             love_number_k2: None,
             tidal_dissipation_factor_q: None,
             mantle_hydration_fraction: None,
+            rheology: None,
         }
     }
 
@@ -187,6 +190,11 @@ impl PlanetBuilder {
         mantle_hydration_fraction: impl Into<Option<f64>>,
     ) -> Self {
         self.mantle_hydration_fraction = mantle_hydration_fraction.into();
+        self
+    }
+
+    pub fn with_rheology(mut self, rheology: impl Into<Option<PlanetRheology>>) -> Self {
+        self.rheology = rheology.into();
         self
     }
 
@@ -381,6 +389,7 @@ impl PlanetBuilder {
             love_number_k2: self.love_number_k2,
             tidal_dissipation_factor_q: self.tidal_dissipation_factor_q,
             mantle_hydration_fraction: self.mantle_hydration_fraction,
+            rheology: self.rheology,
         })
     }
 }
@@ -409,6 +418,7 @@ pub struct Planet {
     love_number_k2: Option<f64>,
     tidal_dissipation_factor_q: Option<f64>,
     mantle_hydration_fraction: Option<f64>,
+    rheology: Option<PlanetRheology>,
 }
 
 impl Planet {
@@ -445,6 +455,7 @@ impl Planet {
         love_number_k2: Option<f64>,
         tidal_dissipation_factor_q: Option<f64>,
         mantle_hydration_fraction: Option<f64>,
+        rheology: Option<PlanetRheology>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
             .with_star_system_id(star_system_id)
@@ -464,6 +475,7 @@ impl Planet {
             .with_love_number_k2(love_number_k2)
             .with_tidal_dissipation_factor_q(tidal_dissipation_factor_q)
             .with_mantle_hydration_fraction(mantle_hydration_fraction)
+            .with_rheology(rheology)
             .build()
     }
 
@@ -553,5 +565,9 @@ impl Planet {
 
     pub fn mantle_hydration_fraction(&self) -> Option<f64> {
         self.mantle_hydration_fraction
+    }
+
+    pub fn rheology(&self) -> Option<&PlanetRheology> {
+        self.rheology.as_ref()
     }
 }
