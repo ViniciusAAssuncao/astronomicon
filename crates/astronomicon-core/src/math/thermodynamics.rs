@@ -137,7 +137,7 @@ pub fn determine_matter_state(
         return MatterState::Solid;
     }
 
-    if !p.is_finite() || p <= 0.0 {
+    if !p.is_finite() {
         return MatterState::Vapor;
     }
 
