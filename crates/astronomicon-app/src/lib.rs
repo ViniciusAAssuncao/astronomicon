@@ -8,6 +8,7 @@ pub mod hydrosphere;
 pub mod lagrange;
 pub mod radiation;
 pub mod resonance;
+pub mod seismology;
 pub mod shape;
 pub mod tidal;
 
@@ -21,6 +22,7 @@ pub use hydrosphere::*;
 pub use lagrange::*;
 pub use radiation::*;
 pub use resonance::*;
+pub use seismology::*;
 pub use shape::*;
 pub use tidal::*;
 

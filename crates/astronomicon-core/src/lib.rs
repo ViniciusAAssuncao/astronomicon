@@ -12,10 +12,11 @@ pub use domain::{
 };
 pub use math::{
     convective_to_yield_stress_ratio, crust_thermal_conductivity, determine_tectonic_regime,
-    lithosphere_thickness, lithosphere_thickness_for_planet, lithosphere_yield_strength,
-    mantle_convective_stress, mantle_solidus_temperature, plate_rms_velocity,
-    tectonic_plate_count, HydrosphereStructure, MatterState, ResonanceState,
-    SecularPrecessionRates,
+    equilibrium_tidal_bulge_height, lithosphere_thickness, lithosphere_thickness_for_planet,
+    lithosphere_yield_strength, mantle_convective_stress, mantle_solidus_temperature,
+    plate_rms_velocity, radial_tidal_stress_amplitude, tectonic_plate_count,
+    tectonic_seismic_energy_rate, thermal_contraction_strain_rate, tidal_seismic_energy_rate,
+    HydrosphereStructure, MatterState, ResonanceState, SecularPrecessionRates,
 };
 pub use units::{
     Acceleration, AccelerationVector, Angle, AngularVelocity, Density, Duration, Energy, Frequency,
