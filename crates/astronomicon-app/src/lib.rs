@@ -1,3 +1,4 @@
+pub mod black_hole;
 pub mod climate;
 pub mod context;
 pub mod ephemeris;
@@ -16,6 +17,7 @@ pub mod shape;
 pub mod tidal;
 pub mod volcanism;
 
+pub use black_hole::*;
 pub use climate::*;
 pub use context::{build_context, AppContext};
 pub use ephemeris::*;

@@ -1,6 +1,7 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
 use crate::error::{DomainError, DomainResult};
+use crate::math::black_hole::{dimensionless_spin_from_rotation_period, event_horizon_radius};
 use crate::units::{Angle, Duration, Length, Mass, Temperature};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -118,12 +119,14 @@ impl StarBuilder {
             });
         }
 
-        if let Some(r) = self.radius {
-            if !r.value().is_finite() || r.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "radius".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
+        if self.kind != StarKind::BlackHole {
+            if let Some(r) = self.radius {
+                if !r.value().is_finite() || r.value() <= 0.0 {
+                    return Err(DomainError::InvalidInvariant {
+                        field: "radius".to_string(),
+                        reason: "must be positive and finite".to_string(),
+                    });
+                }
             }
         }
 
@@ -186,6 +189,16 @@ impl StarBuilder {
             });
         }
 
+        let radius = if self.kind == StarKind::BlackHole {
+            let spin = self
+                .rotation_period
+                .map(|p| dimensionless_spin_from_rotation_period(self.mass, p))
+                .unwrap_or(0.0);
+            Some(event_horizon_radius(self.mass, spin))
+        } else {
+            self.radius
+        };
+
         Ok(Star {
             id: self.id,
             star_system_id: self.star_system_id,
@@ -193,7 +206,7 @@ impl StarBuilder {
             kind: self.kind,
             name: self.name,
             mass: self.mass,
-            radius: self.radius,
+            radius,
             effective_temperature: self.effective_temperature,
             rotation_period: self.rotation_period,
             obliquity: self.obliquity,
@@ -284,7 +297,15 @@ impl Star {
     }
 
     pub fn radius(&self) -> Option<Length> {
-        self.radius
+        if self.kind == StarKind::BlackHole {
+            let spin = self
+                .rotation_period
+                .map(|p| dimensionless_spin_from_rotation_period(self.mass, p))
+                .unwrap_or(0.0);
+            Some(event_horizon_radius(self.mass, spin))
+        } else {
+            self.radius
+        }
     }
 
     pub fn effective_temperature(&self) -> Option<Temperature> {
