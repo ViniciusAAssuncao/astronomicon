@@ -11,23 +11,34 @@ use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::aerosol::{
     airborne_dust_density, cloud_condensate_density, composite_aerosol_properties,
-    dust_threshold_surface_wind, volcanic_aerosol_density,
+    derived_aerosol_scale_height, dust_threshold_surface_wind,
+    mie_scattering_coefficient_at_wavelength, refractivity_at_temperature_pressure,
+    volcanic_aerosol_density,
 };
+use astronomicon_core::math::atmospheric_scattering::SphericalAtmosphere;
 use astronomicon_core::math::colorimetry::{
-    exposure_tone_map, linear_to_srgb_gamma, spectral_radiance_to_xyz, xyz_to_linear_srgb,
+    cie_color_matching_functions, linear_to_srgb_gamma, reinhard_extended_tone_map,
+    xyz_to_linear_srgb, ColorXYZ,
 };
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::optics::{
-    henyey_greenstein_phase_function, mie_scattering_coefficient, molecular_number_density,
-    rayleigh_phase_function_with_depolarization, rayleigh_scattering_coefficient, relative_airmass,
+    absorption_coefficient, mie_scattering_coefficient, rayleigh_scattering_coefficient,
+    refracted_sun_direction,
 };
 use astronomicon_core::math::radiation::planck_spectral_radiance;
+use astronomicon_core::math::radiometry::{stellar_angular_radius, stellar_solid_angle};
+use astronomicon_core::math::scattering::{
+    multiple_scattering_spectral_radiance,
+    multiple_scattering_stellar_disk_spectral_radiance,
+    MultipleScatteringConfig,
+};
 use astronomicon_core::math::thermodynamics::MatterState;
 use astronomicon_core::math::volcanism::VolcanicEruptionStyle;
-use astronomicon_core::units::constants::OPTICAL_REFERENCE_WAVELENGTH;
-use astronomicon_core::units::{
-    Angle, ColorRGB, Duration, Length, SpectralRadiance, Wavelength,
+use astronomicon_core::units::constants::{
+    CIE_WAVELENGTH_MAX_M, CIE_WAVELENGTH_MIN_M, CIE_WAVELENGTH_STEP_M,
+    OPTICAL_REFERENCE_WAVELENGTH,
 };
+use astronomicon_core::units::{Angle, ColorRGB, Duration, Length, Vector3, Wavelength};
 use astronomicon_db::repositories::{atmosphere_repository, hydrosphere_repository, planet_repository};
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
@@ -105,7 +116,8 @@ pub async fn resolve_sky_diagnostics(
         })?;
     let distance = (*pos_p - *pos_s).magnitude();
 
-    let solid_angle = PI * (r_emit.value() / distance.value()).powi(2);
+    let star_angular_radius = stellar_angular_radius(r_emit, distance);
+    let solid_angle_sun = stellar_solid_angle(star_angular_radius).value();
 
     let surf_temp =
         resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
@@ -154,6 +166,7 @@ pub async fn resolve_sky_diagnostics(
         .map(|h| h.dominant_state)
         .unwrap_or(MatterState::Solid);
     let cov = hydro_opt
+        .as_ref()
         .map(|h| h.surface_coverage_fraction())
         .unwrap_or(0.0);
     let cloud_dens = cloud_condensate_density(
@@ -164,6 +177,12 @@ pub async fn resolve_sky_diagnostics(
     );
 
     let aerosol_props = composite_aerosol_properties(dust_dens, volc_dens, cloud_dens);
+    let derived_aero_h = derived_aerosol_scale_height(g, scale_h, atm_dens);
+    let aerosol_scale_h = if derived_aero_h.value() > 0.0 {
+        derived_aero_h
+    } else {
+        Length::new(1500.0)
+    };
 
     let comp: Vec<(String, f64)> = atm
         .composition()
@@ -171,9 +190,125 @@ pub async fn resolve_sky_diagnostics(
         .map(|c| (c.formula().to_string(), c.percentage()))
         .collect();
     let opt_props = mean_gas_optical_properties(&comp)?;
-    let refr_stp = opt_props.refractivity_stp();
-    let king = opt_props.king_factor();
-    let abs_cross = opt_props.base_absorption_cross_section_m2();
+
+    let atmosphere = SphericalAtmosphere::new(
+        eq_radius,
+        Length::new(100_000.0),
+        atm.surface_pressure(),
+        surf_temp,
+        scale_h,
+        aerosol_scale_h,
+        opt_props.clone(),
+        aerosol_props,
+    );
+
+    let ground_albedo = planet.bond_albedo().unwrap_or(0.15);
+    let ms_config = MultipleScatteringConfig::new(
+        32,
+        16,
+        Length::new(100_000.0),
+        ground_albedo,
+        1.0,
+    );
+
+    let ray_origin = Vector3::new(0.0, eq_radius.value(), 0.0);
+    let up = ray_origin.normalized();
+    let refr = opt_props.refractivity_stp();
+    let refr_actual = refractivity_at_temperature_pressure(
+        refr,
+        surf_temp,
+        atm.surface_pressure(),
+    );
+
+    let view_zenith = Vector3::new(0.0, 1.0, 0.0);
+    let sun_dir_day = Vector3::new((PI / 4.0).sin(), (PI / 4.0).cos(), 0.0).normalized();
+    let s_refracted_day = refracted_sun_direction(
+        sun_dir_day,
+        up,
+        refr_actual,
+        scale_h,
+        eq_radius,
+    );
+
+    let view_horizon = Vector3::new(1.0, 0.0, 0.0);
+    let view_sunset = Vector3::new(1.0, 0.0, 0.0);
+    let sun_dir_sunset = Vector3::new(1.0, 0.0, 0.0);
+
+    let step = CIE_WAVELENGTH_STEP_M;
+    let mut xyz_zenith = ColorXYZ::zero();
+    let mut xyz_horizon = ColorXYZ::zero();
+    let mut xyz_sunset = ColorXYZ::zero();
+
+    let mut lambda_m = CIE_WAVELENGTH_MIN_M;
+    while lambda_m <= CIE_WAVELENGTH_MAX_M {
+        let wavelength = Wavelength::new(lambda_m);
+        let b_lambda = planck_spectral_radiance(wavelength, star_temp);
+        let solar_irradiance = b_lambda * solid_angle_sun;
+        let cmf = cie_color_matching_functions(wavelength);
+
+        if solar_irradiance > 0.0 && solar_irradiance.is_finite() {
+            let res_zenith = multiple_scattering_spectral_radiance(
+                ray_origin,
+                view_zenith,
+                sun_dir_day,
+                solar_irradiance,
+                wavelength,
+                &atmosphere,
+                &ms_config,
+            );
+            xyz_zenith = xyz_zenith + cmf * res_zenith.total_radiance;
+
+            let res_horizon = multiple_scattering_spectral_radiance(
+                ray_origin,
+                view_horizon,
+                s_refracted_day,
+                solar_irradiance,
+                wavelength,
+                &atmosphere,
+                &ms_config,
+            );
+            xyz_horizon = xyz_horizon + cmf * res_horizon.total_radiance;
+
+            let res_sunset = multiple_scattering_stellar_disk_spectral_radiance(
+                ray_origin,
+                view_sunset,
+                sun_dir_sunset,
+                star_angular_radius,
+                solar_irradiance,
+                wavelength,
+                &atmosphere,
+                &ms_config,
+                16,
+                0.6,
+            );
+            let sunset_radiance = res_sunset.total_radiance + b_lambda * res_sunset.transmittance;
+            xyz_sunset = xyz_sunset + cmf * sunset_radiance;
+        }
+
+        lambda_m += step;
+    }
+
+    xyz_zenith = xyz_zenith * step;
+    xyz_horizon = xyz_horizon * step;
+    xyz_sunset = xyz_sunset * step;
+
+    let exposure = if xyz_zenith.y() > 1e-12 {
+        1.0 / xyz_zenith.y()
+    } else {
+        1.0
+    };
+
+    let process_color = |xyz: ColorXYZ| {
+        let rgb = xyz_to_linear_srgb(xyz);
+        let exposed = reinhard_extended_tone_map(rgb * exposure, 4.0);
+        linear_to_srgb_gamma(exposed)
+    };
+
+    let colors = SkyColorDiagnostic {
+        zenith_color: process_color(xyz_zenith),
+        horizon_color: process_color(xyz_horizon),
+        sunset_color: process_color(xyz_sunset),
+    };
 
     let wl_r = Wavelength::new(680e-9);
     let wl_g = Wavelength::new(550e-9);
@@ -181,8 +316,8 @@ pub async fn resolve_sky_diagnostics(
     let ref_wl = Wavelength::new(OPTICAL_REFERENCE_WAVELENGTH);
 
     let p_surf = atm.surface_pressure();
-    let n_mol = molecular_number_density(p_surf, surf_temp);
-    let b_a = abs_cross * n_mol;
+    let refr_stp = opt_props.refractivity_stp();
+    let king = opt_props.king_factor();
 
     let b_r_r = rayleigh_scattering_coefficient(wl_r, refr_stp, king, p_surf, surf_temp);
     let b_r_g = rayleigh_scattering_coefficient(wl_g, refr_stp, king, p_surf, surf_temp);
@@ -192,17 +327,35 @@ pub async fn resolve_sky_diagnostics(
     let b_m_g = mie_scattering_coefficient(&aerosol_props, wl_g, ref_wl);
     let b_m_b = mie_scattering_coefficient(&aerosol_props, wl_b, ref_wl);
 
-    let aerosol_scale_h = 1500.0;
+    let b_a_r = absorption_coefficient(&opt_props, wl_r, p_surf, surf_temp);
+    let b_a_g = absorption_coefficient(&opt_props, wl_g, p_surf, surf_temp);
+    let b_a_b = absorption_coefficient(&opt_props, wl_b, p_surf, surf_temp);
 
-    let tau_r_r = b_r_r * scale_h.value();
-    let tau_r_g = b_r_g * scale_h.value();
-    let tau_r_b = b_r_b * scale_h.value();
+    let b_em_r = mie_scattering_coefficient_at_wavelength(
+        aerosol_props.base_extinction_coefficient(),
+        wl_r,
+        ref_wl,
+        aerosol_props.angstrom_exponent(),
+    )
+    .max(b_m_r);
+    let b_em_g = mie_scattering_coefficient_at_wavelength(
+        aerosol_props.base_extinction_coefficient(),
+        wl_g,
+        ref_wl,
+        aerosol_props.angstrom_exponent(),
+    )
+    .max(b_m_g);
+    let b_em_b = mie_scattering_coefficient_at_wavelength(
+        aerosol_props.base_extinction_coefficient(),
+        wl_b,
+        ref_wl,
+        aerosol_props.angstrom_exponent(),
+    )
+    .max(b_m_b);
 
-    let tau_m_r = b_m_r * aerosol_scale_h;
-    let tau_m_g = b_m_g * aerosol_scale_h;
-    let tau_m_b = b_m_b * aerosol_scale_h;
-
-    let tau_a = b_a * scale_h.value();
+    let tau_tot_r = (b_r_r + b_a_r) * scale_h.value() + b_em_r * aerosol_scale_h.value();
+    let tau_tot_g = (b_r_g + b_a_g) * scale_h.value() + b_em_g * aerosol_scale_h.value();
+    let tau_tot_b = (b_r_b + b_a_b) * scale_h.value() + b_em_b * aerosol_scale_h.value();
 
     let scattering = ScatteringCoefficients {
         rayleigh_r: b_r_r,
@@ -213,66 +366,11 @@ pub async fn resolve_sky_diagnostics(
         mie_b: b_m_b,
     };
 
-    let integrate_sky = |m_in: f64, m_out: f64, theta: Angle| {
-        spectral_radiance_to_xyz(|lambda| {
-            let e0 = planck_spectral_radiance(lambda, star_temp) * solid_angle;
-            let br = rayleigh_scattering_coefficient(lambda, refr_stp, king, p_surf, surf_temp);
-            let bm = mie_scattering_coefficient(&aerosol_props, lambda, ref_wl);
-            let tr = br * scale_h.value();
-            let tm = bm * aerosol_scale_h;
-            let t_tot = tr + tm + tau_a;
-
-            let pr = rayleigh_phase_function_with_depolarization(theta, king);
-            let pm = henyey_greenstein_phase_function(theta, aerosol_props.asymmetry_factor_g());
-
-            let p_tau_scat = pr * tr + pm * tm;
-
-            let rad = if (m_in - m_out).abs() < 1e-6 {
-                e0 * p_tau_scat * m_out * (-t_tot * m_out).exp()
-            } else {
-                e0 * p_tau_scat * (m_out / (m_in - m_out))
-                    * ((-t_tot * m_out).exp() - (-t_tot * m_in).exp())
-            };
-
-            SpectralRadiance::new(rad.max(0.0))
-        })
-    };
-
-    let am_zenith_sun = relative_airmass(Angle::new(PI / 4.0));
-    let am_zenith_obs = relative_airmass(Angle::new(0.0));
-    let xyz_zenith = integrate_sky(am_zenith_sun, am_zenith_obs, Angle::new(PI / 4.0));
-
-    let am_horizon_sun = relative_airmass(Angle::new(0.0));
-    let am_horizon_obs = relative_airmass(Angle::new(PI / 2.0));
-    let xyz_horizon = integrate_sky(am_horizon_sun, am_horizon_obs, Angle::new(PI / 2.0));
-
-    let am_sunset_sun = relative_airmass(Angle::new(PI / 2.0));
-    let am_sunset_obs = relative_airmass(Angle::new(0.0));
-    let xyz_sunset = integrate_sky(am_sunset_sun, am_sunset_obs, Angle::new(PI / 2.0));
-
-    let exposure = if xyz_zenith.y() > 1e-12 {
-        1.0 / xyz_zenith.y()
-    } else {
-        1.0
-    };
-
-    let process_color = |xyz| {
-        let rgb = xyz_to_linear_srgb(xyz);
-        let exposed = exposure_tone_map(rgb, exposure);
-        linear_to_srgb_gamma(exposed)
-    };
-
-    let colors = SkyColorDiagnostic {
-        zenith_color: process_color(xyz_zenith),
-        horizon_color: process_color(xyz_horizon),
-        sunset_color: process_color(xyz_sunset),
-    };
-
     Ok(Some(SkyDiagnostic {
         scattering,
         colors,
-        total_optical_depth_r: tau_r_r + tau_m_r + tau_a,
-        total_optical_depth_g: tau_r_g + tau_m_g + tau_a,
-        total_optical_depth_b: tau_r_b + tau_m_b + tau_a,
+        total_optical_depth_r: tau_tot_r,
+        total_optical_depth_g: tau_tot_g,
+        total_optical_depth_b: tau_tot_b,
     }))
 }
