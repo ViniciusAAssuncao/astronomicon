@@ -1,4 +1,4 @@
-use crate::math::aerosol::mie_scattering_coefficient_at_wavelength;
+use crate::math::aerosol::{mie_scattering_coefficient_at_wavelength, refractivity_at_temperature_pressure};
 use crate::math::atmospheric_scattering::{
     ray_atmosphere_segment,
     sun_path_optical_depth,
@@ -17,8 +17,10 @@ use crate::math::optics::{
     mie_scattering_coefficient,
     rayleigh_phase_function_with_depolarization,
     rayleigh_scattering_coefficient,
+    refracted_sun_direction,
 };
 use crate::math::radiation::planck_spectral_radiance;
+use crate::math::radiometry::stellar_disk_sample_directions;
 use crate::units::constants::{
     CIE_WAVELENGTH_MAX_M,
     CIE_WAVELENGTH_MIN_M,
@@ -563,4 +565,227 @@ pub fn multiple_scattering_view_transmittance(
         config
     );
     res.transmittance
+}
+
+pub fn multiple_scattering_stellar_disk_spectral_radiance(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    geometric_sun_dir: Vector3,
+    star_angular_radius: Angle,
+    solar_spectral_irradiance: f64,
+    wavelength: Wavelength,
+    atmosphere: &SphericalAtmosphere,
+    config: &MultipleScatteringConfig,
+    disk_samples: u32,
+    limb_darkening_coeff: f64,
+) -> MultipleScatteringResult {
+    let samples = stellar_disk_sample_directions(
+        geometric_sun_dir,
+        star_angular_radius,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+
+    let up = ray_origin.normalized();
+    let refr = atmosphere.gas_optical_properties.refractivity_stp();
+    let refr_actual = refractivity_at_temperature_pressure(
+        refr,
+        atmosphere.surface_temperature,
+        atmosphere.surface_pressure,
+    );
+
+    let mut ss_accum = 0.0;
+    let mut ms_accum = 0.0;
+    let mut total_accum = 0.0;
+    let mut tau_accum = 0.0;
+    let mut trans_accum = 0.0;
+
+    for (s_dir, weight) in samples {
+        let s_refracted = refracted_sun_direction(
+            s_dir,
+            up,
+            refr_actual,
+            atmosphere.gas_scale_height,
+            atmosphere.planet_radius,
+        );
+
+        let res = multiple_scattering_spectral_radiance(
+            ray_origin,
+            ray_dir,
+            s_refracted,
+            solar_spectral_irradiance,
+            wavelength,
+            atmosphere,
+            config,
+        );
+
+        ss_accum += res.single_scattered_radiance * weight;
+        ms_accum += res.multiple_scattered_radiance * weight;
+        total_accum += res.total_radiance * weight;
+        tau_accum += res.optical_depth * weight;
+        trans_accum += res.transmittance * weight;
+    }
+
+    MultipleScatteringResult {
+        single_scattered_radiance: ss_accum,
+        multiple_scattered_radiance: ms_accum,
+        total_radiance: total_accum,
+        optical_depth: tau_accum,
+        transmittance: trans_accum,
+    }
+}
+
+pub fn multiple_scattering_stellar_disk_sky_color_xyz(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    geometric_sun_dir: Vector3,
+    star_angular_radius: Angle,
+    solar_temperature: Temperature,
+    atmosphere: &SphericalAtmosphere,
+    config: &MultipleScatteringConfig,
+    disk_samples: u32,
+    limb_darkening_coeff: f64,
+) -> ColorXYZ {
+    let t_sun = solar_temperature.value();
+    let theta_sun = star_angular_radius.value().clamp(0.0, PI / 2.0);
+
+    if t_sun <= 0.0 || theta_sun <= 0.0 || !t_sun.is_finite() || !theta_sun.is_finite() {
+        return ColorXYZ::zero();
+    }
+
+    let solid_angle_sun = PI * theta_sun.sin().powi(2);
+    let step = CIE_WAVELENGTH_STEP_M;
+    let mut accumulated = ColorXYZ::zero();
+    let mut lambda_m = CIE_WAVELENGTH_MIN_M;
+
+    while lambda_m <= CIE_WAVELENGTH_MAX_M {
+        let wavelength = Wavelength::new(lambda_m);
+        let b_lambda = planck_spectral_radiance(wavelength, solar_temperature);
+        let solar_irradiance = b_lambda * solid_angle_sun;
+
+        if solar_irradiance > 0.0 && solar_irradiance.is_finite() {
+            let result = multiple_scattering_stellar_disk_spectral_radiance(
+                ray_origin,
+                ray_dir,
+                geometric_sun_dir,
+                star_angular_radius,
+                solar_irradiance,
+                wavelength,
+                atmosphere,
+                config,
+                disk_samples,
+                limb_darkening_coeff,
+            );
+
+            let cmf = cie_color_matching_functions(wavelength);
+            accumulated = accumulated + cmf * result.total_radiance;
+        }
+
+        lambda_m += step;
+    }
+
+    accumulated * step
+}
+
+pub fn multiple_scattering_stellar_disk_sky_color_rgb(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    geometric_sun_dir: Vector3,
+    star_angular_radius: Angle,
+    solar_temperature: Temperature,
+    atmosphere: &SphericalAtmosphere,
+    exposure: f64,
+    config: &MultipleScatteringConfig,
+    disk_samples: u32,
+    limb_darkening_coeff: f64,
+) -> ColorRGB {
+    let xyz = multiple_scattering_stellar_disk_sky_color_xyz(
+        ray_origin,
+        ray_dir,
+        geometric_sun_dir,
+        star_angular_radius,
+        solar_temperature,
+        atmosphere,
+        config,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+    let linear_rgb = xyz_to_linear_srgb(xyz);
+    let exposed = exposure_tone_map(linear_rgb, exposure);
+    linear_to_srgb_gamma(exposed)
+}
+
+pub fn multiple_scattering_stellar_disk_rgb_fast(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    geometric_sun_dir: Vector3,
+    star_angular_radius: Angle,
+    solar_irradiance_rgb: ColorRGB,
+    atmosphere: &SphericalAtmosphere,
+    config: &MultipleScatteringConfig,
+    disk_samples: u32,
+    limb_darkening_coeff: f64,
+) -> (ColorRGB, ColorRGB, ColorRGB) {
+    let w_r = Wavelength::new(680.0e-9);
+    let w_g = Wavelength::new(550.0e-9);
+    let w_b = Wavelength::new(440.0e-9);
+
+    let res_r = multiple_scattering_stellar_disk_spectral_radiance(
+        ray_origin,
+        ray_dir,
+        geometric_sun_dir,
+        star_angular_radius,
+        solar_irradiance_rgb.r(),
+        w_r,
+        atmosphere,
+        config,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+
+    let res_g = multiple_scattering_stellar_disk_spectral_radiance(
+        ray_origin,
+        ray_dir,
+        geometric_sun_dir,
+        star_angular_radius,
+        solar_irradiance_rgb.g(),
+        w_g,
+        atmosphere,
+        config,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+
+    let res_b = multiple_scattering_stellar_disk_spectral_radiance(
+        ray_origin,
+        ray_dir,
+        geometric_sun_dir,
+        star_angular_radius,
+        solar_irradiance_rgb.b(),
+        w_b,
+        atmosphere,
+        config,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+
+    let single_scattered = ColorRGB::new(
+        res_r.single_scattered_radiance,
+        res_g.single_scattered_radiance,
+        res_b.single_scattered_radiance,
+    );
+
+    let multiple_scattered = ColorRGB::new(
+        res_r.multiple_scattered_radiance,
+        res_g.multiple_scattered_radiance,
+        res_b.multiple_scattered_radiance,
+    );
+
+    let transmittance = ColorRGB::new(
+        res_r.transmittance,
+        res_g.transmittance,
+        res_b.transmittance,
+    );
+
+    (single_scattered, multiple_scattered, transmittance)
 }

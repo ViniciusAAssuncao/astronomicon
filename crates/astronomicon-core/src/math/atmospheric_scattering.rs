@@ -1,6 +1,7 @@
 use crate::chemistry::optics::GasOpticalProperties;
 use crate::math::aerosol::{
     mie_scattering_coefficient_at_wavelength,
+    refractivity_at_temperature_pressure,
     AtmosphericAerosolProperties,
 };
 use crate::math::colorimetry::{
@@ -16,8 +17,11 @@ use crate::math::optics::{
     mie_scattering_coefficient,
     rayleigh_phase_function_with_depolarization,
     rayleigh_scattering_coefficient,
+    refracted_sun_direction,
+    unrefracted_sun_direction,
 };
 use crate::math::radiation::planck_spectral_radiance;
+use crate::math::radiometry::{stellar_disk_sample_directions, stellar_limb_darkening};
 use crate::units::constants::{
     CIE_WAVELENGTH_MAX_M,
     CIE_WAVELENGTH_MIN_M,
@@ -749,4 +753,303 @@ pub fn spherical_view_transmittance(
     } else {
         (-total_tau).exp().clamp(0.0, 1.0)
     }
+}
+
+pub fn refracted_single_scattering_spectral_radiance(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    geometric_sun_dir: Vector3,
+    solar_spectral_irradiance: f64,
+    wavelength: Wavelength,
+    atmosphere: &SphericalAtmosphere,
+    config: &AtmosphericRaymarchConfig,
+) -> SphericalScatteringResult {
+    let up = ray_origin.normalized();
+    let refr = atmosphere.gas_optical_properties.refractivity_stp();
+    let refr_actual = refractivity_at_temperature_pressure(
+        refr,
+        atmosphere.surface_temperature,
+        atmosphere.surface_pressure,
+    );
+    let s_refracted = refracted_sun_direction(
+        geometric_sun_dir,
+        up,
+        refr_actual,
+        atmosphere.gas_scale_height,
+        atmosphere.planet_radius,
+    );
+    single_scattering_spectral_radiance(
+        ray_origin,
+        ray_dir,
+        s_refracted,
+        solar_spectral_irradiance,
+        wavelength,
+        atmosphere,
+        config,
+    )
+}
+
+pub fn stellar_disk_integrated_single_scattering(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    geometric_sun_dir: Vector3,
+    star_angular_radius: Angle,
+    solar_spectral_irradiance: f64,
+    wavelength: Wavelength,
+    atmosphere: &SphericalAtmosphere,
+    config: &AtmosphericRaymarchConfig,
+    disk_samples: u32,
+    limb_darkening_coeff: f64,
+) -> SphericalScatteringResult {
+    let samples = stellar_disk_sample_directions(
+        geometric_sun_dir,
+        star_angular_radius,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+
+    let up = ray_origin.normalized();
+    let refr = atmosphere.gas_optical_properties.refractivity_stp();
+    let refr_actual = refractivity_at_temperature_pressure(
+        refr,
+        atmosphere.surface_temperature,
+        atmosphere.surface_pressure,
+    );
+
+    let mut in_scatter_accum = 0.0;
+    let mut opt_depth_accum = 0.0;
+    let mut trans_accum = 0.0;
+
+    for (s_dir, weight) in samples {
+        let s_refracted = refracted_sun_direction(
+            s_dir,
+            up,
+            refr_actual,
+            atmosphere.gas_scale_height,
+            atmosphere.planet_radius,
+        );
+
+        let res = single_scattering_spectral_radiance(
+            ray_origin,
+            ray_dir,
+            s_refracted,
+            solar_spectral_irradiance,
+            wavelength,
+            atmosphere,
+            config,
+        );
+
+        in_scatter_accum += res.in_scattered_radiance * weight;
+        opt_depth_accum += res.optical_depth * weight;
+        trans_accum += res.transmittance * weight;
+    }
+
+    SphericalScatteringResult {
+        in_scattered_radiance: in_scatter_accum,
+        optical_depth: opt_depth_accum,
+        transmittance: trans_accum,
+    }
+}
+
+pub fn stellar_disk_sky_color_xyz(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    geometric_sun_dir: Vector3,
+    star_angular_radius: Angle,
+    solar_temperature: Temperature,
+    atmosphere: &SphericalAtmosphere,
+    config: &AtmosphericRaymarchConfig,
+    disk_samples: u32,
+    limb_darkening_coeff: f64,
+) -> ColorXYZ {
+    let t_sun = solar_temperature.value();
+    let theta_sun = star_angular_radius.value().clamp(0.0, PI / 2.0);
+
+    if t_sun <= 0.0 || theta_sun <= 0.0 || !t_sun.is_finite() || !theta_sun.is_finite() {
+        return ColorXYZ::zero();
+    }
+
+    let solid_angle_sun = PI * theta_sun.sin().powi(2);
+    let step = CIE_WAVELENGTH_STEP_M;
+    let mut accumulated = ColorXYZ::zero();
+    let mut lambda_m = CIE_WAVELENGTH_MIN_M;
+
+    while lambda_m <= CIE_WAVELENGTH_MAX_M {
+        let wavelength = Wavelength::new(lambda_m);
+        let b_lambda = planck_spectral_radiance(wavelength, solar_temperature);
+        let solar_irradiance = b_lambda * solid_angle_sun;
+
+        if solar_irradiance > 0.0 && solar_irradiance.is_finite() {
+            let result = stellar_disk_integrated_single_scattering(
+                ray_origin,
+                ray_dir,
+                geometric_sun_dir,
+                star_angular_radius,
+                solar_irradiance,
+                wavelength,
+                atmosphere,
+                config,
+                disk_samples,
+                limb_darkening_coeff,
+            );
+
+            let cmf = cie_color_matching_functions(wavelength);
+            accumulated = accumulated + cmf * result.in_scattered_radiance;
+        }
+
+        lambda_m += step;
+    }
+
+    accumulated * step
+}
+
+pub fn stellar_disk_sky_color_rgb(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    geometric_sun_dir: Vector3,
+    star_angular_radius: Angle,
+    solar_temperature: Temperature,
+    atmosphere: &SphericalAtmosphere,
+    exposure: f64,
+    config: &AtmosphericRaymarchConfig,
+    disk_samples: u32,
+    limb_darkening_coeff: f64,
+) -> ColorRGB {
+    let xyz = stellar_disk_sky_color_xyz(
+        ray_origin,
+        ray_dir,
+        geometric_sun_dir,
+        star_angular_radius,
+        solar_temperature,
+        atmosphere,
+        config,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+    let linear_rgb = xyz_to_linear_srgb(xyz);
+    let exposed = exposure_tone_map(linear_rgb, exposure);
+    linear_to_srgb_gamma(exposed)
+}
+
+pub fn stellar_disk_rgb_fast(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    geometric_sun_dir: Vector3,
+    star_angular_radius: Angle,
+    solar_irradiance_rgb: ColorRGB,
+    atmosphere: &SphericalAtmosphere,
+    config: &AtmosphericRaymarchConfig,
+    disk_samples: u32,
+    limb_darkening_coeff: f64,
+) -> (ColorRGB, ColorRGB) {
+    let w_r = Wavelength::new(680.0e-9);
+    let w_g = Wavelength::new(550.0e-9);
+    let w_b = Wavelength::new(440.0e-9);
+
+    let res_r = stellar_disk_integrated_single_scattering(
+        ray_origin,
+        ray_dir,
+        geometric_sun_dir,
+        star_angular_radius,
+        solar_irradiance_rgb.r(),
+        w_r,
+        atmosphere,
+        config,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+
+    let res_g = stellar_disk_integrated_single_scattering(
+        ray_origin,
+        ray_dir,
+        geometric_sun_dir,
+        star_angular_radius,
+        solar_irradiance_rgb.g(),
+        w_g,
+        atmosphere,
+        config,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+
+    let res_b = stellar_disk_integrated_single_scattering(
+        ray_origin,
+        ray_dir,
+        geometric_sun_dir,
+        star_angular_radius,
+        solar_irradiance_rgb.b(),
+        w_b,
+        atmosphere,
+        config,
+        disk_samples,
+        limb_darkening_coeff,
+    );
+
+    let in_scattered = ColorRGB::new(
+        res_r.in_scattered_radiance,
+        res_g.in_scattered_radiance,
+        res_b.in_scattered_radiance,
+    );
+
+    let transmittance = ColorRGB::new(
+        res_r.transmittance,
+        res_g.transmittance,
+        res_b.transmittance,
+    );
+
+    (in_scattered, transmittance)
+}
+
+pub fn stellar_disk_direct_radiance_rgb(
+    view_dir: Vector3,
+    observer_pos: Vector3,
+    geometric_sun_dir: Vector3,
+    star_angular_radius: Angle,
+    star_surface_radiance_rgb: ColorRGB,
+    atmosphere: &SphericalAtmosphere,
+    config: &AtmosphericRaymarchConfig,
+    limb_darkening_coeff: f64,
+) -> ColorRGB {
+    let up = observer_pos.normalized();
+    let refr = atmosphere.gas_optical_properties.refractivity_stp();
+    let refr_actual = refractivity_at_temperature_pressure(
+        refr,
+        atmosphere.surface_temperature,
+        atmosphere.surface_pressure,
+    );
+
+    let v_unrefracted = unrefracted_sun_direction(
+        view_dir,
+        up,
+        refr_actual,
+        atmosphere.gas_scale_height,
+        atmosphere.planet_radius,
+    );
+
+    let s = geometric_sun_dir.normalized();
+    let cos_angle = v_unrefracted.dot(&s).clamp(-1.0, 1.0);
+    let angle_to_center = cos_angle.acos();
+    let theta_max = star_angular_radius.value();
+
+    if angle_to_center > theta_max || theta_max <= 0.0 {
+        return ColorRGB::zero();
+    }
+
+    let rho = (angle_to_center / theta_max).clamp(0.0, 1.0);
+    let mu = (1.0 - rho * rho).max(0.0).sqrt();
+    let ld = stellar_limb_darkening(mu, limb_darkening_coeff);
+
+    let w_r = Wavelength::new(680.0e-9);
+    let w_g = Wavelength::new(550.0e-9);
+    let w_b = Wavelength::new(440.0e-9);
+
+    let trans_r = spherical_view_transmittance(observer_pos, view_dir, w_r, atmosphere, config);
+    let trans_g = spherical_view_transmittance(observer_pos, view_dir, w_g, atmosphere, config);
+    let trans_b = spherical_view_transmittance(observer_pos, view_dir, w_b, atmosphere, config);
+
+    ColorRGB::new(
+        star_surface_radiance_rgb.r() * ld * trans_r,
+        star_surface_radiance_rgb.g() * ld * trans_g,
+        star_surface_radiance_rgb.b() * ld * trans_b,
+    )
 }
