@@ -1,13 +1,16 @@
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
 use crate::shape::{planet_mean_density, star_mean_density};
-use astronomicon_core::domain::{Barycenter, BarycenterMember, Planet, Star};
+use astronomicon_core::domain::{Barycenter, BarycenterMember, MinorPlanet, Planet, Star};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::gravity::{
     calculate_effective_mass, calculate_parent_effective_mass, combined_gravitational_parameter,
     gravitational_acceleration_at, gravitational_parameter,
 };
 use astronomicon_core::math::kepler::orbital_period;
+use astronomicon_core::math::minor_planet::{
+    bulk_density, equivalent_spherical_radius, grain_density_by_spectral_type,
+};
 use astronomicon_core::math::stability::{
     hill_sphere_radius, kozai_constant, kozai_critical_inclination, kozai_max_eccentricity,
     kozai_oscillation_timescale, mardling_aarseth_critical_ratio, mardling_aarseth_stability_ratio,
@@ -18,7 +21,9 @@ use astronomicon_core::math::tidal::{
 use astronomicon_core::units::{
     AccelerationVector, Angle, Duration, Length, Mass, Position,
 };
-use astronomicon_db::repositories::{barycenter_repository, planet_repository, star_repository};
+use astronomicon_db::repositories::{
+    barycenter_repository, minor_planet_repository, planet_repository, star_repository,
+};
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -51,6 +56,7 @@ struct SystemHierarchy {
     stars: Vec<Star>,
     planets: Vec<Planet>,
     barycenters: Vec<Barycenter>,
+    minor_planets: Vec<MinorPlanet>,
 }
 
 impl SystemHierarchy {
@@ -60,11 +66,13 @@ impl SystemHierarchy {
         HashMap<Uuid, &Star>,
         HashMap<Uuid, &Planet>,
         HashMap<Uuid, &Barycenter>,
+        HashMap<Uuid, &MinorPlanet>,
     ) {
         let star_map = self.stars.iter().map(|s| (s.id(), s)).collect();
         let planet_map = self.planets.iter().map(|p| (p.id(), p)).collect();
         let barycenter_map = self.barycenters.iter().map(|b| (b.id(), b)).collect();
-        (star_map, planet_map, barycenter_map)
+        let minor_planet_map = self.minor_planets.iter().map(|mp| (mp.id(), mp)).collect();
+        (star_map, planet_map, barycenter_map, minor_planet_map)
     }
 }
 
@@ -90,10 +98,18 @@ async fn fetch_system_hierarchy(
         .map(Barycenter::try_from)
         .collect::<Result<Vec<_>, _>>()?;
 
+    let minor_planet_rows =
+        minor_planet_repository::list_by_system(pool, star_system_id).await?;
+    let minor_planets: Vec<MinorPlanet> = minor_planet_rows
+        .into_iter()
+        .map(MinorPlanet::try_from)
+        .collect::<Result<Vec<_>, _>>()?;
+
     Ok(SystemHierarchy {
         stars,
         planets,
         barycenters,
+        minor_planets,
     })
 }
 
@@ -103,7 +119,7 @@ pub async fn resolve_entity_effective_mass(
     entity_id: &Uuid,
 ) -> AppResult<Mass> {
     let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
-    let (star_map, planet_map, barycenter_map) = hierarchy.maps();
+    let (star_map, planet_map, barycenter_map, _) = hierarchy.maps();
 
     if hierarchy.stars.iter().any(|s| s.id() == *entity_id) {
         calculate_effective_mass(
@@ -129,6 +145,8 @@ pub async fn resolve_entity_effective_mass(
             &barycenter_map,
         )
         .map_err(Into::into)
+    } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *entity_id) {
+        Ok(mp.mass())
     } else {
         Err(DomainError::InvalidInvariant {
             field: "entity_id".to_string(),
@@ -149,7 +167,9 @@ pub async fn resolve_net_gravitational_acceleration(
 ) -> AppResult<AccelerationVector> {
     let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
     let positions = resolve_system_positions(pool, *star_system_id, at_epoch).await?;
-    let mut sources = Vec::with_capacity(hierarchy.stars.len() + hierarchy.planets.len());
+    let mut sources = Vec::with_capacity(
+        hierarchy.stars.len() + hierarchy.planets.len() + hierarchy.minor_planets.len(),
+    );
 
     for star in &hierarchy.stars {
         if let Some(&pos) = positions.get(&star.id()) {
@@ -163,6 +183,12 @@ pub async fn resolve_net_gravitational_acceleration(
         }
     }
 
+    for mp in &hierarchy.minor_planets {
+        if let Some(&pos) = positions.get(&mp.id()) {
+            sources.push((pos, mp.mass()));
+        }
+    }
+
     Ok(gravitational_acceleration_at(point, &sources))
 }
 
@@ -172,7 +198,7 @@ pub async fn resolve_hill_sphere(
     entity_id: &Uuid,
 ) -> AppResult<Length> {
     let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
-    let (star_map, planet_map, barycenter_map) = hierarchy.maps();
+    let (star_map, planet_map, barycenter_map, minor_planet_map) = hierarchy.maps();
 
     if let Some(planet) = hierarchy.planets.iter().find(|p| p.id() == *entity_id) {
         let elements =
@@ -187,6 +213,7 @@ pub async fn resolve_hill_sphere(
             &star_map,
             &planet_map,
             &barycenter_map,
+            &minor_planet_map,
         )?;
         Ok(hill_sphere_radius(
             elements.semi_major_axis(),
@@ -206,11 +233,32 @@ pub async fn resolve_hill_sphere(
             &star_map,
             &planet_map,
             &barycenter_map,
+            &minor_planet_map,
         )?;
         Ok(hill_sphere_radius(
             elements.semi_major_axis(),
             elements.eccentricity(),
             star.mass(),
+            parent_mass,
+        ))
+    } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *entity_id) {
+        let elements = mp
+            .orbital_elements()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "orbital_elements".to_string(),
+                reason: format!("minor planet '{}' has no orbital elements", entity_id),
+            })?;
+        let parent_mass = calculate_parent_effective_mass(
+            &mp.orbital_parent(),
+            &star_map,
+            &planet_map,
+            &barycenter_map,
+            &minor_planet_map,
+        )?;
+        Ok(hill_sphere_radius(
+            elements.semi_major_axis(),
+            elements.eccentricity(),
+            mp.mass(),
             parent_mass,
         ))
     } else {
@@ -231,7 +279,7 @@ pub async fn resolve_barycenter_stability(
     barycenter_id: &Uuid,
 ) -> AppResult<BarycenterStabilityDiagnostic> {
     let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
-    let (star_map, planet_map, barycenter_map) = hierarchy.maps();
+    let (star_map, planet_map, barycenter_map, minor_planet_map) = hierarchy.maps();
 
     let barycenter = hierarchy
         .barycenters
@@ -267,6 +315,7 @@ pub async fn resolve_barycenter_stability(
         &star_map,
         &planet_map,
         &barycenter_map,
+        &minor_planet_map,
     )?;
 
     let inner_a = barycenter.internal_orbital_elements().semi_major_axis();
@@ -297,7 +346,7 @@ pub async fn resolve_kozai_lidov_diagnostic(
     barycenter_id: &Uuid,
 ) -> AppResult<KozaiDiagnostic> {
     let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
-    let (star_map, planet_map, barycenter_map) = hierarchy.maps();
+    let (star_map, planet_map, barycenter_map, minor_planet_map) = hierarchy.maps();
 
     let barycenter = hierarchy
         .barycenters
@@ -335,6 +384,7 @@ pub async fn resolve_kozai_lidov_diagnostic(
         &star_map,
         &planet_map,
         &barycenter_map,
+        &minor_planet_map,
     )?;
 
     let mu_inner = gravitational_parameter(inner_mass);
@@ -409,6 +459,17 @@ pub async fn resolve_roche_limits(
                     reason: format!("primary planet '{}' has no equatorial radius", primary_id),
                 })?;
             (planet_mean_density(planet), r)
+        } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *primary_id) {
+            let grain_rho = grain_density_by_spectral_type(mp.spectral_type());
+            let bulk_rho = bulk_density(grain_rho, mp.macroporosity().unwrap_or(0.0));
+            let r = match (mp.axis_a(), mp.axis_b(), mp.axis_c()) {
+                (Some(a), Some(b), Some(c)) => equivalent_spherical_radius(a, b, c),
+                _ => {
+                    let vol = mp.mass().value() / bulk_rho.value().max(1.0);
+                    Length::new((3.0 * vol / (4.0 * PI)).cbrt())
+                }
+            };
+            (bulk_rho, r)
         } else {
             return Err(DomainError::InvalidInvariant {
                 field: "primary_id".to_string(),
@@ -426,6 +487,9 @@ pub async fn resolve_roche_limits(
         star_mean_density(star)
     } else if let Some(planet) = hierarchy.planets.iter().find(|p| p.id() == *satellite_id) {
         planet_mean_density(planet)
+    } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *satellite_id) {
+        let grain_rho = grain_density_by_spectral_type(mp.spectral_type());
+        bulk_density(grain_rho, mp.macroporosity().unwrap_or(0.0))
     } else {
         return Err(DomainError::InvalidInvariant {
             field: "satellite_id".to_string(),
@@ -467,6 +531,14 @@ pub async fn resolve_synchronous_orbit_radius(
                     reason: format!("planet '{}' has no rotation period", primary_id),
                 })?;
             (planet.mass(), rot)
+        } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *primary_id) {
+            let rot = mp
+                .rotation_period()
+                .ok_or_else(|| DomainError::InvalidInvariant {
+                    field: "rotation_period".to_string(),
+                    reason: format!("minor planet '{}' has no rotation period", primary_id),
+                })?;
+            (mp.mass(), rot)
         } else {
             return Err(DomainError::InvalidInvariant {
                 field: "primary_id".to_string(),

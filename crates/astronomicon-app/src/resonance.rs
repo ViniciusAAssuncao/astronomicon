@@ -1,5 +1,7 @@
 use crate::error::AppResult;
-use astronomicon_core::domain::{Barycenter, BarycenterMember, OrbitalElements, Planet, Star};
+use astronomicon_core::domain::{
+    Barycenter, BarycenterMember, MinorPlanet, OrbitalElements, Planet, Star,
+};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::gravity::{
     calculate_effective_mass, calculate_parent_effective_mass, combined_gravitational_parameter,
@@ -12,7 +14,9 @@ use astronomicon_core::math::resonance::{
     resonance_order, resonant_argument, ResonanceState,
 };
 use astronomicon_core::units::{Angle, AngularVelocity, Duration};
-use astronomicon_db::repositories::{barycenter_repository, planet_repository, star_repository};
+use astronomicon_db::repositories::{
+    barycenter_repository, minor_planet_repository, planet_repository, star_repository,
+};
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -48,24 +52,34 @@ struct SystemHierarchyContext {
     star_map: HashMap<Uuid, Star>,
     planet_map: HashMap<Uuid, Planet>,
     barycenter_map: HashMap<Uuid, Barycenter>,
+    minor_planet_map: HashMap<Uuid, MinorPlanet>,
 }
 
 impl SystemHierarchyContext {
     fn get_body_orbit_info(&self, body_id: &Uuid) -> AppResult<BodyOrbitInfo> {
-        let star_ref_map: HashMap<Uuid, &Star> = self.star_map.iter().map(|(k, v)| (*k, v)).collect();
-        let planet_ref_map: HashMap<Uuid, &Planet> = self.planet_map.iter().map(|(k, v)| (*k, v)).collect();
-        let bary_ref_map: HashMap<Uuid, &Barycenter> = self.barycenter_map.iter().map(|(k, v)| (*k, v)).collect();
+        let star_ref_map: HashMap<Uuid, &Star> =
+            self.star_map.iter().map(|(k, v)| (*k, v)).collect();
+        let planet_ref_map: HashMap<Uuid, &Planet> =
+            self.planet_map.iter().map(|(k, v)| (*k, v)).collect();
+        let bary_ref_map: HashMap<Uuid, &Barycenter> =
+            self.barycenter_map.iter().map(|(k, v)| (*k, v)).collect();
+        let minor_planet_ref_map: HashMap<Uuid, &MinorPlanet> =
+            self.minor_planet_map.iter().map(|(k, v)| (*k, v)).collect();
 
         if let Some(planet) = self.planet_map.get(body_id) {
-            let elements = planet.orbital_elements().ok_or_else(|| DomainError::InvalidInvariant {
-                field: "orbital_elements".to_string(),
-                reason: format!("planet '{}' has no orbital elements", body_id),
-            })?;
+            let elements =
+                planet
+                    .orbital_elements()
+                    .ok_or_else(|| DomainError::InvalidInvariant {
+                        field: "orbital_elements".to_string(),
+                        reason: format!("planet '{}' has no orbital elements", body_id),
+                    })?;
             let parent_mass = calculate_parent_effective_mass(
                 &planet.orbital_parent(),
                 &star_ref_map,
                 &planet_ref_map,
                 &bary_ref_map,
+                &minor_planet_ref_map,
             )?;
             let mu = combined_gravitational_parameter(planet.mass(), parent_mass);
             let n = mean_motion(elements.semi_major_axis(), mu);
@@ -81,15 +95,18 @@ impl SystemHierarchyContext {
                 period,
             })
         } else if let Some(star) = self.star_map.get(body_id) {
-            let elements = star.orbital_elements().ok_or_else(|| DomainError::InvalidInvariant {
-                field: "orbital_elements".to_string(),
-                reason: format!("star '{}' has no orbital elements", body_id),
-            })?;
+            let elements = star
+                .orbital_elements()
+                .ok_or_else(|| DomainError::InvalidInvariant {
+                    field: "orbital_elements".to_string(),
+                    reason: format!("star '{}' has no orbital elements", body_id),
+                })?;
             let parent_mass = calculate_parent_effective_mass(
                 &star.orbital_parent(),
                 &star_ref_map,
                 &planet_ref_map,
                 &bary_ref_map,
+                &minor_planet_ref_map,
             )?;
             let mu = combined_gravitational_parameter(star.mass(), parent_mass);
             let n = mean_motion(elements.semi_major_axis(), mu);
@@ -105,10 +122,15 @@ impl SystemHierarchyContext {
                 period,
             })
         } else if let Some(bary) = self.barycenter_map.get(body_id) {
-            let elements = bary.external_orbital_elements().ok_or_else(|| DomainError::InvalidInvariant {
-                field: "external_orbital_elements".to_string(),
-                reason: format!("barycenter '{}' has no external orbital elements", body_id),
-            })?;
+            let elements = bary
+                .external_orbital_elements()
+                .ok_or_else(|| DomainError::InvalidInvariant {
+                    field: "external_orbital_elements".to_string(),
+                    reason: format!(
+                        "barycenter '{}' has no external orbital elements",
+                        body_id
+                    ),
+                })?;
             let inner_mass = calculate_effective_mass(
                 &BarycenterMember::Barycenter(*body_id),
                 &star_ref_map,
@@ -120,6 +142,7 @@ impl SystemHierarchyContext {
                 &star_ref_map,
                 &planet_ref_map,
                 &bary_ref_map,
+                &minor_planet_ref_map,
             )?;
             let mu = combined_gravitational_parameter(inner_mass, parent_mass);
             let n = mean_motion(elements.semi_major_axis(), mu);
@@ -127,6 +150,33 @@ impl SystemHierarchyContext {
                 DomainError::InvalidInvariant {
                     field: "orbital_period".to_string(),
                     reason: format!("invalid orbital period for barycenter '{}'", body_id),
+                }
+            })?;
+            Ok(BodyOrbitInfo {
+                elements,
+                mean_motion: n,
+                period,
+            })
+        } else if let Some(mp) = self.minor_planet_map.get(body_id) {
+            let elements = mp
+                .orbital_elements()
+                .ok_or_else(|| DomainError::InvalidInvariant {
+                    field: "orbital_elements".to_string(),
+                    reason: format!("minor planet '{}' has no orbital elements", body_id),
+                })?;
+            let parent_mass = calculate_parent_effective_mass(
+                &mp.orbital_parent(),
+                &star_ref_map,
+                &planet_ref_map,
+                &bary_ref_map,
+                &minor_planet_ref_map,
+            )?;
+            let mu = combined_gravitational_parameter(mp.mass(), parent_mass);
+            let n = mean_motion(elements.semi_major_axis(), mu);
+            let period = orbital_period(elements.semi_major_axis(), mu).ok_or_else(|| {
+                DomainError::InvalidInvariant {
+                    field: "orbital_period".to_string(),
+                    reason: format!("invalid orbital period for minor planet '{}'", body_id),
                 }
             })?;
             Ok(BodyOrbitInfo {
@@ -144,7 +194,10 @@ impl SystemHierarchyContext {
     }
 }
 
-async fn load_system_hierarchy(pool: &SqlitePool, star_system_id: &Uuid) -> AppResult<SystemHierarchyContext> {
+async fn load_system_hierarchy(
+    pool: &SqlitePool,
+    star_system_id: &Uuid,
+) -> AppResult<SystemHierarchyContext> {
     let star_rows = star_repository::list_by_system(pool, star_system_id).await?;
     let stars: Vec<Star> = star_rows
         .into_iter()
@@ -163,14 +216,23 @@ async fn load_system_hierarchy(pool: &SqlitePool, star_system_id: &Uuid) -> AppR
         .map(Barycenter::try_from)
         .collect::<Result<Vec<_>, _>>()?;
 
+    let minor_planet_rows =
+        minor_planet_repository::list_by_system(pool, star_system_id).await?;
+    let minor_planets: Vec<MinorPlanet> = minor_planet_rows
+        .into_iter()
+        .map(MinorPlanet::try_from)
+        .collect::<Result<Vec<_>, _>>()?;
+
     let star_map = stars.into_iter().map(|s| (s.id(), s)).collect();
     let planet_map = planets.into_iter().map(|p| (p.id(), p)).collect();
     let barycenter_map = barycenters.into_iter().map(|b| (b.id(), b)).collect();
+    let minor_planet_map = minor_planets.into_iter().map(|mp| (mp.id(), mp)).collect();
 
     Ok(SystemHierarchyContext {
         star_map,
         planet_map,
         barycenter_map,
+        minor_planet_map,
     })
 }
 
@@ -194,7 +256,11 @@ pub async fn resolve_orbital_resonance(
     };
 
     let max_order = 32;
-    let (p, q, dev) = match mean_motion_resonance_search(inner_info.mean_motion, outer_info.mean_motion, max_order) {
+    let (p, q, dev) = match mean_motion_resonance_search(
+        inner_info.mean_motion,
+        outer_info.mean_motion,
+        max_order,
+    ) {
         Some(res) => res,
         None => return Ok(None),
     };
@@ -217,8 +283,16 @@ pub async fn resolve_orbital_resonance(
         let t_offset = Duration::new((i as f64 / (sample_count - 1) as f64) * time_span);
         let current_t = total_epoch + t_offset;
 
-        let lambda1 = mean_longitude_at_epoch(&inner_info.elements, inner_info.mean_motion, current_t);
-        let lambda2 = mean_longitude_at_epoch(&outer_info.elements, outer_info.mean_motion, current_t);
+        let lambda1 = mean_longitude_at_epoch(
+            &inner_info.elements,
+            inner_info.mean_motion,
+            current_t,
+        );
+        let lambda2 = mean_longitude_at_epoch(
+            &outer_info.elements,
+            outer_info.mean_motion,
+            current_t,
+        );
         let varpi = inner_info.elements.longitude_of_periapsis();
 
         let phi = resonant_argument(p, q, lambda1, lambda2, varpi);
@@ -258,7 +332,11 @@ pub async fn resolve_laplace_chain(
         (body_2_id, info2),
         (body_3_id, info3),
     ];
-    sorted.sort_by(|a, b| b.1.mean_motion.partial_cmp(&a.1.mean_motion).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        b.1.mean_motion
+            .partial_cmp(&a.1.mean_motion)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let (id1, inner) = sorted[0];
     let (id2, middle) = sorted[1];

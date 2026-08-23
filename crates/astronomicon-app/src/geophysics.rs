@@ -2,7 +2,7 @@ use crate::climate::resolve_stellar_wind_at_planet;
 use crate::error::AppResult;
 use crate::gravity::resolve_entity_effective_mass;
 use crate::shape::planet_mean_density;
-use astronomicon_core::domain::{OrbitalParent, Planet, Star};
+use astronomicon_core::domain::{MinorPlanet, OrbitalParent, Planet, Star};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::geophysics::{
     conducting_core_radius, convective_core_heat_flux, core_density,
@@ -21,7 +21,7 @@ use astronomicon_core::units::constants::VACUUM_PERMEABILITY;
 use astronomicon_core::units::{
     Density, Duration, HeatFlux, Length, MagneticDipoleMoment, MagneticFluxDensity, Mass,
 };
-use astronomicon_db::repositories::{planet_repository, star_repository};
+use astronomicon_db::repositories::{minor_planet_repository, planet_repository, star_repository};
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
@@ -69,9 +69,20 @@ async fn resolve_direct_parent_mass(pool: &SqlitePool, parent: &OrbitalParent) -
             let parent_planet = Planet::try_from(row)?;
             Ok(parent_planet.mass())
         }
+        OrbitalParent::MinorPlanet(mp_id) => {
+            let row = minor_planet_repository::get_by_id(pool, mp_id)
+                .await?
+                .ok_or_else(|| DomainError::InvalidInvariant {
+                    field: "parent_minor_planet_id".to_string(),
+                    reason: format!("minor planet '{}' not found", mp_id),
+                })?;
+            let parent_mp = MinorPlanet::try_from(row)?;
+            Ok(parent_mp.mass())
+        }
         OrbitalParent::Barycenter(bary_id) => {
             let mut visited = std::collections::HashSet::new();
-            let stars = crate::climate::collect_stars_from_barycenter(pool, bary_id, &mut visited).await?;
+            let stars =
+                crate::climate::collect_stars_from_barycenter(pool, bary_id, &mut visited).await?;
             let total_mass: f64 = stars.iter().map(|s| s.mass().value()).sum();
             Ok(Mass::new(total_mass))
         }
@@ -114,15 +125,22 @@ pub async fn resolve_planetary_core(
         (parent, Some(elements)) => {
             let parent_mass = if let Some(sys_id) = planet.star_system_id() {
                 let parent_id = match parent {
-                    OrbitalParent::Star(id) | OrbitalParent::Planet(id) | OrbitalParent::Barycenter(id) => id,
+                    OrbitalParent::Star(id)
+                    | OrbitalParent::Planet(id)
+                    | OrbitalParent::Barycenter(id)
+                    | OrbitalParent::MinorPlanet(id) => id,
                     OrbitalParent::Fixed => unreachable!(),
                 };
                 match resolve_entity_effective_mass(pool, &sys_id, &parent_id).await {
                     Ok(m) => m,
-                    Err(_) => resolve_direct_parent_mass(pool, &parent).await.unwrap_or(Mass::new(0.0)),
+                    Err(_) => resolve_direct_parent_mass(pool, &parent)
+                        .await
+                        .unwrap_or(Mass::new(0.0)),
                 }
             } else {
-                resolve_direct_parent_mass(pool, &parent).await.unwrap_or(Mass::new(0.0))
+                resolve_direct_parent_mass(pool, &parent)
+                    .await
+                    .unwrap_or(Mass::new(0.0))
             };
 
             if parent_mass.value() > 0.0 {

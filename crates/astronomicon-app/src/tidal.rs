@@ -1,14 +1,14 @@
 use crate::error::AppResult;
 use crate::gravity::resolve_entity_effective_mass;
 use crate::shape::planet_mean_density;
-use astronomicon_core::domain::{OrbitalParent, Planet, Star};
+use astronomicon_core::domain::{MinorPlanet, OrbitalParent, Planet, Star};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::tidal::{
     fallback_love_number_k2, fallback_tidal_dissipation_factor_q, tidal_heating_surface_flux,
     tidal_heating_total_power, tidal_locking_timescale,
 };
 use astronomicon_core::units::{Duration, HeatFlux, Length, Luminosity, Mass};
-use astronomicon_db::repositories::{planet_repository, star_repository};
+use astronomicon_db::repositories::{minor_planet_repository, planet_repository, star_repository};
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -46,9 +46,20 @@ async fn resolve_direct_parent_mass(pool: &SqlitePool, parent: &OrbitalParent) -
             let parent_planet = Planet::try_from(row)?;
             Ok(parent_planet.mass())
         }
+        OrbitalParent::MinorPlanet(mp_id) => {
+            let row = minor_planet_repository::get_by_id(pool, mp_id)
+                .await?
+                .ok_or_else(|| DomainError::InvalidInvariant {
+                    field: "parent_minor_planet_id".to_string(),
+                    reason: format!("minor planet '{}' not found", mp_id),
+                })?;
+            let parent_mp = MinorPlanet::try_from(row)?;
+            Ok(parent_mp.mass())
+        }
         OrbitalParent::Barycenter(bary_id) => {
             let mut visited = std::collections::HashSet::new();
-            let stars = crate::climate::collect_stars_from_barycenter(pool, bary_id, &mut visited).await?;
+            let stars =
+                crate::climate::collect_stars_from_barycenter(pool, bary_id, &mut visited).await?;
             let total_mass: f64 = stars.iter().map(|s| s.mass().value()).sum();
             Ok(Mass::new(total_mass))
         }
@@ -88,27 +99,32 @@ pub async fn resolve_tidal_diagnostics(
         .rotation_period()
         .unwrap_or_else(|| Duration::new(86400.0));
 
-    let (parent_mass, semi_major_axis, eccentricity) = match (
-        planet.orbital_parent(),
-        planet.orbital_elements(),
-    ) {
-        (OrbitalParent::Fixed, _) | (_, None) => (Mass::new(0.0), Length::new(0.0), 0.0),
-        (parent, Some(elements)) => {
-            let pm = if let Some(sys_id) = planet.star_system_id() {
-                let parent_id = match parent {
-                    OrbitalParent::Star(id) | OrbitalParent::Planet(id) | OrbitalParent::Barycenter(id) => id,
-                    OrbitalParent::Fixed => unreachable!(),
+    let (parent_mass, semi_major_axis, eccentricity) =
+        match (planet.orbital_parent(), planet.orbital_elements()) {
+            (OrbitalParent::Fixed, _) | (_, None) => (Mass::new(0.0), Length::new(0.0), 0.0),
+            (parent, Some(elements)) => {
+                let pm = if let Some(sys_id) = planet.star_system_id() {
+                    let parent_id = match parent {
+                        OrbitalParent::Star(id)
+                        | OrbitalParent::Planet(id)
+                        | OrbitalParent::Barycenter(id)
+                        | OrbitalParent::MinorPlanet(id) => id,
+                        OrbitalParent::Fixed => unreachable!(),
+                    };
+                    match resolve_entity_effective_mass(pool, &sys_id, &parent_id).await {
+                        Ok(m) => m,
+                        Err(_) => resolve_direct_parent_mass(pool, &parent)
+                            .await
+                            .unwrap_or(Mass::new(0.0)),
+                    }
+                } else {
+                    resolve_direct_parent_mass(pool, &parent)
+                        .await
+                        .unwrap_or(Mass::new(0.0))
                 };
-                match resolve_entity_effective_mass(pool, &sys_id, &parent_id).await {
-                    Ok(m) => m,
-                    Err(_) => resolve_direct_parent_mass(pool, &parent).await.unwrap_or(Mass::new(0.0)),
-                }
-            } else {
-                resolve_direct_parent_mass(pool, &parent).await.unwrap_or(Mass::new(0.0))
-            };
-            (pm, elements.semi_major_axis(), elements.eccentricity())
-        }
-    };
+                (pm, elements.semi_major_axis(), elements.eccentricity())
+            }
+        };
 
     let timescale = if parent_mass.value() > 0.0 && semi_major_axis.value() > 0.0 {
         tidal_locking_timescale(
@@ -127,31 +143,32 @@ pub async fn resolve_tidal_diagnostics(
     let current_age = universe_epoch + at_epoch;
     let is_tidally_locked = timescale.value() > 0.0 && current_age.value() >= timescale.value();
 
-    let (tidal_energy, tidal_flux) = if parent_mass.value() <= 0.0 || semi_major_axis.value() <= 0.0 {
-        (Luminosity::new(0.0), HeatFlux::new(0.0))
-    } else if is_tidally_locked && eccentricity <= 1e-12 {
-        (Luminosity::new(0.0), HeatFlux::new(0.0))
-    } else {
-        let power = tidal_heating_total_power(
-            parent_mass,
-            planet.mass(),
-            semi_major_axis,
-            eccentricity,
-            radius,
-            k2,
-            q,
-        );
-        let flux = tidal_heating_surface_flux(
-            parent_mass,
-            planet.mass(),
-            semi_major_axis,
-            eccentricity,
-            radius,
-            k2,
-            q,
-        );
-        (power, flux)
-    };
+    let (tidal_energy, tidal_flux) =
+        if parent_mass.value() <= 0.0 || semi_major_axis.value() <= 0.0 {
+            (Luminosity::new(0.0), HeatFlux::new(0.0))
+        } else if is_tidally_locked && eccentricity <= 1e-12 {
+            (Luminosity::new(0.0), HeatFlux::new(0.0))
+        } else {
+            let power = tidal_heating_total_power(
+                parent_mass,
+                planet.mass(),
+                semi_major_axis,
+                eccentricity,
+                radius,
+                k2,
+                q,
+            );
+            let flux = tidal_heating_surface_flux(
+                parent_mass,
+                planet.mass(),
+                semi_major_axis,
+                eccentricity,
+                radius,
+                k2,
+                q,
+            );
+            (power, flux)
+        };
 
     Ok(TidalDiagnostic {
         love_number_k2: k2,
