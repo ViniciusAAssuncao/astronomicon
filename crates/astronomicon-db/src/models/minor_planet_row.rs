@@ -1,12 +1,12 @@
 use crate::error::DbError;
-use astronomicon_core::domain::{OrbitalElements, OrbitalParent, Star, StarKind};
+use astronomicon_core::domain::{MinorPlanet, OrbitalElements, OrbitalParent, SpectralType};
 use astronomicon_core::error::DomainError;
-use astronomicon_core::units::{Angle, Duration, Length, Mass, Temperature};
+use astronomicon_core::units::{Angle, Duration, Length, Mass};
 use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, FromRow)]
-pub struct StarRow {
+pub struct MinorPlanetRow {
     pub id: String,
     pub star_system_id: Option<String>,
     pub parent_star_id: Option<String>,
@@ -14,20 +14,22 @@ pub struct StarRow {
     pub parent_barycenter_id: Option<String>,
     pub parent_minor_planet_id: Option<String>,
     pub name: String,
-    pub kind: String,
+    pub spectral_type: String,
     pub mass_kg: f64,
-    pub radius_m: Option<f64>,
-    pub effective_temperature_k: Option<f64>,
+    pub axis_a_m: Option<f64>,
+    pub axis_b_m: Option<f64>,
+    pub axis_c_m: Option<f64>,
     pub rotation_period_s: Option<f64>,
     pub axial_tilt_rad: Option<f64>,
+    pub macroporosity: Option<f64>,
+    pub geometric_albedo: Option<f64>,
+    pub bond_albedo: Option<f64>,
     pub semi_major_axis_m: Option<f64>,
     pub eccentricity: Option<f64>,
     pub inclination_rad: Option<f64>,
     pub longitude_ascending_node_rad: Option<f64>,
     pub argument_periapsis_rad: Option<f64>,
     pub mean_anomaly_at_epoch_rad: Option<f64>,
-    pub oblateness_j2: Option<f64>,
-    pub metallicity: Option<f64>,
 }
 
 fn parse_orbital_parent(
@@ -89,10 +91,10 @@ fn parse_orbital_elements(
     }
 }
 
-impl TryFrom<StarRow> for Star {
+impl TryFrom<MinorPlanetRow> for MinorPlanet {
     type Error = DbError;
 
-    fn try_from(row: StarRow) -> Result<Self, Self::Error> {
+    fn try_from(row: MinorPlanetRow) -> Result<Self, Self::Error> {
         let id = Uuid::parse_str(&row.id)?;
         let star_system_id = row
             .star_system_id
@@ -107,17 +109,17 @@ impl TryFrom<StarRow> for Star {
             row.parent_minor_planet_id,
         )?;
 
-        let kind = match row.kind.as_str() {
-            "Star" => StarKind::Star,
-            "WhiteDwarf" => StarKind::WhiteDwarf,
-            "NeutronStar" => StarKind::NeutronStar,
-            "BlackHole" => StarKind::BlackHole,
-            "BrownDwarf" => StarKind::BrownDwarf,
-            "Exotic" => StarKind::Exotic,
+        let spectral_type = match row.spectral_type.as_str() {
+            "C" => SpectralType::C,
+            "S" => SpectralType::S,
+            "M" => SpectralType::M,
+            "D" => SpectralType::D,
+            "V" => SpectralType::V,
+            "P" => SpectralType::P,
             other => {
                 return Err(DbError::Domain(DomainError::InvalidInvariant {
-                    field: "kind".to_string(),
-                    reason: format!("unknown star kind: {}", other),
+                    field: "spectral_type".to_string(),
+                    reason: format!("unknown spectral type: {}", other),
                 }));
             }
         };
@@ -131,17 +133,25 @@ impl TryFrom<StarRow> for Star {
             row.mean_anomaly_at_epoch_rad,
         )?;
 
-        let star = Star::builder(id, row.name, Mass::new(row.mass_kg), kind, orbital_parent)
-            .with_star_system_id(star_system_id)
-            .with_radius(row.radius_m.map(Length::new))
-            .with_effective_temperature(row.effective_temperature_k.map(Temperature::new))
-            .with_rotation_period(row.rotation_period_s.map(Duration::new))
-            .with_obliquity(row.axial_tilt_rad.map(Angle::new))
-            .with_orbital_elements(orbital_elements)
-            .with_oblateness_j2(row.oblateness_j2)
-            .with_metallicity(row.metallicity)
-            .build()?;
+        let minor_planet = MinorPlanet::builder(
+            id,
+            row.name,
+            spectral_type,
+            Mass::new(row.mass_kg),
+            orbital_parent,
+        )
+        .with_star_system_id(star_system_id)
+        .with_axis_a(row.axis_a_m.map(Length::new))
+        .with_axis_b(row.axis_b_m.map(Length::new))
+        .with_axis_c(row.axis_c_m.map(Length::new))
+        .with_rotation_period(row.rotation_period_s.map(Duration::new))
+        .with_obliquity(row.axial_tilt_rad.map(Angle::new))
+        .with_macroporosity(row.macroporosity)
+        .with_geometric_albedo(row.geometric_albedo)
+        .with_bond_albedo(row.bond_albedo)
+        .with_orbital_elements(orbital_elements)
+        .build()?;
 
-        Ok(star)
+        Ok(minor_planet)
     }
 }

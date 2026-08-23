@@ -1,4 +1,3 @@
-
 use crate::error::DbResult;
 use crate::models::PlanetRow;
 use sqlx::SqlitePool;
@@ -6,7 +5,7 @@ use uuid::Uuid;
 
 pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> DbResult<Option<PlanetRow>> {
     let row = sqlx::query_as::<_, PlanetRow>(
-        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, \
+        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, parent_minor_planet_id, \
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
@@ -24,7 +23,7 @@ pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> DbResult<Option<PlanetRo
 
 pub async fn list_all(pool: &SqlitePool) -> DbResult<Vec<PlanetRow>> {
     let rows = sqlx::query_as::<_, PlanetRow>(
-        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, \
+        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, parent_minor_planet_id, \
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
@@ -44,7 +43,7 @@ pub async fn list_children_of_planet(
     parent_planet_id: &Uuid,
 ) -> DbResult<Vec<PlanetRow>> {
     let rows = sqlx::query_as::<_, PlanetRow>(
-        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, \
+        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, parent_minor_planet_id, \
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
@@ -62,7 +61,7 @@ pub async fn list_children_of_planet(
 
 pub async fn list_by_star(pool: &SqlitePool, parent_star_id: &Uuid) -> DbResult<Vec<PlanetRow>> {
     let rows = sqlx::query_as::<_, PlanetRow>(
-        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, \
+        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, parent_minor_planet_id, \
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
@@ -80,7 +79,7 @@ pub async fn list_by_star(pool: &SqlitePool, parent_star_id: &Uuid) -> DbResult<
 
 pub async fn list_by_system(pool: &SqlitePool, system_id: &Uuid) -> DbResult<Vec<PlanetRow>> {
     let rows = sqlx::query_as::<_, PlanetRow>(
-        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, \
+        "SELECT id, star_system_id, parent_star_id, parent_planet_id, parent_barycenter_id, parent_minor_planet_id, \
          name, kind, mass_kg, equatorial_radius_m, polar_radius_m, rotation_period_s, axial_tilt_rad, \
          geometric_albedo, bond_albedo, thermal_inertia, solstice_true_anomaly_rad, semi_major_axis_m, \
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \

@@ -1,7 +1,7 @@
 use crate::error::DbError;
-use astronomicon_core::domain::{ OrbitalElements, OrbitalParent, Planet, PlanetKind };
+use astronomicon_core::domain::{OrbitalElements, OrbitalParent, Planet, PlanetKind};
 use astronomicon_core::error::DomainError;
-use astronomicon_core::units::{ Angle, Duration, Length, MagneticFluxDensity, Mass };
+use astronomicon_core::units::{Angle, Duration, Length, MagneticFluxDensity, Mass};
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -12,6 +12,7 @@ pub struct PlanetRow {
     pub parent_star_id: Option<String>,
     pub parent_planet_id: Option<String>,
     pub parent_barycenter_id: Option<String>,
+    pub parent_minor_planet_id: Option<String>,
     pub name: String,
     pub kind: String,
     pub mass_kg: f64,
@@ -41,20 +42,24 @@ pub struct PlanetRow {
 fn parse_orbital_parent(
     parent_star_id: Option<String>,
     parent_planet_id: Option<String>,
-    parent_barycenter_id: Option<String>
+    parent_barycenter_id: Option<String>,
+    parent_minor_planet_id: Option<String>,
 ) -> Result<OrbitalParent, DbError> {
-    match (parent_star_id, parent_planet_id, parent_barycenter_id) {
-        (None, None, None) => Ok(OrbitalParent::Fixed),
-        (Some(id), None, None) => Ok(OrbitalParent::Star(Uuid::parse_str(&id)?)),
-        (None, Some(id), None) => Ok(OrbitalParent::Planet(Uuid::parse_str(&id)?)),
-        (None, None, Some(id)) => Ok(OrbitalParent::Barycenter(Uuid::parse_str(&id)?)),
-        _ =>
-            Err(
-                DbError::Domain(DomainError::InvalidInvariant {
-                    field: "orbital_parent".to_string(),
-                    reason: "multiple orbital parents specified".to_string(),
-                })
-            ),
+    match (
+        parent_star_id,
+        parent_planet_id,
+        parent_barycenter_id,
+        parent_minor_planet_id,
+    ) {
+        (None, None, None, None) => Ok(OrbitalParent::Fixed),
+        (Some(id), None, None, None) => Ok(OrbitalParent::Star(Uuid::parse_str(&id)?)),
+        (None, Some(id), None, None) => Ok(OrbitalParent::Planet(Uuid::parse_str(&id)?)),
+        (None, None, Some(id), None) => Ok(OrbitalParent::Barycenter(Uuid::parse_str(&id)?)),
+        (None, None, None, Some(id)) => Ok(OrbitalParent::MinorPlanet(Uuid::parse_str(&id)?)),
+        _ => Err(DbError::Domain(DomainError::InvalidInvariant {
+            field: "orbital_parent".to_string(),
+            reason: "multiple orbital parents specified".to_string(),
+        })),
     }
 }
 
@@ -64,18 +69,16 @@ fn parse_orbital_elements(
     inclination_rad: Option<f64>,
     longitude_ascending_node_rad: Option<f64>,
     argument_periapsis_rad: Option<f64>,
-    mean_anomaly_at_epoch_rad: Option<f64>
+    mean_anomaly_at_epoch_rad: Option<f64>,
 ) -> Result<Option<OrbitalElements>, DbError> {
-    match
-        (
-            semi_major_axis_m,
-            eccentricity,
-            inclination_rad,
-            longitude_ascending_node_rad,
-            argument_periapsis_rad,
-            mean_anomaly_at_epoch_rad,
-        )
-    {
+    match (
+        semi_major_axis_m,
+        eccentricity,
+        inclination_rad,
+        longitude_ascending_node_rad,
+        argument_periapsis_rad,
+        mean_anomaly_at_epoch_rad,
+    ) {
         (None, None, None, None, None, None) => Ok(None),
         (Some(a), Some(e), Some(inc), Some(lan), Some(arg), Some(m0)) => {
             let elements = OrbitalElements::new(
@@ -84,17 +87,14 @@ fn parse_orbital_elements(
                 Angle::new(inc),
                 Angle::new(lan),
                 Angle::new(arg),
-                Angle::new(m0)
+                Angle::new(m0),
             )?;
             Ok(Some(elements))
         }
-        _ =>
-            Err(
-                DbError::Domain(DomainError::InvalidInvariant {
-                    field: "orbital_elements".to_string(),
-                    reason: "partial orbital elements provided".to_string(),
-                })
-            ),
+        _ => Err(DbError::Domain(DomainError::InvalidInvariant {
+            field: "orbital_elements".to_string(),
+            reason: "partial orbital elements provided".to_string(),
+        })),
     }
 }
 
@@ -103,12 +103,17 @@ impl TryFrom<PlanetRow> for Planet {
 
     fn try_from(row: PlanetRow) -> Result<Self, Self::Error> {
         let id = Uuid::parse_str(&row.id)?;
-        let star_system_id = row.star_system_id.as_deref().map(Uuid::parse_str).transpose()?;
+        let star_system_id = row
+            .star_system_id
+            .as_deref()
+            .map(Uuid::parse_str)
+            .transpose()?;
 
         let orbital_parent = parse_orbital_parent(
             row.parent_star_id,
             row.parent_planet_id,
-            row.parent_barycenter_id
+            row.parent_barycenter_id,
+            row.parent_minor_planet_id,
         )?;
 
         let kind = match row.kind.as_str() {
@@ -121,12 +126,10 @@ impl TryFrom<PlanetRow> for Planet {
             "IcyBody" => PlanetKind::IcyBody,
             "Exotic" => PlanetKind::Exotic,
             other => {
-                return Err(
-                    DbError::Domain(DomainError::InvalidInvariant {
-                        field: "kind".to_string(),
-                        reason: format!("unknown planet kind: {}", other),
-                    })
-                );
+                return Err(DbError::Domain(DomainError::InvalidInvariant {
+                    field: "kind".to_string(),
+                    reason: format!("unknown planet kind: {}", other),
+                }));
             }
         };
 
@@ -136,7 +139,7 @@ impl TryFrom<PlanetRow> for Planet {
             row.inclination_rad,
             row.longitude_ascending_node_rad,
             row.argument_periapsis_rad,
-            row.mean_anomaly_at_epoch_rad
+            row.mean_anomaly_at_epoch_rad,
         )?;
 
         let planet = Planet::builder(id, row.name, Mass::new(row.mass_kg), kind, orbital_parent)

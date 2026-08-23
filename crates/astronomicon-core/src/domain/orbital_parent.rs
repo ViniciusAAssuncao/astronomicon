@@ -6,5 +6,6 @@ pub enum OrbitalParent {
     Star(Uuid),
     Planet(Uuid),
     Barycenter(Uuid),
+    MinorPlanet(Uuid),
     Fixed,
 }

@@ -14,9 +14,9 @@ pub use chemistry::{
 };
 pub use domain::{
     Atmosphere, Barycenter, BarycenterMember, GasComponent, Hydrosphere, HydrosphereComponent,
-    LithosphereComponent, MaterialProperties, OrbitalElements, OrbitalParent, Planet,
-    PlanetBuilder, PlanetKind, PlanetRheology, Star, StarBuilder, StarKind, StarSystem,
-    TectonicRegime, UniverseState,
+    LithosphereComponent, MaterialProperties, MinorPlanet, MinorPlanetBuilder, OrbitalElements,
+    OrbitalParent, Planet, PlanetBuilder, PlanetKind, PlanetRheology, SpectralType, Star,
+    StarBuilder, StarKind, StarSystem, TectonicRegime, UniverseState,
 };
 pub use math::{
     banded_iron_formation_potential, brittle_ductile_transition_depth,

@@ -151,5 +151,9 @@ pub fn calculate_parent_effective_mass(
                 barycenters,
             )
         }
+        OrbitalParent::MinorPlanet(_) => Err(DomainError::InvalidInvariant {
+            field: "orbital_parent".to_string(),
+            reason: "minor planet parent mass lookup not supported in this signature".to_string(),
+        }),
     }
 }
