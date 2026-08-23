@@ -20,6 +20,7 @@ pub mod stability;
 pub mod stellar_wind;
 pub mod thermodynamics;
 pub mod tidal;
+pub mod volcanism;
 pub mod wind;
 
 pub use atmosphere::*;
@@ -44,4 +45,5 @@ pub use stability::*;
 pub use stellar_wind::*;
 pub use thermodynamics::*;
 pub use tidal::*;
+pub use volcanism::*;
 pub use wind::*;

@@ -13,6 +13,7 @@ pub mod resonance;
 pub mod seismology;
 pub mod shape;
 pub mod tidal;
+pub mod volcanism;
 
 pub use climate::*;
 pub use context::{build_context, AppContext};
@@ -29,6 +30,7 @@ pub use resonance::*;
 pub use seismology::*;
 pub use shape::*;
 pub use tidal::*;
+pub use volcanism::*;
 
 pub fn run() -> AppResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
