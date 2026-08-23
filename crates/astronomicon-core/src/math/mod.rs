@@ -1,4 +1,5 @@
 pub mod aerosol;
+pub mod atmospheric_scattering;
 pub mod atmosphere;
 pub mod black_hole;
 pub mod circulation;
@@ -30,6 +31,7 @@ pub mod wind;
 pub mod colorimetry;
 
 pub use aerosol::*;
+pub use atmospheric_scattering::*;
 pub use atmosphere::*;
 pub use black_hole::*;
 pub use circulation::*;
