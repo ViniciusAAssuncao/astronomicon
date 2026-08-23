@@ -20,6 +20,7 @@ use astronomicon_core::math::volcanism::{
     magma_density,
     magma_dynamic_viscosity,
     magma_temperature,
+    mantle_potential_temperature,
     partial_melt_fraction,
     volcanic_outgassing_fluxes,
     VolcanicEruptionStyle,
@@ -152,8 +153,9 @@ pub async fn resolve_planetary_volcanism(
             rheology.mean_specific_heat_capacity(),
         )
     } else {
+        let t_base = mantle_potential_temperature(wet_solidus, core_diag.convective_heat_flux);
         let t_ext = decompression_melting_temperature(
-            wet_solidus,
+            t_base,
             g,
             geology_diag.lithosphere_thickness,
             rheology.mean_specific_heat_capacity(),
