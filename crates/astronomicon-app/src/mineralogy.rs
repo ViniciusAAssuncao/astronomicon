@@ -5,14 +5,15 @@ use astronomicon_core::chemistry::{
     refractory_mass_fraction, solar_abundance_to_mass_fractions, volatile_mass_fraction,
     ElementalAbundance,
 };
-use astronomicon_core::domain::Planet;
+use astronomicon_core::domain::{Planet, TectonicRegime};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::mineralogy::{
-    differentiate_core_mantle, disk_temperature_at_orbit, planetary_bulk_composition_from_disk_temp,
+    crustal_petrology, differentiate_core_mantle, disk_temperature_at_orbit,
+    planetary_bulk_composition_from_disk_temp, NormativeMineralogy,
 };
 use astronomicon_core::math::radiometry::stellar_luminosity;
 use astronomicon_core::units::constants::{ASTRONOMICAL_UNIT, SOLAR_LUMINOSITY, SOLAR_RADIUS};
-use astronomicon_core::units::{Length, Luminosity, Temperature};
+use astronomicon_core::units::{Duration, Length, Luminosity, Temperature};
 use astronomicon_db::repositories::planet_repository;
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,13 @@ pub struct PlanetaryDifferentiationDiagnostic {
     pub mantle_mg_si_ratio: f64,
     pub mantle_fe_si_ratio: f64,
     pub mantle_mg_number: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CrustalPetrologyDiagnostic {
+    pub tectonic_regime: TectonicRegime,
+    pub has_water: bool,
+    pub normative_mineralogy: NormativeMineralogy,
 }
 
 pub async fn resolve_planetary_bulk_composition(
@@ -135,5 +143,41 @@ pub async fn resolve_planetary_differentiation(
         mantle_mg_si_ratio: mantle_mg_si,
         mantle_fe_si_ratio: mantle_fe_si,
         mantle_mg_number: mantle_mg_num,
+    })
+}
+
+pub async fn resolve_crustal_petrology(
+    pool: &SqlitePool,
+    planet_id: Uuid,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> AppResult<CrustalPetrologyDiagnostic> {
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "planet_id".to_string(),
+            reason: format!("planet '{}' not found", planet_id),
+        })?;
+    let planet = Planet::try_from(planet_row)?;
+
+    let diff_diag = resolve_planetary_differentiation(pool, planet_id).await?;
+    let geology_diag = crate::geology::resolve_planetary_geology(pool, planet_id, universe_epoch, at_epoch).await?;
+    let hydro_diag = crate::hydrosphere::resolve_hydrosphere_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
+
+    let has_water = hydro_diag
+        .map(|h| h.liquid_depth.value() > 0.0 || h.ice_thickness.value() > 0.0)
+        .unwrap_or(false)
+        || planet.mantle_hydration_fraction().unwrap_or(0.0) > 0.001;
+
+    let mineralogy = crustal_petrology(
+        &diff_diag.mantle_composition,
+        geology_diag.tectonic_regime,
+        has_water,
+    );
+
+    Ok(CrustalPetrologyDiagnostic {
+        tectonic_regime: geology_diag.tectonic_regime,
+        has_water,
+        normative_mineralogy: mineralogy,
     })
 }

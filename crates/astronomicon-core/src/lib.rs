@@ -21,14 +21,15 @@ pub use domain::{
 pub use math::{
     brittle_ductile_transition_depth, bulk_silicate_planet_composition,
     condensation_fraction_with_tc, convective_to_yield_stress_ratio, core_composition,
-    determine_tectonic_regime, differentiate_core_mantle, disk_temperature_at_orbit,
-    equilibrium_tidal_bulge_height, lithosphere_thickness, lithosphere_yield_strength,
-    mantle_convective_stress, metal_silicate_partition_coefficient, planetary_bulk_composition,
+    crustal_petrology, determine_tectonic_regime, differentiate_core_mantle,
+    disk_temperature_at_orbit, equilibrium_tidal_bulge_height, lithosphere_thickness,
+    lithosphere_yield_strength, mantle_convective_stress, metal_silicate_partition_coefficient,
+    normative_cipw_mineralogy, planetary_bulk_composition,
     planetary_bulk_composition_from_disk_temp, plate_rms_velocity,
     protoplanetary_disk_temperature, radial_tidal_stress_amplitude, seismic_efficiency,
     tectonic_plate_count, tectonic_seismic_energy_rate, thermal_condensation_efficiency,
     thermal_contraction_strain_rate, tidal_seismic_energy_rate, HydrosphereStructure, MatterState,
-    ResonanceState, SecularPrecessionRates,
+    NormativeMineralogy, ResonanceState, SecularPrecessionRates,
 };
 pub use units::{
     Acceleration, AccelerationVector, Angle, AngularVelocity, Density, Duration, Energy, Frequency,
