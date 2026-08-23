@@ -1,3 +1,4 @@
+pub mod aerosol;
 pub mod atmosphere;
 pub mod black_hole;
 pub mod circulation;
@@ -12,6 +13,7 @@ pub mod lagrange;
 pub mod magnetic_field;
 pub mod mineralogy;
 pub mod minor_planet;
+pub mod optics;
 pub mod perturbation;
 pub mod radiation;
 pub mod radiometry;
@@ -26,6 +28,7 @@ pub mod tidal;
 pub mod volcanism;
 pub mod wind;
 
+pub use aerosol::*;
 pub use atmosphere::*;
 pub use black_hole::*;
 pub use circulation::*;
@@ -40,6 +43,7 @@ pub use lagrange::*;
 pub use magnetic_field::*;
 pub use mineralogy::*;
 pub use minor_planet::*;
+pub use optics::*;
 pub use perturbation::*;
 pub use radiation::*;
 pub use radiometry::*;
