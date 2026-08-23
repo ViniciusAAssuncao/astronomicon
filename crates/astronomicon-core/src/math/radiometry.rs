@@ -1,5 +1,8 @@
-use crate::units::constants::{GRAVITATIONAL_CONSTANT, SPEED_OF_LIGHT, STEFAN_BOLTZMANN_CONSTANT};
-use crate::units::{Density, GravitationalParameter, Irradiance, Length, Luminosity, Mass, Speed, Temperature};
+pub use crate::math::black_hole::schwarzschild_radius;
+use crate::units::constants::STEFAN_BOLTZMANN_CONSTANT;
+use crate::units::{
+    Density, GravitationalParameter, Irradiance, Length, Luminosity, Mass, Speed, Temperature,
+};
 use std::f64::consts::PI;
 
 pub fn stellar_luminosity(radius: Length, temperature: Temperature) -> Luminosity {
@@ -25,14 +28,6 @@ pub fn mean_density(mass: Mass, radius: Length) -> Density {
     } else {
         let volume = (4.0 / 3.0) * PI * radius.value().powi(3);
         Density::new(mass.value() / volume)
-    }
-}
-
-pub fn schwarzschild_radius(mass: Mass) -> Length {
-    if mass.value() <= 0.0 {
-        Length::new(0.0)
-    } else {
-        Length::new(2.0 * GRAVITATIONAL_CONSTANT * mass.value() / (SPEED_OF_LIGHT * SPEED_OF_LIGHT))
     }
 }
 

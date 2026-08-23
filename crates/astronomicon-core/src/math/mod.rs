@@ -1,4 +1,5 @@
 pub mod atmosphere;
+pub mod black_hole;
 pub mod circulation;
 pub mod climate;
 pub mod cometary;
@@ -26,6 +27,7 @@ pub mod volcanism;
 pub mod wind;
 
 pub use atmosphere::*;
+pub use black_hole::*;
 pub use circulation::*;
 pub use climate::*;
 pub use cometary::*;
