@@ -26,6 +26,7 @@ pub struct StarRow {
     pub argument_periapsis_rad: Option<f64>,
     pub mean_anomaly_at_epoch_rad: Option<f64>,
     pub oblateness_j2: Option<f64>,
+    pub metallicity: Option<f64>,
 }
 
 fn parse_orbital_parent(
@@ -129,6 +130,7 @@ impl TryFrom<StarRow> for Star {
             .with_obliquity(row.axial_tilt_rad.map(Angle::new))
             .with_orbital_elements(orbital_elements)
             .with_oblateness_j2(row.oblateness_j2)
+            .with_metallicity(row.metallicity)
             .build()?;
 
         Ok(star)

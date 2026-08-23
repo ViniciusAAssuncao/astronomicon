@@ -29,6 +29,7 @@ pub struct StarBuilder {
     obliquity: Option<Angle>,
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
+    metallicity: Option<f64>,
 }
 
 impl StarBuilder {
@@ -52,6 +53,7 @@ impl StarBuilder {
             obliquity: None,
             orbital_elements: None,
             oblateness_j2: None,
+            metallicity: None,
         }
     }
 
@@ -93,6 +95,11 @@ impl StarBuilder {
 
     pub fn with_oblateness_j2(mut self, oblateness_j2: impl Into<Option<f64>>) -> Self {
         self.oblateness_j2 = oblateness_j2.into();
+        self
+    }
+
+    pub fn with_metallicity(mut self, metallicity: impl Into<Option<f64>>) -> Self {
+        self.metallicity = metallicity.into();
         self
     }
 
@@ -156,6 +163,15 @@ impl StarBuilder {
             }
         }
 
+        if let Some(met) = self.metallicity {
+            if !met.is_finite() {
+                return Err(DomainError::InvalidInvariant {
+                    field: "metallicity".to_string(),
+                    reason: "must be finite".to_string(),
+                });
+            }
+        }
+
         if self.orbital_parent == OrbitalParent::Fixed && self.orbital_elements.is_some() {
             return Err(DomainError::InvalidInvariant {
                 field: "orbital_elements".to_string(),
@@ -183,6 +199,7 @@ impl StarBuilder {
             obliquity: self.obliquity,
             orbital_elements: self.orbital_elements,
             oblateness_j2: self.oblateness_j2,
+            metallicity: self.metallicity,
         })
     }
 }
@@ -201,6 +218,7 @@ pub struct Star {
     obliquity: Option<Angle>,
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
+    metallicity: Option<f64>,
 }
 
 impl Star {
@@ -227,6 +245,7 @@ impl Star {
         obliquity: Option<Angle>,
         orbital_elements: Option<OrbitalElements>,
         oblateness_j2: Option<f64>,
+        metallicity: Option<f64>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
             .with_star_system_id(star_system_id)
@@ -236,6 +255,7 @@ impl Star {
             .with_obliquity(obliquity)
             .with_orbital_elements(orbital_elements)
             .with_oblateness_j2(oblateness_j2)
+            .with_metallicity(metallicity)
             .build()
     }
 
@@ -285,5 +305,9 @@ impl Star {
 
     pub fn oblateness_j2(&self) -> Option<f64> {
         self.oblateness_j2
+    }
+
+    pub fn metallicity(&self) -> Option<f64> {
+        self.metallicity
     }
 }
