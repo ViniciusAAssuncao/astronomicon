@@ -1,30 +1,26 @@
-use crate::climate::{ find_parent_star, resolve_stellar_wind_at_planet };
+use crate::climate::{
+    find_parent_star, resolve_star_emission_profile, resolve_stellar_wind_at_planet,
+};
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
 use crate::geophysics::resolve_magnetic_field;
-use astronomicon_core::domain::Planet;
+use astronomicon_core::domain::{Planet, StarKind};
 use astronomicon_core::error::DomainError;
-use astronomicon_core::math::gravity::{ gravitational_parameter, surface_gravity };
+use astronomicon_core::math::black_hole::{
+    gravitational_redshift_between, gravitationally_redshifted_wavelength,
+};
+use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::radiation::{
-    cutoff_rigidity,
-    galactic_cosmic_ray_background,
-    magnetosphere_shielding_factor,
-    peak_wavelength,
-    stellar_particle_flux,
+    cutoff_rigidity, galactic_cosmic_ray_background, magnetosphere_shielding_factor,
+    peak_wavelength, stellar_particle_flux,
 };
-use astronomicon_core::math::radiometry::{ orbital_irradiance, stellar_luminosity };
+use astronomicon_core::math::radiometry::orbital_irradiance;
 use astronomicon_core::units::{
-    Angle,
-    Duration,
-    Energy,
-    Irradiance,
-    MagneticRigidity,
-    RadiationDose,
-    Wavelength,
+    Angle, Duration, Energy, Irradiance, MagneticRigidity, RadiationDose, Wavelength,
 };
-use astronomicon_db::repositories::{ atmosphere_repository, planet_repository };
+use astronomicon_db::repositories::{atmosphere_repository, planet_repository};
 use astronomicon_db::SqlitePool;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use uuid::Uuid;
 
@@ -54,10 +50,10 @@ pub async fn resolve_interplanetary_radiation(
     pool: &SqlitePool,
     planet_id: Uuid,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<InterplanetaryRadiationDiagnostic> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
@@ -66,20 +62,15 @@ pub async fn resolve_interplanetary_radiation(
 
     let star = find_parent_star(pool, &planet).await?;
 
-    let star_temp = star.effective_temperature().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "effective_temperature".to_string(),
-        reason: "star does not have effective temperature".to_string(),
-    })?;
+    let (star_lum, star_temp, r_emit) =
+        resolve_star_emission_profile(pool, &star, universe_epoch, at_epoch).await?;
 
-    let star_radius = star.radius().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "radius".to_string(),
-        reason: "star does not have radius".to_string(),
-    })?;
-
-    let system_id = star.star_system_id().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "star_system_id".to_string(),
-        reason: "parent star is not assigned to a star system".to_string(),
-    })?;
+    let system_id = star
+        .star_system_id()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "star_system_id".to_string(),
+            reason: "parent star is not assigned to a star system".to_string(),
+        })?;
 
     let total_epoch = universe_epoch + at_epoch;
     let positions = resolve_system_positions(pool, system_id, total_epoch).await?;
@@ -101,10 +92,23 @@ pub async fn resolve_interplanetary_radiation(
         })?;
 
     let orbital_distance = (planet_pos - star_pos).magnitude();
-    let peak_lambda = peak_wavelength(star_temp);
 
-    let star_lum = stellar_luminosity(star_radius, star_temp);
-    let top_irradiance = orbital_irradiance(star_lum, orbital_distance);
+    let (peak_lambda, z_factor) = if star.kind() == StarKind::BlackHole {
+        let base_lambda = peak_wavelength(star_temp);
+        let red_lambda = gravitationally_redshifted_wavelength(
+            base_lambda,
+            star.mass(),
+            r_emit,
+            orbital_distance,
+        );
+        let z = gravitational_redshift_between(star.mass(), r_emit, orbital_distance);
+        (red_lambda, z)
+    } else {
+        (peak_wavelength(star_temp), 1.0)
+    };
+
+    let base_irradiance = orbital_irradiance(star_lum, orbital_distance);
+    let top_irradiance = Irradiance::new(base_irradiance.value() / (z_factor * z_factor));
 
     let stellar_wind = resolve_stellar_wind_at_planet(
         pool,
@@ -112,12 +116,13 @@ pub async fn resolve_interplanetary_radiation(
         1.0,
         1.0,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
 
     let part_flux = stellar_particle_flux(
         stellar_wind.wind_density_at_orbit,
-        stellar_wind.terminal_wind_speed
+        stellar_wind.terminal_wind_speed,
     );
 
     let gcr = galactic_cosmic_ray_background();
@@ -146,27 +151,30 @@ pub async fn resolve_surface_radiation(
     pool: &SqlitePool,
     planet_id: Uuid,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<SurfaceRadiationDiagnostic> {
     let interplanetary = resolve_interplanetary_radiation(
         pool,
         planet_id,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
 
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let radius = planet.equatorial_radius().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "equatorial_radius".to_string(),
-        reason: format!("planet '{}' has no equatorial radius", planet_id),
-    })?;
+    let radius = planet
+        .equatorial_radius()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "equatorial_radius".to_string(),
+            reason: format!("planet '{}' has no equatorial radius", planet_id),
+        })?;
 
     let magnetosphere = resolve_magnetic_field(
         pool,
@@ -174,8 +182,9 @@ pub async fn resolve_surface_radiation(
         1.0,
         1.0,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
 
     let rc_eq = cutoff_rigidity(magnetosphere.dipole_moment, radius, Angle::new(0.0));
     let rc_pol = cutoff_rigidity(magnetosphere.dipole_moment, radius, Angle::new(PI / 2.0));

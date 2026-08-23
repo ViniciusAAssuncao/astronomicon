@@ -1,11 +1,15 @@
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
 use crate::gravity::resolve_entity_effective_mass;
-use astronomicon_core::domain::{Barycenter, Planet, Star};
+use astronomicon_core::domain::{Barycenter, MinorPlanet, Planet, Star};
 use astronomicon_core::error::DomainError;
-use astronomicon_core::math::lagrange::{lagrange_point_position, orbital_plane_normal, LagrangePoint};
+use astronomicon_core::math::lagrange::{
+    lagrange_point_position, orbital_plane_normal, LagrangePoint,
+};
 use astronomicon_core::units::{Duration, Position, Vector3};
-use astronomicon_db::repositories::{barycenter_repository, planet_repository, star_repository};
+use astronomicon_db::repositories::{
+    barycenter_repository, minor_planet_repository, planet_repository, star_repository,
+};
 use astronomicon_db::SqlitePool;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -27,6 +31,11 @@ async fn resolve_orbital_normal(pool: &SqlitePool, secondary_id: &Uuid) -> AppRe
             return Ok(orbital_plane_normal(&elements));
         }
         return Ok(orbital_plane_normal(&bary.internal_orbital_elements()));
+    } else if let Some(row) = minor_planet_repository::get_by_id(pool, secondary_id).await? {
+        let mp = MinorPlanet::try_from(row)?;
+        if let Some(elements) = mp.orbital_elements() {
+            return Ok(orbital_plane_normal(&elements));
+        }
     }
 
     Ok(Vector3::new(0.0, 0.0, 1.0))
@@ -59,7 +68,10 @@ pub async fn resolve_lagrange_points(
         .copied()
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "secondary_id".to_string(),
-            reason: format!("position for secondary '{}' could not be resolved", secondary_id),
+            reason: format!(
+                "position for secondary '{}' could not be resolved",
+                secondary_id
+            ),
         })?;
 
     let normal = resolve_orbital_normal(pool, &secondary_id).await?;

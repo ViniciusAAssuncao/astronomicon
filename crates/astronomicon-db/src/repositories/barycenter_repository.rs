@@ -9,7 +9,7 @@ pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> DbResult<Option<Barycent
          secondary_star_id, secondary_planet_id, secondary_barycenter_id, internal_semi_major_axis_m, \
          internal_eccentricity, internal_inclination_rad, internal_longitude_ascending_node_rad, \
          internal_argument_periapsis_rad, internal_mean_anomaly_at_epoch_rad, parent_star_id, \
-         parent_planet_id, parent_barycenter_id, external_semi_major_axis_m, external_eccentricity, \
+         parent_planet_id, parent_barycenter_id, parent_minor_planet_id, external_semi_major_axis_m, external_eccentricity, \
          external_inclination_rad, external_longitude_ascending_node_rad, external_argument_periapsis_rad, \
          external_mean_anomaly_at_epoch_rad \
          FROM barycenters WHERE id = ?",
@@ -27,7 +27,7 @@ pub async fn list_all(pool: &SqlitePool) -> DbResult<Vec<BarycenterRow>> {
          secondary_star_id, secondary_planet_id, secondary_barycenter_id, internal_semi_major_axis_m, \
          internal_eccentricity, internal_inclination_rad, internal_longitude_ascending_node_rad, \
          internal_argument_periapsis_rad, internal_mean_anomaly_at_epoch_rad, parent_star_id, \
-         parent_planet_id, parent_barycenter_id, external_semi_major_axis_m, external_eccentricity, \
+         parent_planet_id, parent_barycenter_id, parent_minor_planet_id, external_semi_major_axis_m, external_eccentricity, \
          external_inclination_rad, external_longitude_ascending_node_rad, external_argument_periapsis_rad, \
          external_mean_anomaly_at_epoch_rad \
          FROM barycenters ORDER BY name ASC",
@@ -44,7 +44,7 @@ pub async fn list_by_system(pool: &SqlitePool, system_id: &Uuid) -> DbResult<Vec
          secondary_star_id, secondary_planet_id, secondary_barycenter_id, internal_semi_major_axis_m, \
          internal_eccentricity, internal_inclination_rad, internal_longitude_ascending_node_rad, \
          internal_argument_periapsis_rad, internal_mean_anomaly_at_epoch_rad, parent_star_id, \
-         parent_planet_id, parent_barycenter_id, external_semi_major_axis_m, external_eccentricity, \
+         parent_planet_id, parent_barycenter_id, parent_minor_planet_id, external_semi_major_axis_m, external_eccentricity, \
          external_inclination_rad, external_longitude_ascending_node_rad, external_argument_periapsis_rad, \
          external_mean_anomaly_at_epoch_rad \
          FROM barycenters WHERE star_system_id = ? ORDER BY name ASC",

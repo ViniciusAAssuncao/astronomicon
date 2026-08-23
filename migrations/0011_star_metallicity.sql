@@ -1,0 +1,1 @@
+ALTER TABLE stars ADD COLUMN metallicity REAL;

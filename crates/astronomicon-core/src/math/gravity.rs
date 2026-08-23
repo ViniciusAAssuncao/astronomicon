@@ -1,4 +1,4 @@
-use crate::domain::{Barycenter, BarycenterMember, OrbitalParent, Planet, Star};
+use crate::domain::{Barycenter, BarycenterMember, MinorPlanet, OrbitalParent, Planet, Star};
 use crate::error::{DomainError, DomainResult};
 use crate::units::constants::GRAVITATIONAL_CONSTANT;
 use crate::units::{
@@ -126,6 +126,7 @@ pub fn calculate_parent_effective_mass(
     stars: &HashMap<Uuid, &Star>,
     planets: &HashMap<Uuid, &Planet>,
     barycenters: &HashMap<Uuid, &Barycenter>,
+    minor_planets: &HashMap<Uuid, &MinorPlanet>,
 ) -> DomainResult<Mass> {
     match parent {
         OrbitalParent::Fixed => Ok(Mass::new(0.0)),
@@ -150,6 +151,13 @@ pub fn calculate_parent_effective_mass(
                 planets,
                 barycenters,
             )
+        }
+        OrbitalParent::MinorPlanet(id) => {
+            let minor_planet = minor_planets.get(id).copied().ok_or_else(|| DomainError::InvalidInvariant {
+                field: "orbital_parent".to_string(),
+                reason: format!("parent minor planet '{}' not found", id),
+            })?;
+            Ok(minor_planet.mass())
         }
     }
 }

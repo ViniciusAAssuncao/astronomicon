@@ -12,6 +12,7 @@ pub struct StarRow {
     pub parent_star_id: Option<String>,
     pub parent_planet_id: Option<String>,
     pub parent_barycenter_id: Option<String>,
+    pub parent_minor_planet_id: Option<String>,
     pub name: String,
     pub kind: String,
     pub mass_kg: f64,
@@ -26,18 +27,26 @@ pub struct StarRow {
     pub argument_periapsis_rad: Option<f64>,
     pub mean_anomaly_at_epoch_rad: Option<f64>,
     pub oblateness_j2: Option<f64>,
+    pub metallicity: Option<f64>,
 }
 
 fn parse_orbital_parent(
     parent_star_id: Option<String>,
     parent_planet_id: Option<String>,
     parent_barycenter_id: Option<String>,
+    parent_minor_planet_id: Option<String>,
 ) -> Result<OrbitalParent, DbError> {
-    match (parent_star_id, parent_planet_id, parent_barycenter_id) {
-        (None, None, None) => Ok(OrbitalParent::Fixed),
-        (Some(id), None, None) => Ok(OrbitalParent::Star(Uuid::parse_str(&id)?)),
-        (None, Some(id), None) => Ok(OrbitalParent::Planet(Uuid::parse_str(&id)?)),
-        (None, None, Some(id)) => Ok(OrbitalParent::Barycenter(Uuid::parse_str(&id)?)),
+    match (
+        parent_star_id,
+        parent_planet_id,
+        parent_barycenter_id,
+        parent_minor_planet_id,
+    ) {
+        (None, None, None, None) => Ok(OrbitalParent::Fixed),
+        (Some(id), None, None, None) => Ok(OrbitalParent::Star(Uuid::parse_str(&id)?)),
+        (None, Some(id), None, None) => Ok(OrbitalParent::Planet(Uuid::parse_str(&id)?)),
+        (None, None, Some(id), None) => Ok(OrbitalParent::Barycenter(Uuid::parse_str(&id)?)),
+        (None, None, None, Some(id)) => Ok(OrbitalParent::MinorPlanet(Uuid::parse_str(&id)?)),
         _ => Err(DbError::Domain(DomainError::InvalidInvariant {
             field: "orbital_parent".to_string(),
             reason: "multiple orbital parents specified".to_string(),
@@ -95,6 +104,7 @@ impl TryFrom<StarRow> for Star {
             row.parent_star_id,
             row.parent_planet_id,
             row.parent_barycenter_id,
+            row.parent_minor_planet_id,
         )?;
 
         let kind = match row.kind.as_str() {
@@ -129,6 +139,7 @@ impl TryFrom<StarRow> for Star {
             .with_obliquity(row.axial_tilt_rad.map(Angle::new))
             .with_orbital_elements(orbital_elements)
             .with_oblateness_j2(row.oblateness_j2)
+            .with_metallicity(row.metallicity)
             .build()?;
 
         Ok(star)

@@ -1,6 +1,7 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
 use crate::error::{DomainError, DomainResult};
+use crate::math::black_hole::{dimensionless_spin_from_rotation_period, event_horizon_radius};
 use crate::units::{Angle, Duration, Length, Mass, Temperature};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -29,6 +30,7 @@ pub struct StarBuilder {
     obliquity: Option<Angle>,
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
+    metallicity: Option<f64>,
 }
 
 impl StarBuilder {
@@ -52,6 +54,7 @@ impl StarBuilder {
             obliquity: None,
             orbital_elements: None,
             oblateness_j2: None,
+            metallicity: None,
         }
     }
 
@@ -96,6 +99,11 @@ impl StarBuilder {
         self
     }
 
+    pub fn with_metallicity(mut self, metallicity: impl Into<Option<f64>>) -> Self {
+        self.metallicity = metallicity.into();
+        self
+    }
+
     pub fn build(self) -> DomainResult<Star> {
         if self.name.trim().is_empty() {
             return Err(DomainError::InvalidInvariant {
@@ -111,12 +119,14 @@ impl StarBuilder {
             });
         }
 
-        if let Some(r) = self.radius {
-            if !r.value().is_finite() || r.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "radius".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
+        if self.kind != StarKind::BlackHole {
+            if let Some(r) = self.radius {
+                if !r.value().is_finite() || r.value() <= 0.0 {
+                    return Err(DomainError::InvalidInvariant {
+                        field: "radius".to_string(),
+                        reason: "must be positive and finite".to_string(),
+                    });
+                }
             }
         }
 
@@ -156,6 +166,15 @@ impl StarBuilder {
             }
         }
 
+        if let Some(met) = self.metallicity {
+            if !met.is_finite() {
+                return Err(DomainError::InvalidInvariant {
+                    field: "metallicity".to_string(),
+                    reason: "must be finite".to_string(),
+                });
+            }
+        }
+
         if self.orbital_parent == OrbitalParent::Fixed && self.orbital_elements.is_some() {
             return Err(DomainError::InvalidInvariant {
                 field: "orbital_elements".to_string(),
@@ -170,6 +189,16 @@ impl StarBuilder {
             });
         }
 
+        let radius = if self.kind == StarKind::BlackHole {
+            let spin = self
+                .rotation_period
+                .map(|p| dimensionless_spin_from_rotation_period(self.mass, p))
+                .unwrap_or(0.0);
+            Some(event_horizon_radius(self.mass, spin))
+        } else {
+            self.radius
+        };
+
         Ok(Star {
             id: self.id,
             star_system_id: self.star_system_id,
@@ -177,12 +206,13 @@ impl StarBuilder {
             kind: self.kind,
             name: self.name,
             mass: self.mass,
-            radius: self.radius,
+            radius,
             effective_temperature: self.effective_temperature,
             rotation_period: self.rotation_period,
             obliquity: self.obliquity,
             orbital_elements: self.orbital_elements,
             oblateness_j2: self.oblateness_j2,
+            metallicity: self.metallicity,
         })
     }
 }
@@ -201,6 +231,7 @@ pub struct Star {
     obliquity: Option<Angle>,
     orbital_elements: Option<OrbitalElements>,
     oblateness_j2: Option<f64>,
+    metallicity: Option<f64>,
 }
 
 impl Star {
@@ -227,6 +258,7 @@ impl Star {
         obliquity: Option<Angle>,
         orbital_elements: Option<OrbitalElements>,
         oblateness_j2: Option<f64>,
+        metallicity: Option<f64>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
             .with_star_system_id(star_system_id)
@@ -236,6 +268,7 @@ impl Star {
             .with_obliquity(obliquity)
             .with_orbital_elements(orbital_elements)
             .with_oblateness_j2(oblateness_j2)
+            .with_metallicity(metallicity)
             .build()
     }
 
@@ -264,7 +297,15 @@ impl Star {
     }
 
     pub fn radius(&self) -> Option<Length> {
-        self.radius
+        if self.kind == StarKind::BlackHole {
+            let spin = self
+                .rotation_period
+                .map(|p| dimensionless_spin_from_rotation_period(self.mass, p))
+                .unwrap_or(0.0);
+            Some(event_horizon_radius(self.mass, spin))
+        } else {
+            self.radius
+        }
     }
 
     pub fn effective_temperature(&self) -> Option<Temperature> {
@@ -285,5 +326,9 @@ impl Star {
 
     pub fn oblateness_j2(&self) -> Option<f64> {
         self.oblateness_j2
+    }
+
+    pub fn metallicity(&self) -> Option<f64> {
+        self.metallicity
     }
 }

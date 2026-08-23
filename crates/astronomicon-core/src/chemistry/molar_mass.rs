@@ -44,7 +44,7 @@ pub fn molar_heat_capacity_of(formula: &str) -> DomainResult<f64> {
         1 => 2.5 * UNIVERSAL_GAS_CONSTANT,
         2 => 3.5 * UNIVERSAL_GAS_CONSTANT,
         _ => match formula {
-            "CO2" | "SO2" | "N2O" | "NO2" => 4.5 * UNIVERSAL_GAS_CONSTANT,
+            "CO2" | "SO2" | "N2O" | "NO2" | "O3" => 4.5 * UNIVERSAL_GAS_CONSTANT,
             "H2O" => 4.0 * UNIVERSAL_GAS_CONSTANT,
             "CH4" => 4.3 * UNIVERSAL_GAS_CONSTANT,
             _ => (3.0 + 0.5 * (total_atoms as f64)) * UNIVERSAL_GAS_CONSTANT,

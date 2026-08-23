@@ -12,6 +12,7 @@ pub struct PlanetRow {
     pub parent_star_id: Option<String>,
     pub parent_planet_id: Option<String>,
     pub parent_barycenter_id: Option<String>,
+    pub parent_minor_planet_id: Option<String>,
     pub name: String,
     pub kind: String,
     pub mass_kg: f64,
@@ -35,18 +36,26 @@ pub struct PlanetRow {
     pub magnetic_field_locked: Option<f64>,
     pub love_number_k2: Option<f64>,
     pub tidal_dissipation_factor_q: Option<f64>,
+    pub mantle_hydration_fraction: Option<f64>,
 }
 
 fn parse_orbital_parent(
     parent_star_id: Option<String>,
     parent_planet_id: Option<String>,
     parent_barycenter_id: Option<String>,
+    parent_minor_planet_id: Option<String>,
 ) -> Result<OrbitalParent, DbError> {
-    match (parent_star_id, parent_planet_id, parent_barycenter_id) {
-        (None, None, None) => Ok(OrbitalParent::Fixed),
-        (Some(id), None, None) => Ok(OrbitalParent::Star(Uuid::parse_str(&id)?)),
-        (None, Some(id), None) => Ok(OrbitalParent::Planet(Uuid::parse_str(&id)?)),
-        (None, None, Some(id)) => Ok(OrbitalParent::Barycenter(Uuid::parse_str(&id)?)),
+    match (
+        parent_star_id,
+        parent_planet_id,
+        parent_barycenter_id,
+        parent_minor_planet_id,
+    ) {
+        (None, None, None, None) => Ok(OrbitalParent::Fixed),
+        (Some(id), None, None, None) => Ok(OrbitalParent::Star(Uuid::parse_str(&id)?)),
+        (None, Some(id), None, None) => Ok(OrbitalParent::Planet(Uuid::parse_str(&id)?)),
+        (None, None, Some(id), None) => Ok(OrbitalParent::Barycenter(Uuid::parse_str(&id)?)),
+        (None, None, None, Some(id)) => Ok(OrbitalParent::MinorPlanet(Uuid::parse_str(&id)?)),
         _ => Err(DbError::Domain(DomainError::InvalidInvariant {
             field: "orbital_parent".to_string(),
             reason: "multiple orbital parents specified".to_string(),
@@ -104,6 +113,7 @@ impl TryFrom<PlanetRow> for Planet {
             row.parent_star_id,
             row.parent_planet_id,
             row.parent_barycenter_id,
+            row.parent_minor_planet_id,
         )?;
 
         let kind = match row.kind.as_str() {
@@ -119,7 +129,7 @@ impl TryFrom<PlanetRow> for Planet {
                 return Err(DbError::Domain(DomainError::InvalidInvariant {
                     field: "kind".to_string(),
                     reason: format!("unknown planet kind: {}", other),
-                }))
+                }));
             }
         };
 
@@ -149,6 +159,7 @@ impl TryFrom<PlanetRow> for Planet {
             .with_magnetic_field_locked(row.magnetic_field_locked.map(MagneticFluxDensity::new))
             .with_love_number_k2(row.love_number_k2)
             .with_tidal_dissipation_factor_q(row.tidal_dissipation_factor_q)
+            .with_mantle_hydration_fraction(row.mantle_hydration_fraction)
             .build()?;
 
         Ok(planet)
