@@ -45,6 +45,7 @@ pub fn gas_optical_properties(formula: &str) -> Option<GasOpticalProperties> {
         "H2" => Some(GasOpticalProperties::new(1.386e-4, 1.032, 0.0)),
         "N2" => Some(GasOpticalProperties::new(2.980e-4, 1.034, 0.0)),
         "O2" => Some(GasOpticalProperties::new(2.663e-4, 1.096, 0.0)),
+        "O3" => Some(GasOpticalProperties::new(5.200e-4, 1.060, 3.0e-25)),
         "CO2" => Some(GasOpticalProperties::new(4.494e-4, 1.150, 0.0)),
         "CH4" => Some(GasOpticalProperties::new(4.439e-4, 1.000, 1.0e-29)),
         "NH3" => Some(GasOpticalProperties::new(3.760e-4, 1.070, 0.0)),
