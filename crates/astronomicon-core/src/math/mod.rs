@@ -27,6 +27,7 @@ pub mod thermodynamics;
 pub mod tidal;
 pub mod volcanism;
 pub mod wind;
+pub mod colorimetry;
 
 pub use aerosol::*;
 pub use atmosphere::*;
@@ -57,3 +58,4 @@ pub use thermodynamics::*;
 pub use tidal::*;
 pub use volcanism::*;
 pub use wind::*;
+pub use colorimetry::*;
