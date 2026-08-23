@@ -1,3 +1,4 @@
+use crate::chemistry::optics::GasOpticalProperties;
 use crate::math::aerosol::AtmosphericAerosolProperties;
 use crate::units::constants::{
     BOLTZMANN_CONSTANT, OPTICAL_REFERENCE_WAVELENGTH, STANDARD_ATMOSPHERE_PRESSURE,
@@ -67,6 +68,23 @@ pub fn rayleigh_scattering_coefficient(
     temperature: Temperature,
 ) -> f64 {
     let sigma = rayleigh_scattering_cross_section(wavelength, refractivity_stp, king_factor);
+    let n = molecular_number_density(pressure, temperature);
+    let beta = sigma * n;
+
+    if !beta.is_finite() || beta <= 0.0 {
+        0.0
+    } else {
+        beta
+    }
+}
+
+pub fn absorption_coefficient(
+    gas_optical_properties: &GasOpticalProperties,
+    wavelength: Wavelength,
+    pressure: Pressure,
+    temperature: Temperature,
+) -> f64 {
+    let sigma = gas_optical_properties.absorption_cross_section_at(wavelength);
     let n = molecular_number_density(pressure, temperature);
     let beta = sigma * n;
 
@@ -301,9 +319,7 @@ pub fn slant_optical_depth(
 
 pub fn atmospheric_optical_depth(
     wavelength: Wavelength,
-    refractivity_stp: f64,
-    king_factor: f64,
-    base_absorption_cross_section_m2: f64,
+    gas_optical_properties: &GasOpticalProperties,
     pressure: Pressure,
     temperature: Temperature,
     aerosol_properties: &AtmosphericAerosolProperties,
@@ -313,8 +329,8 @@ pub fn atmospheric_optical_depth(
 ) -> f64 {
     let b_r = rayleigh_scattering_coefficient(
         wavelength,
-        refractivity_stp,
-        king_factor,
+        gas_optical_properties.refractivity_stp(),
+        gas_optical_properties.king_factor(),
         pressure,
         temperature,
     );
@@ -323,14 +339,7 @@ pub fn atmospheric_optical_depth(
         wavelength,
         Wavelength::new(OPTICAL_REFERENCE_WAVELENGTH),
     );
-    let n = molecular_number_density(pressure, temperature);
-    let b_a = if base_absorption_cross_section_m2.is_finite()
-        && base_absorption_cross_section_m2 > 0.0
-    {
-        base_absorption_cross_section_m2 * n
-    } else {
-        0.0
-    };
+    let b_a = absorption_coefficient(gas_optical_properties, wavelength, pressure, temperature);
 
     let tau_0 = vertical_optical_depth(b_r, b_m, b_a, scale_height, aerosol_scale_height);
     slant_optical_depth(tau_0, zenith_angle)
