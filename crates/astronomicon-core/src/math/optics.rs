@@ -1,4 +1,3 @@
-
 use crate::math::aerosol::AtmosphericAerosolProperties;
 use crate::units::constants::{
     BOLTZMANN_CONSTANT, OPTICAL_REFERENCE_WAVELENGTH, STANDARD_ATMOSPHERE_PRESSURE,
@@ -269,21 +268,23 @@ pub fn vertical_optical_depth(
     mie_coeff: f64,
     absorption_coeff: f64,
     scale_height: Length,
+    aerosol_scale_height: Length,
 ) -> f64 {
     let b_r = rayleigh_coeff.max(0.0);
     let b_m = mie_coeff.max(0.0);
     let b_a = absorption_coeff.max(0.0);
     let h = scale_height.value().max(0.0);
+    let h_aero = aerosol_scale_height.value().max(0.0);
 
     if !h.is_finite() || h <= 0.0 {
         return 0.0;
     }
 
-    let total_extinction = b_r + b_m + b_a;
+    let total_extinction = (b_r + b_a) * h + b_m * h_aero;
     if !total_extinction.is_finite() || total_extinction <= 0.0 {
         0.0
     } else {
-        total_extinction * h
+        total_extinction
     }
 }
 
@@ -307,6 +308,7 @@ pub fn atmospheric_optical_depth(
     temperature: Temperature,
     aerosol_properties: &AtmosphericAerosolProperties,
     scale_height: Length,
+    aerosol_scale_height: Length,
     zenith_angle: Angle,
 ) -> f64 {
     let b_r = rayleigh_scattering_coefficient(
@@ -330,7 +332,7 @@ pub fn atmospheric_optical_depth(
         0.0
     };
 
-    let tau_0 = vertical_optical_depth(b_r, b_m, b_a, scale_height);
+    let tau_0 = vertical_optical_depth(b_r, b_m, b_a, scale_height, aerosol_scale_height);
     slant_optical_depth(tau_0, zenith_angle)
 }
 

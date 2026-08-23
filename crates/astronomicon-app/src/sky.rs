@@ -28,7 +28,7 @@ use astronomicon_core::units::constants::OPTICAL_REFERENCE_WAVELENGTH;
 use astronomicon_core::units::{
     Angle, ColorRGB, Duration, Length, SpectralRadiance, Wavelength,
 };
-use astronomicon_db::repositories::{atmosphere_repository, planet_repository};
+use astronomicon_db::repositories::{atmosphere_repository, hydrosphere_repository, planet_repository};
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
@@ -120,7 +120,7 @@ pub async fn resolve_sky_diagnostics(
     let volc_diag = resolve_planetary_volcanism(pool, planet_id, universe_epoch, at_epoch).await?;
     let hydro_diag =
         resolve_hydrosphere_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
-    let hydro_opt = astronomicon_db::repositories::hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?;
+    let hydro_opt = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?;
 
     let eq_radius = planet
         .equatorial_radius()
@@ -192,13 +192,15 @@ pub async fn resolve_sky_diagnostics(
     let b_m_g = mie_scattering_coefficient(&aerosol_props, wl_g, ref_wl);
     let b_m_b = mie_scattering_coefficient(&aerosol_props, wl_b, ref_wl);
 
+    let aerosol_scale_h = 1500.0;
+
     let tau_r_r = b_r_r * scale_h.value();
     let tau_r_g = b_r_g * scale_h.value();
     let tau_r_b = b_r_b * scale_h.value();
 
-    let tau_m_r = b_m_r * scale_h.value();
-    let tau_m_g = b_m_g * scale_h.value();
-    let tau_m_b = b_m_b * scale_h.value();
+    let tau_m_r = b_m_r * aerosol_scale_h;
+    let tau_m_g = b_m_g * aerosol_scale_h;
+    let tau_m_b = b_m_b * aerosol_scale_h;
 
     let tau_a = b_a * scale_h.value();
 
@@ -217,7 +219,7 @@ pub async fn resolve_sky_diagnostics(
             let br = rayleigh_scattering_coefficient(lambda, refr_stp, king, p_surf, surf_temp);
             let bm = mie_scattering_coefficient(&aerosol_props, lambda, ref_wl);
             let tr = br * scale_h.value();
-            let tm = bm * scale_h.value();
+            let tm = bm * aerosol_scale_h;
             let t_tot = tr + tm + tau_a;
 
             let pr = rayleigh_phase_function_with_depolarization(theta, king);
