@@ -4,7 +4,10 @@ pub mod error;
 pub mod math;
 pub mod units;
 
-pub use chemistry::SolventProperties;
+pub use chemistry::{
+    condensation_temperature_50_of, element_geochemistry, goldschmidt_class_of,
+    ElementGeochemistry, GoldschmidtClass, SolventProperties,
+};
 pub use domain::{
     Atmosphere,
     Barycenter,
