@@ -164,3 +164,20 @@ pub fn c_o_molar_ratio(abundances: &[ElementalAbundance]) -> f64 {
         (w_c / a_c) / (w_o / a_o)
     }
 }
+
+pub fn mg_number(abundances: &[ElementalAbundance]) -> f64 {
+    let w_mg = element_mass_fraction(abundances, "Mg");
+    let w_fe = element_mass_fraction(abundances, "Fe");
+    let a_mg = atomic_weight("Mg").unwrap_or(24.305);
+    let a_fe = atomic_weight("Fe").unwrap_or(55.845);
+
+    let n_mg = if a_mg > 0.0 { w_mg / a_mg } else { 0.0 };
+    let n_fe = if a_fe > 0.0 { w_fe / a_fe } else { 0.0 };
+    let total = n_mg + n_fe;
+
+    if total <= 0.0 {
+        0.0
+    } else {
+        n_mg / total
+    }
+}

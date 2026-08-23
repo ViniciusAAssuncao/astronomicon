@@ -7,7 +7,7 @@ pub mod units;
 pub use chemistry::{
     all_elements, atomic_number, atomic_weight, c_o_molar_ratio, condensation_fraction,
     condensation_temperature_50_of, element_geochemistry, element_mass_fraction,
-    element_molar_fraction, fe_si_molar_ratio, goldschmidt_class_of, mg_si_molar_ratio,
+    element_molar_fraction, fe_si_molar_ratio, goldschmidt_class_of, mg_number, mg_si_molar_ratio,
     refractory_mass_fraction, solar_abundance_to_mass_fractions, solar_log_epsilon,
     stellar_abundances, volatile_mass_fraction, ElementGeochemistry, ElementalAbundance,
     GoldschmidtClass, SolventProperties,
@@ -19,10 +19,11 @@ pub use domain::{
     TectonicRegime, UniverseState,
 };
 pub use math::{
-    brittle_ductile_transition_depth, condensation_fraction_with_tc,
-    convective_to_yield_stress_ratio, determine_tectonic_regime, disk_temperature_at_orbit,
+    brittle_ductile_transition_depth, bulk_silicate_planet_composition,
+    condensation_fraction_with_tc, convective_to_yield_stress_ratio, core_composition,
+    determine_tectonic_regime, differentiate_core_mantle, disk_temperature_at_orbit,
     equilibrium_tidal_bulge_height, lithosphere_thickness, lithosphere_yield_strength,
-    mantle_convective_stress, planetary_bulk_composition,
+    mantle_convective_stress, metal_silicate_partition_coefficient, planetary_bulk_composition,
     planetary_bulk_composition_from_disk_temp, plate_rms_velocity,
     protoplanetary_disk_temperature, radial_tidal_stress_amplitude, seismic_efficiency,
     tectonic_plate_count, tectonic_seismic_energy_rate, thermal_condensation_efficiency,
