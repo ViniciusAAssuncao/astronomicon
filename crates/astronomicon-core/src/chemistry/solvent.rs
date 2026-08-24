@@ -1,3 +1,4 @@
+use crate::chemistry::composition_mean::validate_and_normalize_composition;
 use crate::error::{DomainError, DomainResult};
 use crate::units::{Density, Pressure, Temperature};
 use serde::{Deserialize, Serialize};
@@ -183,14 +184,11 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
 }
 
 pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<SolventProperties> {
-    let total_percentage: f64 = composition.iter().map(|(_, p)| p).sum();
-
-    if total_percentage <= 0.0 {
-        return Err(DomainError::InvalidInvariant {
-            field: "composition".to_string(),
-            reason: "total percentage must be positive".to_string(),
-        });
-    }
+    let fractions = validate_and_normalize_composition(
+        composition,
+        "composition",
+        "total percentage must be positive",
+    )?;
 
     let mut h_vap = 0.0;
     let mut h_fus = 0.0;
@@ -212,14 +210,13 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
     let mut n_sol_r = 0.0;
     let mut n_sol_i = 0.0;
 
-    for (formula, percentage) in composition {
+    for (formula, fraction) in fractions {
         let props =
             solvent_properties_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
                 field: "composition".to_string(),
                 reason: format!("unknown solvent formula '{}'", formula),
             })?;
 
-        let fraction = percentage / total_percentage;
         h_vap += props.enthalpy_of_vaporization * fraction;
         h_fus += props.enthalpy_of_fusion * fraction;
         k_f += props.cryoscopic_constant * fraction;

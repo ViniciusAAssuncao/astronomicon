@@ -1,3 +1,6 @@
+use crate::chemistry::composition_mean::{
+    composition_weighted_mean_strictly_positive, validate_and_normalize_composition,
+};
 use crate::error::{DomainError, DomainResult};
 use crate::units::Wavelength;
 use serde::{Deserialize, Serialize};
@@ -277,88 +280,64 @@ pub fn refractivity_from_lorentz_lorenz_term(lorentz_lorenz_term: f64) -> f64 {
 }
 
 pub fn mean_refractivity_lorentz_lorenz(composition: &[(String, f64)]) -> DomainResult<f64> {
-    let total_fraction: f64 = composition.iter().map(|(_, f)| f).sum();
-
-    if total_fraction <= 0.0 {
-        return Err(DomainError::InvalidInvariant {
-            field: "composition".to_string(),
-            reason: "total fraction must be positive".to_string(),
-        });
-    }
-
-    let mut ll_sum = 0.0;
-
-    for (formula, fraction) in composition {
-        let refractivity =
-            refractivity_stp_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
-                field: "composition".to_string(),
-                reason: format!("unknown gas optical formula '{}'", formula),
-            })?;
-
-        let x = fraction / total_fraction;
-        ll_sum += x * lorentz_lorenz_term(refractivity);
-    }
+    let ll_sum = composition_weighted_mean_strictly_positive(
+        composition,
+        "composition",
+        "total fraction must be positive",
+        |formula| {
+            let refractivity =
+                refractivity_stp_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
+                    field: "composition".to_string(),
+                    reason: format!("unknown gas optical formula '{}'", formula),
+                })?;
+            Ok(lorentz_lorenz_term(refractivity))
+        },
+    )?;
 
     Ok(refractivity_from_lorentz_lorenz_term(ll_sum))
 }
 
 pub fn mean_refractivity_gladstone_dale(composition: &[(String, f64)]) -> DomainResult<f64> {
-    let total_fraction: f64 = composition.iter().map(|(_, f)| f).sum();
-
-    if total_fraction <= 0.0 {
-        return Err(DomainError::InvalidInvariant {
-            field: "composition".to_string(),
-            reason: "total fraction must be positive".to_string(),
-        });
-    }
-
-    let mut refractivity_sum = 0.0;
-
-    for (formula, fraction) in composition {
-        let refractivity =
+    composition_weighted_mean_strictly_positive(
+        composition,
+        "composition",
+        "total fraction must be positive",
+        |formula| {
             refractivity_stp_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
                 field: "composition".to_string(),
                 reason: format!("unknown gas optical formula '{}'", formula),
-            })?;
-
-        let x = fraction / total_fraction;
-        refractivity_sum += x * refractivity;
-    }
-
-    Ok(refractivity_sum)
+            })
+        },
+    )
 }
 
 pub fn mean_gas_optical_properties(
     composition: &[(String, f64)],
 ) -> DomainResult<GasOpticalProperties> {
-    let total_fraction: f64 = composition.iter().map(|(_, f)| f).sum();
-
-    if total_fraction <= 0.0 {
-        return Err(DomainError::InvalidInvariant {
-            field: "composition".to_string(),
-            reason: "total fraction must be positive".to_string(),
-        });
-    }
+    let fractions = validate_and_normalize_composition(
+        composition,
+        "composition",
+        "total fraction must be positive",
+    )?;
 
     let mean_refractivity = mean_refractivity_lorentz_lorenz(composition)?;
 
     let mut king_weighted_sum = 0.0;
     let mut combined_bands: Vec<AbsorptionBand> = Vec::new();
 
-    for (formula, fraction) in composition {
+    for (formula, fraction) in fractions {
         let props =
             gas_optical_properties(formula).ok_or_else(|| DomainError::InvalidInvariant {
                 field: "composition".to_string(),
                 reason: format!("unknown gas optical formula '{}'", formula),
             })?;
 
-        let x = fraction / total_fraction;
-        king_weighted_sum += x * props.king_factor();
+        king_weighted_sum += fraction * props.king_factor();
 
         for band in props.absorption_bands() {
             combined_bands.push(AbsorptionBand::new(
                 band.peak_wavelength(),
-                band.cross_section_max() * x,
+                band.cross_section_max() * fraction,
                 band.fwhm(),
             ));
         }

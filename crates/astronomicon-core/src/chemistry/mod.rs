@@ -1,4 +1,5 @@
 pub mod abundance;
+pub mod composition_mean;
 pub mod condensation;
 pub mod geochemistry;
 pub mod molar_mass;
@@ -8,6 +9,7 @@ pub mod periodic_table;
 pub mod solvent;
 
 pub use abundance::*;
+pub use composition_mean::*;
 pub use condensation::*;
 pub use geochemistry::*;
 pub use molar_mass::*;
