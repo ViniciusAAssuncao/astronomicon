@@ -58,6 +58,8 @@ pub struct PlanetBuilder {
     mantle_hydration_fraction: Option<f64>,
     dust_availability_factor: Option<f64>,
     surface_roughness: Option<Length>,
+    dust_particle_radius: Option<Length>,
+    volcanic_ash_particle_radius: Option<Length>,
     rheology: Option<PlanetRheology>,
 }
 
@@ -94,6 +96,8 @@ impl PlanetBuilder {
             mantle_hydration_fraction: None,
             dust_availability_factor: None,
             surface_roughness: None,
+            dust_particle_radius: None,
+            volcanic_ash_particle_radius: None,
             rheology: None,
         }
     }
@@ -217,6 +221,22 @@ impl PlanetBuilder {
         self
     }
 
+    pub fn with_dust_particle_radius(
+        mut self,
+        dust_particle_radius: impl Into<Option<Length>>,
+    ) -> Self {
+        self.dust_particle_radius = dust_particle_radius.into();
+        self
+    }
+
+    pub fn with_volcanic_ash_particle_radius(
+        mut self,
+        volcanic_ash_particle_radius: impl Into<Option<Length>>,
+    ) -> Self {
+        self.volcanic_ash_particle_radius = volcanic_ash_particle_radius.into();
+        self
+    }
+
     pub fn with_rheology(mut self, rheology: impl Into<Option<PlanetRheology>>) -> Self {
         self.rheology = rheology.into();
         self
@@ -308,6 +328,14 @@ impl PlanetBuilder {
             validate_positive_finite(sr.value(), "surface_roughness")?;
         }
 
+        if let Some(dpr) = self.dust_particle_radius {
+            validate_positive_finite(dpr.value(), "dust_particle_radius")?;
+        }
+
+        if let Some(vapr) = self.volcanic_ash_particle_radius {
+            validate_positive_finite(vapr.value(), "volcanic_ash_particle_radius")?;
+        }
+
         let solstice_true_anomaly = self
             .solstice_true_anomaly
             .map(|angle| Angle::new(angle.value().rem_euclid(TAU)));
@@ -337,6 +365,8 @@ impl PlanetBuilder {
             mantle_hydration_fraction: self.mantle_hydration_fraction,
             dust_availability_factor: self.dust_availability_factor,
             surface_roughness: self.surface_roughness,
+            dust_particle_radius: self.dust_particle_radius,
+            volcanic_ash_particle_radius: self.volcanic_ash_particle_radius,
             rheology: self.rheology,
         })
     }
@@ -368,6 +398,8 @@ pub struct Planet {
     mantle_hydration_fraction: Option<f64>,
     dust_availability_factor: Option<f64>,
     surface_roughness: Option<Length>,
+    dust_particle_radius: Option<Length>,
+    volcanic_ash_particle_radius: Option<Length>,
     rheology: Option<PlanetRheology>,
 }
 
@@ -407,6 +439,8 @@ impl Planet {
         mantle_hydration_fraction: Option<f64>,
         dust_availability_factor: Option<f64>,
         surface_roughness: Option<Length>,
+        dust_particle_radius: Option<Length>,
+        volcanic_ash_particle_radius: Option<Length>,
         rheology: Option<PlanetRheology>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
@@ -429,6 +463,8 @@ impl Planet {
             .with_mantle_hydration_fraction(mantle_hydration_fraction)
             .with_dust_availability_factor(dust_availability_factor)
             .with_surface_roughness(surface_roughness)
+            .with_dust_particle_radius(dust_particle_radius)
+            .with_volcanic_ash_particle_radius(volcanic_ash_particle_radius)
             .with_rheology(rheology)
             .build()
     }
@@ -527,6 +563,14 @@ impl Planet {
 
     pub fn surface_roughness(&self) -> Option<Length> {
         self.surface_roughness
+    }
+
+    pub fn dust_particle_radius(&self) -> Option<Length> {
+        self.dust_particle_radius
+    }
+
+    pub fn volcanic_ash_particle_radius(&self) -> Option<Length> {
+        self.volcanic_ash_particle_radius
     }
 
     pub fn rheology(&self) -> Option<&PlanetRheology> {

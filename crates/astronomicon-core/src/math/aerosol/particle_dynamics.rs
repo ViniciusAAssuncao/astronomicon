@@ -1,4 +1,3 @@
-use crate::math::aerosol::composite_properties::AtmosphericAerosolProperties;
 use crate::units::{Acceleration, Density, DynamicViscosity, Length, Speed};
 
 pub fn particle_terminal_velocity(
