@@ -159,6 +159,8 @@ pub fn gas_optical_properties(formula: &str) -> Option<GasOpticalProperties> {
     match formula {
         "He" => Some(GasOpticalProperties::new(3.480e-5, 1.000, Vec::new())),
         "Ar" => Some(GasOpticalProperties::new(2.818e-4, 1.000, Vec::new())),
+        "Kr" => Some(GasOpticalProperties::new(4.275e-4, 1.000, Vec::new())),
+        "Ne" => Some(GasOpticalProperties::new(2.740e-4, 1.000, Vec::new())),
         "H2" => Some(GasOpticalProperties::new(1.386e-4, 1.032, Vec::new())),
         "N2" => Some(GasOpticalProperties::new(2.980e-4, 1.034, Vec::new())),
         "O2" => Some(GasOpticalProperties::new(2.663e-4, 1.096, Vec::new())),
