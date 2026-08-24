@@ -3,9 +3,10 @@ use crate::chemistry::optics::{
     mean_refractivity_lorentz_lorenz,
 };
 use crate::error::DomainResult;
+use crate::math::optics::mass_optical_efficiencies;
 use crate::math::thermodynamics::MatterState;
 use crate::math::volcanism::VolcanicEruptionStyle;
-use crate::units::constants::{ STANDARD_ATMOSPHERE_PRESSURE, STANDARD_GRAVITY, STP_TEMPERATURE };
+use crate::units::constants::{ OPTICAL_REFERENCE_WAVELENGTH, STANDARD_ATMOSPHERE_PRESSURE, STANDARD_GRAVITY, STP_TEMPERATURE };
 use crate::units::{
     Acceleration,
     Density,
@@ -287,8 +288,10 @@ pub fn dust_threshold_friction_velocity(
     }
 
     let a_coeff = 0.118;
+    let b_cohesion = 1.6e-4;
+    let cohesion_term = 1.0 + b_cohesion / (rho_a * g * d);
     let density_ratio = (rho_p - rho_a) / rho_a;
-    let u_star_t = a_coeff * (density_ratio * g * d).sqrt();
+    let u_star_t = a_coeff * (density_ratio * g * d * cohesion_term).sqrt();
 
     if !u_star_t.is_finite() || u_star_t <= 0.0 {
         Speed::new(0.0)
@@ -316,6 +319,9 @@ pub fn airborne_dust_density(
     threshold_wind_speed: Speed,
     atmospheric_density: Density,
     surface_gravity: Acceleration,
+    dust_availability_factor: f64,
+    surface_coverage_fraction: f64,
+    surface_humidity: f64,
 ) -> Density {
     let v = surface_wind_speed.value();
     let v_t = threshold_wind_speed.value();
@@ -334,12 +340,22 @@ pub fn airborne_dust_density(
         return Density::new(0.0);
     }
 
+    let f_dust = dust_availability_factor.clamp(0.0, 1.0);
+    let f_land = (1.0 - surface_coverage_fraction.clamp(0.0, 1.0)).max(0.0);
+    let h = surface_humidity.clamp(0.0, 1.0);
+    let f_moisture = (1.0 - h).powi(2);
+    let suppression = f_dust * f_land * f_moisture;
+
+    if suppression <= 0.0 || !suppression.is_finite() {
+        return Density::new(0.0);
+    }
+
     let delta_v = v - v_t;
     let normalized_excess = delta_v / (v_t + 0.1);
     let g_scale = (STANDARD_GRAVITY / g).clamp(0.1, 10.0);
     let c_dust = 1.5e-5;
 
-    let rho_dust = c_dust * rho_a * normalized_excess * normalized_excess * g_scale;
+    let rho_dust = c_dust * rho_a * normalized_excess * normalized_excess * g_scale * suppression;
     let clamped_dust = rho_dust.clamp(0.0, 0.05);
 
     if !clamped_dust.is_finite() {
@@ -503,10 +519,17 @@ pub fn cloud_condensate_density(
     }
 }
 
-pub fn composite_aerosol_properties(
+pub fn composite_aerosol_properties_from_materials(
     dust_density: Density,
     volcanic_density: Density,
     cloud_density: Density,
+    dust_refractive_index: (f64, f64),
+    dust_particle_density: Density,
+    volcanic_refractive_index: (f64, f64),
+    volcanic_particle_density: Density,
+    cloud_refractive_index: (f64, f64),
+    cloud_particle_density: Density,
+    reference_wavelength: Wavelength,
 ) -> AtmosphericAerosolProperties {
     let d = dust_density.value().max(0.0);
     let v = volcanic_density.value().max(0.0);
@@ -526,33 +549,43 @@ pub fn composite_aerosol_properties(
         );
     }
 
-    let g_dust = 0.7;
-    let g_volc = 0.68;
-    let g_cloud = 0.85;
+    let r_dust = Length::new(1.0e-6);
+    let r_volc = Length::new(5.0e-6);
+    let r_cloud = Length::new(10.0e-6);
 
-    let ks_dust = 1500.0;
-    let ks_volc = 4500.0;
-    let ks_cloud = 25000.0;
+    let (ke_dust, ks_dust, _, g_dust, alpha_dust) = mass_optical_efficiencies(
+        r_dust,
+        dust_particle_density,
+        dust_refractive_index.0,
+        dust_refractive_index.1,
+        reference_wavelength,
+    );
 
-    let ka_dust = 300.0;
-    let ka_volc = 500.0;
-    let ka_cloud = 50.0;
+    let (ke_volc, ks_volc, _, g_volc, alpha_volc) = mass_optical_efficiencies(
+        r_volc,
+        volcanic_particle_density,
+        volcanic_refractive_index.0,
+        volcanic_refractive_index.1,
+        reference_wavelength,
+    );
 
-    let alpha_dust = 0.6;
-    let alpha_volc = 1.3;
-    let alpha_cloud = 0.2;
+    let (ke_cloud, ks_cloud, _, g_cloud, alpha_cloud) = mass_optical_efficiencies(
+        r_cloud,
+        cloud_particle_density,
+        cloud_refractive_index.0,
+        cloud_refractive_index.1,
+        reference_wavelength,
+    );
 
     let scatt_dust = d * ks_dust;
     let scatt_volc = v * ks_volc;
     let scatt_cloud = c * ks_cloud;
     let total_scatt = scatt_dust + scatt_volc + scatt_cloud;
 
-    let abs_dust = d * ka_dust;
-    let abs_volc = v * ka_volc;
-    let abs_cloud = c * ka_cloud;
-    let total_abs = abs_dust + abs_volc + abs_cloud;
-
-    let total_ext = total_scatt + total_abs;
+    let ext_dust = d * ke_dust;
+    let ext_volc = v * ke_volc;
+    let ext_cloud = c * ke_cloud;
+    let total_ext = ext_dust + ext_volc + ext_cloud;
 
     let g_weighted = if total_scatt > 0.0 {
         (scatt_dust * g_dust + scatt_volc * g_volc + scatt_cloud * g_cloud) / total_scatt
@@ -576,6 +609,25 @@ pub fn composite_aerosol_properties(
         total_ext,
         total_scatt,
         alpha_weighted.clamp(0.0, 4.0),
+    )
+}
+
+pub fn composite_aerosol_properties(
+    dust_density: Density,
+    volcanic_density: Density,
+    cloud_density: Density,
+) -> AtmosphericAerosolProperties {
+    composite_aerosol_properties_from_materials(
+        dust_density,
+        volcanic_density,
+        cloud_density,
+        (1.55, 0.005),
+        Density::new(2650.0),
+        (1.52, 0.015),
+        Density::new(2400.0),
+        (1.333, 1.0e-8),
+        Density::new(1000.0),
+        Wavelength::new(OPTICAL_REFERENCE_WAVELENGTH),
     )
 }
 

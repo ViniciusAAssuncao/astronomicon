@@ -15,6 +15,8 @@ pub struct MaterialProperties {
     pub thermal_expansion: f64,
     pub solidus_temperature: Temperature,
     pub liquidus_temperature: Temperature,
+    pub refractive_index_real: f64,
+    pub refractive_index_imag: f64,
 }
 
 impl MaterialProperties {
@@ -29,6 +31,8 @@ impl MaterialProperties {
         thermal_expansion: f64,
         solidus_temperature: Temperature,
         liquidus_temperature: Temperature,
+        refractive_index_real: f64,
+        refractive_index_imag: f64,
     ) -> DomainResult<Self> {
         let name = name.into();
         if name.trim().is_empty() {
@@ -96,6 +100,20 @@ impl MaterialProperties {
             });
         }
 
+        if !refractive_index_real.is_finite() || refractive_index_real < 1.0 {
+            return Err(DomainError::InvalidInvariant {
+                field: "refractive_index_real".to_string(),
+                reason: "must be finite and greater than or equal to 1.0".to_string(),
+            });
+        }
+
+        if !refractive_index_imag.is_finite() || refractive_index_imag < 0.0 {
+            return Err(DomainError::InvalidInvariant {
+                field: "refractive_index_imag".to_string(),
+                reason: "must be finite and non-negative".to_string(),
+            });
+        }
+
         Ok(Self {
             id,
             name,
@@ -107,6 +125,8 @@ impl MaterialProperties {
             thermal_expansion,
             solidus_temperature,
             liquidus_temperature,
+            refractive_index_real,
+            refractive_index_imag,
         })
     }
 
@@ -148,5 +168,13 @@ impl MaterialProperties {
 
     pub fn liquidus_temperature(&self) -> Temperature {
         self.liquidus_temperature
+    }
+
+    pub fn refractive_index_real(&self) -> f64 {
+        self.refractive_index_real
+    }
+
+    pub fn refractive_index_imag(&self) -> f64 {
+        self.refractive_index_imag
     }
 }

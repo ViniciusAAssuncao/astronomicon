@@ -44,7 +44,7 @@ pub struct PlanetRheology {
 
 impl PlanetRheology {
     pub fn fallback_for_kind(kind: PlanetKind) -> Self {
-        let (name, density, shear, yield_s, k, cp, alpha, t_sol, t_liq) = match kind {
+        let (name, density, shear, yield_s, k, cp, alpha, t_sol, t_liq, n_r, n_i) = match kind {
             PlanetKind::IcyBody | PlanetKind::IceGiant | PlanetKind::DwarfPlanet => (
                 "Water Ice",
                 Density::new(920.0),
@@ -55,6 +55,8 @@ impl PlanetRheology {
                 5.0e-5,
                 Temperature::new(273.15),
                 Temperature::new(273.15),
+                1.31,
+                1.0e-8,
             ),
             _ => (
                 "Silicate Rock",
@@ -66,6 +68,8 @@ impl PlanetRheology {
                 3.0e-5,
                 Temperature::new(1373.15),
                 Temperature::new(1673.15),
+                1.55,
+                0.005,
             ),
         };
         let mat = MaterialProperties::new(
@@ -79,6 +83,8 @@ impl PlanetRheology {
             alpha,
             t_sol,
             t_liq,
+            n_r,
+            n_i,
         )
         .expect("valid fallback material");
         let comp = LithosphereComponent::new(mat, 100.0).expect("valid fallback component");
@@ -203,5 +209,21 @@ impl PlanetRheology {
             .map(|c| c.material().liquidus_temperature().value() * (c.percentage() / total))
             .sum();
         Temperature::new(sum)
+    }
+
+    pub fn mean_refractive_index_real(&self) -> f64 {
+        let total = self.total_percentage();
+        self.components
+            .iter()
+            .map(|c| c.material().refractive_index_real() * (c.percentage() / total))
+            .sum()
+    }
+
+    pub fn mean_refractive_index_imag(&self) -> f64 {
+        let total = self.total_percentage();
+        self.components
+            .iter()
+            .map(|c| c.material().refractive_index_imag() * (c.percentage() / total))
+            .sum()
     }
 }

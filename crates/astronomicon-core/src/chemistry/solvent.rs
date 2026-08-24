@@ -19,6 +19,10 @@ pub struct SolventProperties {
     pub liquid_specific_heat_capacity: f64,
     pub liquid_albedo: f64,
     pub solid_albedo: f64,
+    pub liquid_refractive_index_real: f64,
+    pub liquid_refractive_index_imag: f64,
+    pub solid_refractive_index_real: f64,
+    pub solid_refractive_index_imag: f64,
 }
 
 impl SolventProperties {
@@ -38,6 +42,10 @@ impl SolventProperties {
         liquid_specific_heat_capacity: f64,
         liquid_albedo: f64,
         solid_albedo: f64,
+        liquid_refractive_index_real: f64,
+        liquid_refractive_index_imag: f64,
+        solid_refractive_index_real: f64,
+        solid_refractive_index_imag: f64,
     ) -> Self {
         Self {
             enthalpy_of_vaporization,
@@ -55,6 +63,10 @@ impl SolventProperties {
             liquid_specific_heat_capacity,
             liquid_albedo,
             solid_albedo,
+            liquid_refractive_index_real,
+            liquid_refractive_index_imag,
+            solid_refractive_index_real,
+            solid_refractive_index_imag,
         }
     }
 }
@@ -77,6 +89,10 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             4184.0,
             0.06,
             0.65,
+            1.333,
+            1.0e-8,
+            1.310,
+            1.0e-8,
         )),
         "CH4" => Some(SolventProperties::new(
             8170.0,
@@ -94,6 +110,10 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             3400.0,
             0.10,
             0.50,
+            1.280,
+            1.0e-7,
+            1.320,
+            1.0e-7,
         )),
         "NH3" => Some(SolventProperties::new(
             23350.0,
@@ -111,6 +131,10 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             4700.0,
             0.08,
             0.65,
+            1.330,
+            1.0e-6,
+            1.350,
+            1.0e-6,
         )),
         "N2" => Some(SolventProperties::new(
             5560.0,
@@ -128,6 +152,10 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             2040.0,
             0.10,
             0.70,
+            1.200,
+            1.0e-9,
+            1.250,
+            1.0e-9,
         )),
         "CO2" => Some(SolventProperties::new(
             15300.0,
@@ -145,6 +173,10 @@ pub fn solvent_properties_of(formula: &str) -> Option<SolventProperties> {
             2200.0,
             0.10,
             0.75,
+            1.200,
+            1.0e-8,
+            1.410,
+            1.0e-8,
         )),
         _ => None,
     }
@@ -175,6 +207,10 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
     let mut cp_liq = 0.0;
     let mut alb_liq = 0.0;
     let mut alb_sol = 0.0;
+    let mut n_liq_r = 0.0;
+    let mut n_liq_i = 0.0;
+    let mut n_sol_r = 0.0;
+    let mut n_sol_i = 0.0;
 
     for (formula, percentage) in composition {
         let props = solvent_properties_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
@@ -198,6 +234,10 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
         cp_liq += props.liquid_specific_heat_capacity * fraction;
         alb_liq += props.liquid_albedo * fraction;
         alb_sol += props.solid_albedo * fraction;
+        n_liq_r += props.liquid_refractive_index_real * fraction;
+        n_liq_i += props.liquid_refractive_index_imag * fraction;
+        n_sol_r += props.solid_refractive_index_real * fraction;
+        n_sol_i += props.solid_refractive_index_imag * fraction;
     }
 
     Ok(SolventProperties::new(
@@ -216,6 +256,10 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
         cp_liq,
         alb_liq,
         alb_sol,
+        n_liq_r,
+        n_liq_i,
+        n_sol_r,
+        n_sol_i,
     ))
 }
 
@@ -261,4 +305,20 @@ pub fn liquid_albedo_of(formula: &str) -> Option<f64> {
 
 pub fn solid_albedo_of(formula: &str) -> Option<f64> {
     solvent_properties_of(formula).map(|p| p.solid_albedo)
+}
+
+pub fn liquid_refractive_index_real_of(formula: &str) -> Option<f64> {
+    solvent_properties_of(formula).map(|p| p.liquid_refractive_index_real)
+}
+
+pub fn liquid_refractive_index_imag_of(formula: &str) -> Option<f64> {
+    solvent_properties_of(formula).map(|p| p.liquid_refractive_index_imag)
+}
+
+pub fn solid_refractive_index_real_of(formula: &str) -> Option<f64> {
+    solvent_properties_of(formula).map(|p| p.solid_refractive_index_real)
+}
+
+pub fn solid_refractive_index_imag_of(formula: &str) -> Option<f64> {
+    solvent_properties_of(formula).map(|p| p.solid_refractive_index_imag)
 }

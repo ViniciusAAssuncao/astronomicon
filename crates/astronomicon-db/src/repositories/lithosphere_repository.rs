@@ -17,6 +17,8 @@ struct LithosphereJoinRow {
     thermal_expansion_per_k: f64,
     solidus_temperature_k: f64,
     liquidus_temperature_k: f64,
+    refractive_index_real: f64,
+    refractive_index_imag: f64,
 }
 
 pub async fn get_by_planet_id(
@@ -27,7 +29,8 @@ pub async fn get_by_planet_id(
         "SELECT c.material_id, c.percentage, m.name, m.density_kg_per_m3, \
          m.shear_modulus_pa, m.base_yield_stress_pa, m.thermal_conductivity_w_per_m_k, \
          m.specific_heat_capacity_j_per_kg_k, m.thermal_expansion_per_k, \
-         m.solidus_temperature_k, m.liquidus_temperature_k \
+         m.solidus_temperature_k, m.liquidus_temperature_k, \
+         m.refractive_index_real, m.refractive_index_imag \
          FROM planet_lithosphere_components c \
          JOIN material_properties m ON c.material_id = m.id \
          WHERE c.planet_id = ?",
@@ -54,6 +57,8 @@ pub async fn get_by_planet_id(
             row.thermal_expansion_per_k,
             Temperature::new(row.solidus_temperature_k),
             Temperature::new(row.liquidus_temperature_k),
+            row.refractive_index_real,
+            row.refractive_index_imag,
         )?;
         components.push(LithosphereComponent::new(material, row.percentage)?);
     }

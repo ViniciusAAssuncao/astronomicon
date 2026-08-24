@@ -16,6 +16,8 @@ pub struct MaterialPropertiesRow {
     pub thermal_expansion_per_k: f64,
     pub solidus_temperature_k: f64,
     pub liquidus_temperature_k: f64,
+    pub refractive_index_real: f64,
+    pub refractive_index_imag: f64,
 }
 
 impl TryFrom<MaterialPropertiesRow> for MaterialProperties {
@@ -34,6 +36,8 @@ impl TryFrom<MaterialPropertiesRow> for MaterialProperties {
             row.thermal_expansion_per_k,
             Temperature::new(row.solidus_temperature_k),
             Temperature::new(row.liquidus_temperature_k),
+            row.refractive_index_real,
+            row.refractive_index_imag,
         )?;
         Ok(material)
     }
