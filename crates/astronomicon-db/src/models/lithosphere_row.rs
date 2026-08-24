@@ -1,8 +1,7 @@
 use crate::error::DbError;
-use astronomicon_core::domain::{LithosphereComponent, MaterialProperties};
-use astronomicon_core::units::{Density, Pressure, Temperature};
+use crate::models::material_properties_row::build_material_properties;
+use astronomicon_core::domain::LithosphereComponent;
 use sqlx::FromRow;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct LithosphereJoinRow {
@@ -23,18 +22,17 @@ pub struct LithosphereJoinRow {
 
 impl LithosphereJoinRow {
     pub fn to_component(&self) -> Result<LithosphereComponent, DbError> {
-        let mat_id = Uuid::parse_str(&self.material_id)?;
-        let material = MaterialProperties::new(
-            mat_id,
+        let material = build_material_properties(
+            &self.material_id,
             self.name.clone(),
-            Density::new(self.density_kg_per_m3),
-            Pressure::new(self.shear_modulus_pa),
-            Pressure::new(self.base_yield_stress_pa),
+            self.density_kg_per_m3,
+            self.shear_modulus_pa,
+            self.base_yield_stress_pa,
             self.thermal_conductivity_w_per_m_k,
             self.specific_heat_capacity_j_per_kg_k,
             self.thermal_expansion_per_k,
-            Temperature::new(self.solidus_temperature_k),
-            Temperature::new(self.liquidus_temperature_k),
+            self.solidus_temperature_k,
+            self.liquidus_temperature_k,
             self.refractive_index_real,
             self.refractive_index_imag,
         )?;

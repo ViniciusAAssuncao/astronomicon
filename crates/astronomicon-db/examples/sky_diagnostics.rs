@@ -9,18 +9,16 @@ use astronomicon_db::repositories::{
 use astronomicon_db::save::initialize_save;
 use uuid::Uuid;
 
-fn format_rgb_hex(color: ColorRGB) -> String {
-    let r = (color.r().clamp(0.0, 1.0) * 255.0).round() as u8;
-    let g = (color.g().clamp(0.0, 1.0) * 255.0).round() as u8;
-    let b = (color.b().clamp(0.0, 1.0) * 255.0).round() as u8;
-    format!("#{:02X}{:02X}{:02X}", r, g, b)
-}
-
 fn format_rgb_255(color: ColorRGB) -> (u8, u8, u8) {
     let r = (color.r().clamp(0.0, 1.0) * 255.0).round() as u8;
     let g = (color.g().clamp(0.0, 1.0) * 255.0).round() as u8;
     let b = (color.b().clamp(0.0, 1.0) * 255.0).round() as u8;
     (r, g, b)
+}
+
+fn format_rgb_hex(color: ColorRGB) -> String {
+    let (r, g, b) = format_rgb_255(color);
+    format!("#{:02X}{:02X}{:02X}", r, g, b)
 }
 
 fn transmittance(tau: f64) -> f64 {
