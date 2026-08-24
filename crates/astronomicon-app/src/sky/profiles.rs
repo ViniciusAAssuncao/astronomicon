@@ -1,6 +1,8 @@
+use crate::climate::{AtmosphericStratificationDiagnostic, CloudCoverDiagnostic};
 use crate::error::AppResult;
 use crate::volcanism::VolcanicDiagnostic;
 use astronomicon_core::chemistry::optics::{GasOpticalProperties, mean_gas_optical_properties};
+use astronomicon_core::chemistry::solvent::SolventProperties;
 use astronomicon_core::domain::{Atmosphere, Planet};
 use astronomicon_core::math::aerosol::{
     airborne_dust_density, derived_aerosol_scale_height, dust_threshold_surface_wind,
@@ -21,6 +23,9 @@ pub fn build_sky_atmosphere(
     ocean_cov: f64,
     eq_radius: Length,
     g: Acceleration,
+    cloud_diag: &CloudCoverDiagnostic,
+    strat_diag: &AtmosphericStratificationDiagnostic,
+    solvent_props: &SolventProperties,
 ) -> AppResult<(
     SphericalAtmosphere,
     DustProfile,
@@ -115,7 +120,48 @@ pub fn build_sky_atmosphere(
         0.015,
     );
 
-    let cloud_profile = CloudProfile::zero();
+    let rho_cond_low = cloud_diag.low_cloud.liquid_water_content.value()
+        + cloud_diag.low_cloud.ice_water_content.value();
+    let rho_cond_mid = cloud_diag.mid_cloud.liquid_water_content.value()
+        + cloud_diag.mid_cloud.ice_water_content.value();
+    let rho_cond_high = cloud_diag.high_cloud.liquid_water_content.value()
+        + cloud_diag.high_cloud.ice_water_content.value();
+    let max_cond_density = rho_cond_low.max(rho_cond_mid).max(rho_cond_high);
+    let cloud_base_density = Density::new(max_cond_density);
+
+    let total_ice = cloud_diag.low_cloud.ice_water_content.value()
+        + cloud_diag.mid_cloud.ice_water_content.value()
+        + cloud_diag.high_cloud.ice_water_content.value();
+    let total_liquid = cloud_diag.low_cloud.liquid_water_content.value()
+        + cloud_diag.mid_cloud.liquid_water_content.value()
+        + cloud_diag.high_cloud.liquid_water_content.value();
+    let total_cond = total_ice + total_liquid;
+    let avg_ice_frac = if total_cond > 0.0 {
+        (total_ice / total_cond).clamp(0.0, 1.0)
+    } else {
+        cloud_diag.low_cloud.ice_fraction.clamp(0.0, 1.0)
+    };
+
+    let cloud_n_real = (1.0 - avg_ice_frac) * solvent_props.liquid_refractive_index_real
+        + avg_ice_frac * solvent_props.solid_refractive_index_real;
+    let cloud_n_imag = (1.0 - avg_ice_frac) * solvent_props.liquid_refractive_index_imag
+        + avg_ice_frac * solvent_props.solid_refractive_index_imag;
+    let cloud_particle_density = Density::new(
+        (1.0 - avg_ice_frac) * solvent_props.liquid_density.value()
+            + avg_ice_frac * solvent_props.solid_density.value(),
+    );
+    let cloud_particle_radius = Length::new(10.0e-6);
+
+    let cloud_profile = CloudProfile::from_material(
+        cloud_base_density,
+        cloud_diag.total_cloud_fraction,
+        strat_diag.lcl_altitude,
+        strat_diag.cloud_top_altitude,
+        cloud_particle_radius,
+        cloud_particle_density,
+        cloud_n_real,
+        cloud_n_imag,
+    );
 
     let mut comp: Vec<(String, f64)> = atm
         .composition()

@@ -9,7 +9,8 @@ pub use scattering_summary::*;
 pub use spectral_integration::*;
 
 use crate::climate::{
-    resolve_global_mean_temperature, resolve_star_emission_profile,
+    CloudCoverDiagnostic, resolve_atmospheric_stratification, resolve_cloud_cover,
+    resolve_condensable_species, resolve_global_mean_temperature, resolve_star_emission_profile,
     resolve_wind_profile_at_latitude,
 };
 use crate::ephemeris::resolve_system_positions;
@@ -53,6 +54,7 @@ pub struct SkyDiagnostic {
     pub total_optical_depth_r: f64,
     pub total_optical_depth_g: f64,
     pub total_optical_depth_b: f64,
+    pub clouds: CloudCoverDiagnostic,
 }
 
 pub async fn resolve_sky_diagnostics(
@@ -116,6 +118,11 @@ pub async fn resolve_sky_diagnostics(
     let volc_diag = resolve_planetary_volcanism(pool, planet_id, universe_epoch, at_epoch).await?;
     let hydro_opt = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?;
 
+    let cloud_diag = resolve_cloud_cover(pool, planet_id, universe_epoch, at_epoch).await?;
+    let strat_diag =
+        resolve_atmospheric_stratification(pool, planet_id, universe_epoch, at_epoch).await?;
+    let (solvent_props, _, _) = resolve_condensable_species(pool, planet_id).await?;
+
     let eq_radius = planet
         .equatorial_radius()
         .unwrap_or_else(|| Length::new(6371e3));
@@ -134,6 +141,9 @@ pub async fn resolve_sky_diagnostics(
         ocean_cov,
         eq_radius,
         g,
+        &cloud_diag,
+        &strat_diag,
+        &solvent_props,
     )?;
 
     let ground_albedo = planet.bond_albedo().unwrap_or(0.15);
@@ -177,5 +187,6 @@ pub async fn resolve_sky_diagnostics(
         total_optical_depth_r: summary.total_optical_depth_r,
         total_optical_depth_g: summary.total_optical_depth_g,
         total_optical_depth_b: summary.total_optical_depth_b,
+        clouds: cloud_diag,
     }))
 }

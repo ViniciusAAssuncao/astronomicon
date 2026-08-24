@@ -39,21 +39,42 @@ pub fn resolve_scattering_summary(
         + volcanic_profile
             .density_at_altitude(Length::new(0.0))
             .value()
-            * volcanic_profile.scattering_coefficient_at_wavelength(wl_r);
+            * volcanic_profile.scattering_coefficient_at_wavelength(wl_r)
+        + atmosphere
+            .cloud_profile
+            .density_at_altitude(Length::new(0.0))
+            .value()
+            * atmosphere
+                .cloud_profile
+                .scattering_coefficient_at_wavelength(wl_r);
 
     let b_m_g = dust_profile.density_at_altitude(Length::new(0.0)).value()
         * dust_profile.scattering_coefficient_at_wavelength(wl_g)
         + volcanic_profile
             .density_at_altitude(Length::new(0.0))
             .value()
-            * volcanic_profile.scattering_coefficient_at_wavelength(wl_g);
+            * volcanic_profile.scattering_coefficient_at_wavelength(wl_g)
+        + atmosphere
+            .cloud_profile
+            .density_at_altitude(Length::new(0.0))
+            .value()
+            * atmosphere
+                .cloud_profile
+                .scattering_coefficient_at_wavelength(wl_g);
 
     let b_m_b = dust_profile.density_at_altitude(Length::new(0.0)).value()
         * dust_profile.scattering_coefficient_at_wavelength(wl_b)
         + volcanic_profile
             .density_at_altitude(Length::new(0.0))
             .value()
-            * volcanic_profile.scattering_coefficient_at_wavelength(wl_b);
+            * volcanic_profile.scattering_coefficient_at_wavelength(wl_b)
+        + atmosphere
+            .cloud_profile
+            .density_at_altitude(Length::new(0.0))
+            .value()
+            * atmosphere
+                .cloud_profile
+                .scattering_coefficient_at_wavelength(wl_b);
 
     let scattering = ScatteringCoefficients {
         rayleigh_r: b_r_r,
