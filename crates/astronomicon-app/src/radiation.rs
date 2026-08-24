@@ -1,9 +1,8 @@
-use crate::climate::{
-    find_parent_star, resolve_star_emission_profile, resolve_stellar_wind_at_planet,
-};
+use crate::climate::{resolve_star_emission_profile, resolve_stellar_wind_at_planet};
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
 use crate::geophysics::resolve_magnetic_field;
+use crate::hierarchy::find_parent_star;
 use astronomicon_core::domain::{Planet, StarKind};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::black_hole::{
@@ -60,7 +59,7 @@ pub async fn resolve_interplanetary_radiation(
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let star = find_parent_star(pool, &planet).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
 
     let (star_lum, star_temp, r_emit) =
         resolve_star_emission_profile(pool, &star, universe_epoch, at_epoch).await?;

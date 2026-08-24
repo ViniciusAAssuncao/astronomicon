@@ -1,26 +1,21 @@
 use crate::climate::resolve_stellar_wind_at_distance;
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
-use astronomicon_core::domain::{ Barycenter, BarycenterMember, OrbitalParent, Star, StarKind };
+use crate::hierarchy::find_companion_star;
+use astronomicon_core::domain::{Star, StarKind};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::black_hole::{
-    accretion_disk_luminosity,
-    bondi_hoyle_lyttleton_accretion_rate,
-    dimensionless_spin_from_rotation_period,
-    eddington_luminosity,
-    event_horizon_radius,
-    hawking_luminosity,
-    hawking_temperature,
-    isco_radii,
-    photon_sphere_radii,
+    accretion_disk_luminosity, bondi_hoyle_lyttleton_accretion_rate,
+    dimensionless_spin_from_rotation_period, eddington_luminosity, event_horizon_radius,
+    hawking_luminosity, hawking_temperature, isco_radii, photon_sphere_radii,
     radiative_efficiency,
 };
 use astronomicon_core::math::gravity::combined_gravitational_parameter;
 use astronomicon_core::math::kepler::orbital_speed;
-use astronomicon_core::units::{ Duration, Length, Luminosity, MassRate, Temperature };
-use astronomicon_db::repositories::{ barycenter_repository, star_repository };
+use astronomicon_core::units::{Duration, Length, Luminosity, MassRate, Temperature};
+use astronomicon_db::repositories::star_repository;
 use astronomicon_db::SqlitePool;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -46,63 +41,12 @@ pub struct AccretionDiagnostic {
     pub eddington_luminosity: Luminosity,
 }
 
-async fn find_companion_star(pool: &SqlitePool, star: &Star) -> AppResult<Option<Star>> {
-    match star.orbital_parent() {
-        OrbitalParent::Barycenter(bary_id) => {
-            let row = barycenter_repository
-                ::get_by_id(pool, &bary_id).await?
-                .ok_or_else(|| DomainError::InvalidInvariant {
-                    field: "barycenter_id".to_string(),
-                    reason: format!("barycenter '{}' not found", bary_id),
-                })?;
-            let barycenter = Barycenter::try_from(row)?;
-
-            let companion_id = match (barycenter.member_primary(), barycenter.member_secondary()) {
-                (BarycenterMember::Star(id1), BarycenterMember::Star(id2)) => {
-                    if id1 == star.id() {
-                        Some(id2)
-                    } else if id2 == star.id() {
-                        Some(id1)
-                    } else {
-                        None
-                    }
-                }
-                (BarycenterMember::Star(id), BarycenterMember::Barycenter(_)) if id == star.id() => {
-                    None
-                }
-                (BarycenterMember::Barycenter(_), BarycenterMember::Star(id)) if id == star.id() => {
-                    None
-                }
-                _ => None,
-            };
-
-            if let Some(comp_id) = companion_id {
-                let comp_row = star_repository::get_by_id(pool, &comp_id).await?;
-                if let Some(row) = comp_row {
-                    return Ok(Some(Star::try_from(row)?));
-                }
-            }
-
-            Ok(None)
-        }
-        OrbitalParent::Star(parent_id) => {
-            let row = star_repository::get_by_id(pool, &parent_id).await?;
-            if let Some(r) = row {
-                Ok(Some(Star::try_from(r)?))
-            } else {
-                Ok(None)
-            }
-        }
-        _ => Ok(None),
-    }
-}
-
 pub async fn resolve_black_hole_diagnostics(
     pool: &SqlitePool,
-    star_id: Uuid
+    star_id: Uuid,
 ) -> AppResult<BlackHoleDiagnostic> {
-    let row = star_repository
-        ::get_by_id(pool, &star_id).await?
+    let row = star_repository::get_by_id(pool, &star_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "star_id".to_string(),
             reason: format!("star '{}' not found", star_id),
@@ -110,12 +54,11 @@ pub async fn resolve_black_hole_diagnostics(
     let star = Star::try_from(row)?;
 
     if star.kind() != StarKind::BlackHole {
-        return Err(
-            (DomainError::InvalidInvariant {
-                field: "kind".to_string(),
-                reason: format!("star '{}' is not a black hole", star_id),
-            }).into()
-        );
+        return Err(DomainError::InvalidInvariant {
+            field: "kind".to_string(),
+            reason: format!("star '{}' is not a black hole", star_id),
+        }
+        .into());
     }
 
     let spin = star
@@ -149,10 +92,10 @@ pub async fn resolve_black_hole_accretion(
     eta: f64,
     wind_scaling: f64,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<AccretionDiagnostic> {
-    let row = star_repository
-        ::get_by_id(pool, &star_id).await?
+    let row = star_repository::get_by_id(pool, &star_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "star_id".to_string(),
             reason: format!("star '{}' not found", star_id),
@@ -160,12 +103,11 @@ pub async fn resolve_black_hole_accretion(
     let star = Star::try_from(row)?;
 
     if star.kind() != StarKind::BlackHole {
-        return Err(
-            (DomainError::InvalidInvariant {
-                field: "kind".to_string(),
-                reason: format!("star '{}' is not a black hole", star_id),
-            }).into()
-        );
+        return Err(DomainError::InvalidInvariant {
+            field: "kind".to_string(),
+            reason: format!("star '{}' is not a black hole", star_id),
+        }
+        .into());
     }
 
     let spin = star
@@ -190,12 +132,10 @@ pub async fn resolve_black_hole_accretion(
                     let total_epoch = universe_epoch + at_epoch;
                     let positions = resolve_system_positions(pool, sys_id, total_epoch).await?;
 
-                    if
-                        let (Some(&bh_pos), Some(&comp_pos)) = (
-                            positions.get(&star.id()),
-                            positions.get(&companion.id()),
-                        )
-                    {
+                    if let (Some(&bh_pos), Some(&comp_pos)) = (
+                        positions.get(&star.id()),
+                        positions.get(&companion.id()),
+                    ) {
                         let orbital_dist = (bh_pos - comp_pos).magnitude();
                         let wind_diag = resolve_stellar_wind_at_distance(
                             companion.mass(),
@@ -203,13 +143,11 @@ pub async fn resolve_black_hole_accretion(
                             t_comp,
                             orbital_dist,
                             eta,
-                            wind_scaling
+                            wind_scaling,
                         );
 
-                        let mu_total = combined_gravitational_parameter(
-                            star.mass(),
-                            companion.mass()
-                        );
+                        let mu_total =
+                            combined_gravitational_parameter(star.mass(), companion.mass());
                         let semi_major = star
                             .orbital_elements()
                             .map(|e| e.semi_major_axis())
@@ -222,7 +160,7 @@ pub async fn resolve_black_hole_accretion(
                             star.mass(),
                             wind_diag.wind_density_at_orbit,
                             wind_diag.terminal_wind_speed,
-                            v_orb
+                            v_orb,
                         );
 
                         let l_acc = accretion_disk_luminosity(m_dot, eta_rad, star.mass());
@@ -247,25 +185,23 @@ pub async fn resolve_black_hole_accretion(
                         })
                     }
                 }
-                _ =>
-                    Ok(AccretionDiagnostic {
-                        accretion_rate: MassRate::new(0.0),
-                        radiative_efficiency: eta_rad,
-                        accretion_luminosity: Luminosity::new(0.0),
-                        hawking_luminosity: l_h,
-                        total_luminosity: l_h,
-                        eddington_luminosity: l_edd,
-                    }),
+                _ => Ok(AccretionDiagnostic {
+                    accretion_rate: MassRate::new(0.0),
+                    radiative_efficiency: eta_rad,
+                    accretion_luminosity: Luminosity::new(0.0),
+                    hawking_luminosity: l_h,
+                    total_luminosity: l_h,
+                    eddington_luminosity: l_edd,
+                }),
             }
         }
-        None =>
-            Ok(AccretionDiagnostic {
-                accretion_rate: MassRate::new(0.0),
-                radiative_efficiency: eta_rad,
-                accretion_luminosity: Luminosity::new(0.0),
-                hawking_luminosity: l_h,
-                total_luminosity: l_h,
-                eddington_luminosity: l_edd,
-            }),
+        None => Ok(AccretionDiagnostic {
+            accretion_rate: MassRate::new(0.0),
+            radiative_efficiency: eta_rad,
+            accretion_luminosity: Luminosity::new(0.0),
+            hawking_luminosity: l_h,
+            total_luminosity: l_h,
+            eddington_luminosity: l_edd,
+        }),
     }
 }

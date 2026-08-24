@@ -1,61 +1,45 @@
 use crate::climate::{
-    find_parent_star,
-    resolve_global_mean_temperature,
-    resolve_star_emission_profile,
+    resolve_global_mean_temperature, resolve_star_emission_profile,
     resolve_wind_profile_at_latitude,
 };
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
+use crate::hierarchy::find_parent_star;
 use crate::hydrosphere::resolve_hydrosphere_diagnostics;
 use crate::volcanism::resolve_planetary_volcanism;
 use astronomicon_core::chemistry::optics::mean_gas_optical_properties;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::aerosol::{
-    airborne_dust_density,
-    derived_aerosol_scale_height,
-    dust_threshold_surface_wind,
-    refractivity_at_temperature_pressure,
-    volcanic_aerosol_density,
+    airborne_dust_density, derived_aerosol_scale_height, dust_threshold_surface_wind,
+    refractivity_at_temperature_pressure, volcanic_aerosol_density,
 };
 use astronomicon_core::math::atmospheric_scattering::{
-    spherical_optical_depth_segment,
-    CloudProfile,
-    DustProfile,
-    SphericalAtmosphere,
+    spherical_optical_depth_segment, CloudProfile, DustProfile, SphericalAtmosphere,
     VolcanicProfile,
 };
 use astronomicon_core::math::colorimetry::{
-    chromatically_adapt_xyz,
-    cie_color_matching_functions,
-    linear_to_srgb_gamma,
-    reinhard_extended_tone_map,
-    xyz_to_linear_srgb,
-    ColorXYZ,
+    chromatically_adapt_xyz, cie_color_matching_functions, linear_to_srgb_gamma,
+    reinhard_extended_tone_map, xyz_to_linear_srgb, ColorXYZ,
 };
-use astronomicon_core::math::gravity::{ gravitational_parameter, surface_gravity };
-use astronomicon_core::math::optics::{ rayleigh_scattering_coefficient, refracted_sun_direction };
+use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
+use astronomicon_core::math::optics::{rayleigh_scattering_coefficient, refracted_sun_direction};
 use astronomicon_core::math::radiation::planck_spectral_radiance;
-use astronomicon_core::math::radiometry::{ stellar_angular_radius, stellar_solid_angle };
+use astronomicon_core::math::radiometry::{stellar_angular_radius, stellar_solid_angle};
 use astronomicon_core::math::scattering::{
-    multiple_scattering_spectral_radiance,
-    multiple_scattering_stellar_disk_spectral_radiance,
+    multiple_scattering_spectral_radiance, multiple_scattering_stellar_disk_spectral_radiance,
     MultipleScatteringConfig,
 };
 use astronomicon_core::math::volcanism::VolcanicEruptionStyle;
 use astronomicon_core::units::constants::{
-    CIE_WAVELENGTH_MAX_M,
-    CIE_WAVELENGTH_MIN_M,
-    CIE_WAVELENGTH_STEP_M,
+    CIE_WAVELENGTH_MAX_M, CIE_WAVELENGTH_MIN_M, CIE_WAVELENGTH_STEP_M,
 };
-use astronomicon_core::units::{ Angle, ColorRGB, Density, Duration, Length, Vector3, Wavelength };
+use astronomicon_core::units::{Angle, ColorRGB, Density, Duration, Length, Vector3, Wavelength};
 use astronomicon_db::repositories::{
-    atmosphere_repository,
-    hydrosphere_repository,
-    planet_repository,
+    atmosphere_repository, hydrosphere_repository, planet_repository,
 };
 use astronomicon_db::SqlitePool;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use uuid::Uuid;
 
@@ -89,10 +73,10 @@ pub async fn resolve_sky_diagnostics(
     pool: &SqlitePool,
     planet_id: Uuid,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<Option<SkyDiagnostic>> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
@@ -107,55 +91,52 @@ pub async fn resolve_sky_diagnostics(
         }
     };
 
-    let star = find_parent_star(pool, &planet).await?;
-    let (_, star_temp, r_emit) = resolve_star_emission_profile(
-        pool,
-        &star,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
+    let (_, star_temp, r_emit) =
+        resolve_star_emission_profile(pool, &star, universe_epoch, at_epoch).await?;
 
-    let sys_id = star.star_system_id().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "star_system_id".to_string(),
-        reason: "parent star is not assigned to a star system".to_string(),
-    })?;
+    let sys_id = star
+        .star_system_id()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "star_system_id".to_string(),
+            reason: "parent star is not assigned to a star system".to_string(),
+        })?;
     let positions = resolve_system_positions(pool, sys_id, universe_epoch + at_epoch).await?;
-    let pos_p = positions.get(&planet_id).ok_or_else(|| DomainError::InvalidInvariant {
-        field: "planet_id".to_string(),
-        reason: "planet position could not be resolved".to_string(),
-    })?;
-    let pos_s = positions.get(&star.id()).ok_or_else(|| DomainError::InvalidInvariant {
-        field: "star_id".to_string(),
-        reason: "star position could not be resolved".to_string(),
-    })?;
+    let pos_p = positions
+        .get(&planet_id)
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "planet_id".to_string(),
+            reason: "planet position could not be resolved".to_string(),
+        })?;
+    let pos_s = positions
+        .get(&star.id())
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "star_id".to_string(),
+            reason: "star position could not be resolved".to_string(),
+        })?;
     let distance = (*pos_p - *pos_s).magnitude();
 
     let star_angular_radius = stellar_angular_radius(r_emit, distance);
     let solid_angle_sun = stellar_solid_angle(star_angular_radius).value();
 
-    let surf_temp = resolve_global_mean_temperature(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let surf_temp =
+        resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
     let wind_diag = resolve_wind_profile_at_latitude(
         pool,
         planet_id,
         Angle::new(0.0),
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
     let volc_diag = resolve_planetary_volcanism(pool, planet_id, universe_epoch, at_epoch).await?;
-    let _hydro_diag = resolve_hydrosphere_diagnostics(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let _hydro_diag =
+        resolve_hydrosphere_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
     let hydro_opt = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?;
 
-    let eq_radius = planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3));
+    let eq_radius = planet
+        .equatorial_radius()
+        .unwrap_or_else(|| Length::new(6371e3));
     let g = surface_gravity(gravitational_parameter(planet.mass()), eq_radius);
     let atm_dens = atm.density_at_surface(surf_temp)?;
     let scale_h = atm.scale_height(g, surf_temp)?;
@@ -175,7 +156,7 @@ pub async fn resolve_sky_diagnostics(
         g,
         dust_availability,
         ocean_cov,
-        humidity
+        humidity,
     );
 
     let derived_aero_h = derived_aerosol_scale_height(g, scale_h, atm_dens);
@@ -191,7 +172,7 @@ pub async fn resolve_sky_diagnostics(
         Length::new(1.0e-6),
         Density::new(2650.0),
         1.55,
-        0.005
+        0.005,
     );
 
     let eruption_style = if volc_diag.is_cryovolcanic {
@@ -217,17 +198,22 @@ pub async fn resolve_sky_diagnostics(
             eruption_style,
             volc_diag.global_magma_production_rate,
             eq_radius,
-            scale_h
-        ).value() * subaerial_volcanic_factor
+            scale_h,
+        )
+        .value()
+            * subaerial_volcanic_factor,
     );
 
     let (inj_alt, plume_thick) = match eruption_style {
-        VolcanicEruptionStyle::Explosive =>
-            (Length::new(scale_h.value() * 1.8), Length::new(scale_h.value() * 0.4)),
-        VolcanicEruptionStyle::Cryovolcanic =>
-            (Length::new(scale_h.value() * 1.2), Length::new(scale_h.value() * 0.3)),
-        VolcanicEruptionStyle::Effusive | VolcanicEruptionStyle::SubaqueousEffusive =>
-            (Length::new(0.0), Length::new(scale_h.value() * 0.6)),
+        VolcanicEruptionStyle::Explosive => {
+            (Length::new(scale_h.value() * 1.8), Length::new(scale_h.value() * 0.4))
+        }
+        VolcanicEruptionStyle::Cryovolcanic => {
+            (Length::new(scale_h.value() * 1.2), Length::new(scale_h.value() * 0.3))
+        }
+        VolcanicEruptionStyle::Effusive | VolcanicEruptionStyle::SubaqueousEffusive => {
+            (Length::new(0.0), Length::new(scale_h.value() * 0.6))
+        }
         VolcanicEruptionStyle::Inactive => (Length::new(0.0), Length::new(1000.0)),
     };
 
@@ -238,7 +224,7 @@ pub async fn resolve_sky_diagnostics(
         Length::new(5.0e-6),
         Density::new(2400.0),
         1.52,
-        0.015
+        0.015,
     );
 
     let cloud_profile = CloudProfile::zero();
@@ -272,17 +258,12 @@ pub async fn resolve_sky_diagnostics(
         opt_props.clone(),
         dust_profile,
         cloud_profile,
-        volcanic_profile
+        volcanic_profile,
     );
 
     let ground_albedo = planet.bond_albedo().unwrap_or(0.15);
-    let ms_config = MultipleScatteringConfig::new(
-        32,
-        16,
-        Length::new(100_000.0),
-        ground_albedo,
-        1.0
-    );
+    let ms_config =
+        MultipleScatteringConfig::new(32, 16, Length::new(100_000.0), ground_albedo, 1.0);
 
     let ray_origin = Vector3::new(0.0, eq_radius.value(), 0.0);
     let up = ray_origin.normalized();
@@ -291,7 +272,8 @@ pub async fn resolve_sky_diagnostics(
 
     let view_zenith = Vector3::new(0.0, 1.0, 0.0);
     let sun_dir_day = Vector3::new((PI / 4.0).sin(), (PI / 4.0).cos(), 0.0).normalized();
-    let s_refracted_day = refracted_sun_direction(sun_dir_day, up, refr_actual, scale_h, eq_radius);
+    let s_refracted_day =
+        refracted_sun_direction(sun_dir_day, up, refr_actual, scale_h, eq_radius);
 
     let view_horizon = Vector3::new(1.0, 0.0, 0.0);
     let view_sunset = Vector3::new(1.0, 0.0, 0.0);
@@ -319,7 +301,7 @@ pub async fn resolve_sky_diagnostics(
                 solar_irradiance,
                 wavelength,
                 &atmosphere,
-                &ms_config
+                &ms_config,
             );
             xyz_zenith = xyz_zenith + cmf_eval(wavelength) * res_zenith.total_radiance;
 
@@ -330,7 +312,7 @@ pub async fn resolve_sky_diagnostics(
                 solar_irradiance,
                 wavelength,
                 &atmosphere,
-                &ms_config
+                &ms_config,
             );
             xyz_horizon = xyz_horizon + cmf_eval(wavelength) * res_horizon.total_radiance;
 
@@ -344,7 +326,7 @@ pub async fn resolve_sky_diagnostics(
                 &atmosphere,
                 &ms_config,
                 16,
-                0.6
+                0.6,
             );
             let sunset_radiance = res_sunset.total_radiance + b_lambda * res_sunset.transmittance;
             xyz_sunset = xyz_sunset + cmf_eval(wavelength) * sunset_radiance;
@@ -365,9 +347,7 @@ pub async fn resolve_sky_diagnostics(
         d65_white
     };
 
-    let adapt = |xyz: ColorXYZ| {
-        chromatically_adapt_xyz(xyz, star_white, d65_white)
-    };
+    let adapt = |xyz: ColorXYZ| chromatically_adapt_xyz(xyz, star_white, d65_white);
 
     let xyz_zenith_adapted = adapt(xyz_zenith);
     let xyz_horizon_adapted = adapt(xyz_horizon);
@@ -412,23 +392,26 @@ pub async fn resolve_sky_diagnostics(
     let b_r_g = rayleigh_scattering_coefficient(wl_g, refr_stp, king, p_surf, surf_temp);
     let b_r_b = rayleigh_scattering_coefficient(wl_b, refr_stp, king, p_surf, surf_temp);
 
-    let b_m_r =
-        dust_profile.density_at_altitude(Length::new(0.0)).value() *
-            dust_profile.scattering_coefficient_at_wavelength(wl_r) +
-        volcanic_profile.density_at_altitude(Length::new(0.0)).value() *
-            volcanic_profile.scattering_coefficient_at_wavelength(wl_r);
+    let b_m_r = dust_profile.density_at_altitude(Length::new(0.0)).value()
+        * dust_profile.scattering_coefficient_at_wavelength(wl_r)
+        + volcanic_profile
+            .density_at_altitude(Length::new(0.0))
+            .value()
+            * volcanic_profile.scattering_coefficient_at_wavelength(wl_r);
 
-    let b_m_g =
-        dust_profile.density_at_altitude(Length::new(0.0)).value() *
-            dust_profile.scattering_coefficient_at_wavelength(wl_g) +
-        volcanic_profile.density_at_altitude(Length::new(0.0)).value() *
-            volcanic_profile.scattering_coefficient_at_wavelength(wl_g);
+    let b_m_g = dust_profile.density_at_altitude(Length::new(0.0)).value()
+        * dust_profile.scattering_coefficient_at_wavelength(wl_g)
+        + volcanic_profile
+            .density_at_altitude(Length::new(0.0))
+            .value()
+            * volcanic_profile.scattering_coefficient_at_wavelength(wl_g);
 
-    let b_m_b =
-        dust_profile.density_at_altitude(Length::new(0.0)).value() *
-            dust_profile.scattering_coefficient_at_wavelength(wl_b) +
-        volcanic_profile.density_at_altitude(Length::new(0.0)).value() *
-            volcanic_profile.scattering_coefficient_at_wavelength(wl_b);
+    let b_m_b = dust_profile.density_at_altitude(Length::new(0.0)).value()
+        * dust_profile.scattering_coefficient_at_wavelength(wl_b)
+        + volcanic_profile
+            .density_at_altitude(Length::new(0.0))
+            .value()
+            * volcanic_profile.scattering_coefficient_at_wavelength(wl_b);
 
     let scattering = ScatteringCoefficients {
         rayleigh_r: b_r_r,
@@ -440,21 +423,20 @@ pub async fn resolve_sky_diagnostics(
     };
 
     let vertical_top = Vector3::new(0.0, atmosphere.atmosphere_top_radius.value(), 0.0);
-    let vertical_depth = spherical_optical_depth_segment(ray_origin, vertical_top, &atmosphere, 64);
+    let vertical_depth =
+        spherical_optical_depth_segment(ray_origin, vertical_top, &atmosphere, 64);
 
     let tau_tot_r = vertical_depth.total_extinction_optical_depth(wl_r, &atmosphere);
     let tau_tot_g = vertical_depth.total_extinction_optical_depth(wl_g, &atmosphere);
     let tau_tot_b = vertical_depth.total_extinction_optical_depth(wl_b, &atmosphere);
 
-    Ok(
-        Some(SkyDiagnostic {
-            scattering,
-            colors,
-            total_optical_depth_r: tau_tot_r,
-            total_optical_depth_g: tau_tot_g,
-            total_optical_depth_b: tau_tot_b,
-        })
-    )
+    Ok(Some(SkyDiagnostic {
+        scattering,
+        colors,
+        total_optical_depth_r: tau_tot_r,
+        total_optical_depth_g: tau_tot_g,
+        total_optical_depth_b: tau_tot_b,
+    }))
 }
 
 fn cmf_eval(wavelength: Wavelength) -> ColorXYZ {

@@ -1,7 +1,7 @@
-use crate::climate::find_parent_star;
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
 use crate::geophysics::resolve_planetary_core;
+use crate::hierarchy::find_parent_star;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::radiometry::equilibrium_temperature;
@@ -58,7 +58,7 @@ pub async fn resolve_hydrosphere_diagnostics(
         None => Pressure::new(0.0),
     };
 
-    let star = find_parent_star(pool, &planet).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
 
     let star_temp = star
         .effective_temperature()

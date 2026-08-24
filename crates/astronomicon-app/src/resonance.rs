@@ -1,4 +1,5 @@
 use crate::error::AppResult;
+use crate::hierarchy::fetch_system_hierarchy;
 use astronomicon_core::domain::{
     Barycenter, BarycenterMember, MinorPlanet, OrbitalElements, Planet, Star,
 };
@@ -14,9 +15,6 @@ use astronomicon_core::math::resonance::{
     resonance_order, resonant_argument, ResonanceState,
 };
 use astronomicon_core::units::{Angle, AngularVelocity, Duration};
-use astronomicon_db::repositories::{
-    barycenter_repository, minor_planet_repository, planet_repository, star_repository,
-};
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -198,30 +196,8 @@ async fn load_system_hierarchy(
     pool: &SqlitePool,
     star_system_id: &Uuid,
 ) -> AppResult<SystemHierarchyContext> {
-    let star_rows = star_repository::list_by_system(pool, star_system_id).await?;
-    let stars: Vec<Star> = star_rows
-        .into_iter()
-        .map(Star::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let planet_rows = planet_repository::list_by_system(pool, star_system_id).await?;
-    let planets: Vec<Planet> = planet_rows
-        .into_iter()
-        .map(Planet::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let barycenter_rows = barycenter_repository::list_by_system(pool, star_system_id).await?;
-    let barycenters: Vec<Barycenter> = barycenter_rows
-        .into_iter()
-        .map(Barycenter::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let minor_planet_rows =
-        minor_planet_repository::list_by_system(pool, star_system_id).await?;
-    let minor_planets: Vec<MinorPlanet> = minor_planet_rows
-        .into_iter()
-        .map(MinorPlanet::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
+    let (stars, planets, barycenters, minor_planets) =
+        fetch_system_hierarchy(pool, star_system_id).await?;
 
     let star_map = stars.into_iter().map(|s| (s.id(), s)).collect();
     let planet_map = planets.into_iter().map(|p| (p.id(), p)).collect();

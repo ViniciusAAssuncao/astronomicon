@@ -2,38 +2,26 @@ use crate::climate::resolve_global_mean_temperature;
 use crate::error::AppResult;
 use crate::geophysics::resolve_planetary_core;
 use crate::gravity::resolve_entity_effective_mass;
+use crate::hierarchy::resolve_parent_mass;
 use crate::hydrosphere::resolve_hydrosphere_diagnostics;
 use crate::shape::planet_mean_density;
 use crate::tidal::resolve_tidal_diagnostics;
-use astronomicon_core::domain::{
-    MinorPlanet, OrbitalParent, Planet, PlanetRheology, Star, TectonicRegime,
-};
+use astronomicon_core::domain::{OrbitalParent, Planet, PlanetRheology, TectonicRegime};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::geology::{
-    brittle_ductile_transition_depth,
-    determine_tectonic_regime,
-    lithosphere_thickness,
-    lithosphere_yield_strength,
-    plate_rms_velocity,
-    tectonic_plate_count,
+    brittle_ductile_transition_depth, determine_tectonic_regime, lithosphere_thickness,
+    lithosphere_yield_strength, plate_rms_velocity, tectonic_plate_count,
 };
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::hydrosphere::HydrosphereStructure;
 use astronomicon_core::math::seismology::{
-    equilibrium_tidal_bulge_height,
-    radial_tidal_stress_amplitude,
-    seismic_efficiency,
-    tectonic_seismic_energy_rate,
-    tidal_seismic_energy_rate,
+    equilibrium_tidal_bulge_height, radial_tidal_stress_amplitude, seismic_efficiency,
+    tectonic_seismic_energy_rate, tidal_seismic_energy_rate,
 };
 use astronomicon_core::math::tidal::fallback_love_number_k2;
 use astronomicon_core::units::{Duration, Length, Luminosity, Mass, Pressure, Speed};
 use astronomicon_db::repositories::{
-    hydrosphere_repository,
-    lithosphere_repository,
-    minor_planet_repository,
-    planet_repository,
-    star_repository,
+    hydrosphere_repository, lithosphere_repository, planet_repository,
 };
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
@@ -50,49 +38,6 @@ pub struct SeismicDiagnostic {
     pub tidal_bulge_height: Length,
     pub tidal_seismic_energy: Luminosity,
     pub total_seismic_energy: Luminosity,
-}
-
-async fn resolve_direct_parent_mass(pool: &SqlitePool, parent: &OrbitalParent) -> AppResult<Mass> {
-    match parent {
-        OrbitalParent::Fixed => Ok(Mass::new(0.0)),
-        OrbitalParent::Star(star_id) => {
-            let row = star_repository::get_by_id(pool, star_id)
-                .await?
-                .ok_or_else(|| DomainError::InvalidInvariant {
-                    field: "parent_star_id".to_string(),
-                    reason: format!("star '{}' not found", star_id),
-                })?;
-            let star = Star::try_from(row)?;
-            Ok(star.mass())
-        }
-        OrbitalParent::Planet(planet_id) => {
-            let row = planet_repository::get_by_id(pool, planet_id)
-                .await?
-                .ok_or_else(|| DomainError::InvalidInvariant {
-                    field: "parent_planet_id".to_string(),
-                    reason: format!("planet '{}' not found", planet_id),
-                })?;
-            let parent_planet = Planet::try_from(row)?;
-            Ok(parent_planet.mass())
-        }
-        OrbitalParent::MinorPlanet(mp_id) => {
-            let row = minor_planet_repository::get_by_id(pool, mp_id)
-                .await?
-                .ok_or_else(|| DomainError::InvalidInvariant {
-                    field: "parent_minor_planet_id".to_string(),
-                    reason: format!("minor planet '{}' not found", mp_id),
-                })?;
-            let parent_mp = MinorPlanet::try_from(row)?;
-            Ok(parent_mp.mass())
-        }
-        OrbitalParent::Barycenter(bary_id) => {
-            let mut visited = std::collections::HashSet::new();
-            let stars =
-                crate::climate::collect_stars_from_barycenter(pool, bary_id, &mut visited).await?;
-            let total_mass: f64 = stars.iter().map(|s| s.mass().value()).sum();
-            Ok(Mass::new(total_mass))
-        }
-    }
 }
 
 pub async fn resolve_seismic_diagnostics(
@@ -206,12 +151,12 @@ pub async fn resolve_seismic_diagnostics(
                     };
                     match resolve_entity_effective_mass(pool, &sys_id, &parent_id).await {
                         Ok(m) => m,
-                        Err(_) => resolve_direct_parent_mass(pool, &parent)
+                        Err(_) => resolve_parent_mass(pool, &parent)
                             .await
                             .unwrap_or(Mass::new(0.0)),
                     }
                 } else {
-                    resolve_direct_parent_mass(pool, &parent)
+                    resolve_parent_mass(pool, &parent)
                         .await
                         .unwrap_or(Mass::new(0.0))
                 };

@@ -1,97 +1,52 @@
-use crate::black_hole::{ resolve_black_hole_accretion, resolve_black_hole_diagnostics };
+use crate::black_hole::{resolve_black_hole_accretion, resolve_black_hole_diagnostics};
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
-use astronomicon_core::domain::{
-    Barycenter,
-    BarycenterMember,
-    MinorPlanet,
-    OrbitalParent,
-    Planet,
-    Star,
-    StarKind,
-};
+pub use crate::hierarchy::{collect_stars_from_barycenter, find_parent_star};
+use astronomicon_core::domain::{Planet, Star, StarKind};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::atmosphere::ideal_gas_density;
 use astronomicon_core::math::black_hole::gravitational_redshift_between;
 use astronomicon_core::math::circulation::{
-    circulation_cells_per_hemisphere,
-    equatorial_rossby_deformation_radius,
-    rhines_scale,
+    circulation_cells_per_hemisphere, equatorial_rossby_deformation_radius, rhines_scale,
 };
 use astronomicon_core::math::climate::{
-    advective_local_temperature,
-    atmospheric_column_heat_capacity,
-    blended_local_temperature,
-    combined_column_heat_capacity,
-    combined_thermal_redistribution_efficiency,
-    day_length_half_angle,
-    local_radiative_equilibrium_temperature,
-    mean_daily_insolation_factor,
-    solar_declination,
-    temperature_at_altitude,
-    thermal_redistribution_efficiency,
+    advective_local_temperature, atmospheric_column_heat_capacity, blended_local_temperature,
+    combined_column_heat_capacity, combined_thermal_redistribution_efficiency,
+    day_length_half_angle, local_radiative_equilibrium_temperature, mean_daily_insolation_factor,
+    solar_declination, temperature_at_altitude, thermal_redistribution_efficiency,
 };
 use astronomicon_core::math::gravity::{
-    combined_gravitational_parameter,
-    gravitational_parameter,
-    surface_gravity,
+    combined_gravitational_parameter, gravitational_parameter, surface_gravity,
 };
 use astronomicon_core::math::kepler::true_anomaly_at_epoch;
 use astronomicon_core::math::radiometry::{
-    escape_velocity,
-    orbital_irradiance,
-    stellar_luminosity,
+    escape_velocity, orbital_irradiance, stellar_luminosity,
 };
 use astronomicon_core::math::rotation::{
-    angular_velocity_from_rotation_period,
-    coriolis_parameter,
-    rossby_beta_parameter,
+    angular_velocity_from_rotation_period, coriolis_parameter, rossby_beta_parameter,
 };
 use astronomicon_core::math::stellar_wind::{
-    reimers_mass_loss_rate,
-    stellar_wind_density,
-    stellar_wind_dynamic_pressure,
+    reimers_mass_loss_rate, stellar_wind_density, stellar_wind_dynamic_pressure,
     terminal_wind_speed,
 };
 use astronomicon_core::math::thermodynamics::{
-    cloud_top_altitude,
-    dew_point_temperature,
-    lifting_condensation_level,
+    cloud_top_altitude, dew_point_temperature, lifting_condensation_level,
     moist_adiabatic_lapse_rate,
 };
 use astronomicon_core::math::wind::{
-    latitudinal_temperature_gradient,
-    surface_wind_components,
-    surface_wind_speed,
+    latitudinal_temperature_gradient, surface_wind_components, surface_wind_speed,
     zonal_jet_stream_speed,
 };
 use astronomicon_core::units::constants::STEFAN_BOLTZMANN_CONSTANT;
 use astronomicon_core::units::{
-    Angle,
-    AngularVelocity,
-    Density,
-    Duration,
-    Irradiance,
-    Length,
-    Luminosity,
-    Mass,
-    MassRate,
-    MolarMass,
-    Pressure,
-    Speed,
-    Temperature,
-    TemperatureGradient,
+    Angle, AngularVelocity, Density, Duration, Irradiance, Length, Luminosity, Mass, MassRate,
+    MolarMass, Pressure, Speed, Temperature, TemperatureGradient,
 };
 use astronomicon_db::repositories::{
-    atmosphere_repository,
-    barycenter_repository,
-    hydrosphere_repository,
-    minor_planet_repository,
-    planet_repository,
-    star_repository,
+    atmosphere_repository, hydrosphere_repository, planet_repository,
 };
 use astronomicon_db::SqlitePool;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use uuid::Uuid;
 
@@ -140,7 +95,7 @@ pub fn resolve_stellar_wind_at_distance(
     star_temp: Temperature,
     orbital_distance: Length,
     eta: f64,
-    wind_scaling: f64
+    wind_scaling: f64,
 ) -> StellarWindDiagnostic {
     let star_lum = stellar_luminosity(star_radius, star_temp);
     let mu_star = gravitational_parameter(star_mass);
@@ -164,7 +119,7 @@ pub async fn resolve_star_emission_profile(
     pool: &SqlitePool,
     star: &Star,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<(Luminosity, Temperature, Length)> {
     if star.kind() == StarKind::BlackHole {
         let acc = resolve_black_hole_accretion(
@@ -173,8 +128,9 @@ pub async fn resolve_star_emission_profile(
             1.0,
             1.0,
             universe_epoch,
-            at_epoch
-        ).await?;
+            at_epoch,
+        )
+        .await?;
         let bh_diag = resolve_black_hole_diagnostics(pool, star.id()).await?;
         let r_emit = bh_diag.isco_radius_prograde;
 
@@ -192,10 +148,12 @@ pub async fn resolve_star_emission_profile(
 
         Ok((acc.total_luminosity, eff_temp, r_emit))
     } else {
-        let star_temp = star.effective_temperature().ok_or_else(|| DomainError::InvalidInvariant {
-            field: "effective_temperature".to_string(),
-            reason: "star does not have effective temperature".to_string(),
-        })?;
+        let star_temp = star
+            .effective_temperature()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "effective_temperature".to_string(),
+                reason: "star does not have effective temperature".to_string(),
+            })?;
         let star_radius = star.radius().ok_or_else(|| DomainError::InvalidInvariant {
             field: "radius".to_string(),
             reason: "star does not have radius".to_string(),
@@ -205,127 +163,14 @@ pub async fn resolve_star_emission_profile(
     }
 }
 
-pub(crate) async fn collect_stars_from_barycenter(
-    pool: &SqlitePool,
-    barycenter_id: &Uuid,
-    visited: &mut std::collections::HashSet<Uuid>
-) -> AppResult<Vec<Star>> {
-    if !visited.insert(*barycenter_id) {
-        return Err(
-            (DomainError::InvalidInvariant {
-                field: "barycenter".to_string(),
-                reason: format!("circular reference detected in barycenter '{}'", barycenter_id),
-            }).into()
-        );
-    }
-
-    let row = barycenter_repository
-        ::get_by_id(pool, barycenter_id).await?
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "barycenter_id".to_string(),
-            reason: format!("barycenter '{}' not found", barycenter_id),
-        })?;
-    let barycenter = Barycenter::try_from(row)?;
-
-    let mut stars = Vec::new();
-
-    for member in [barycenter.member_primary(), barycenter.member_secondary()] {
-        match member {
-            BarycenterMember::Star(star_id) => {
-                let star_row = star_repository
-                    ::get_by_id(pool, &star_id).await?
-                    .ok_or_else(|| DomainError::InvalidInvariant {
-                        field: "star_id".to_string(),
-                        reason: format!("star '{}' in barycenter not found", star_id),
-                    })?;
-                stars.push(Star::try_from(star_row)?);
-            }
-            BarycenterMember::Planet(_) => {}
-            BarycenterMember::Barycenter(sub_id) => {
-                let mut sub_stars = Box::pin(
-                    collect_stars_from_barycenter(pool, &sub_id, visited)
-                ).await?;
-                stars.append(&mut sub_stars);
-            }
-        }
-    }
-
-    visited.remove(barycenter_id);
-    Ok(stars)
-}
-
-pub(crate) async fn find_parent_star(pool: &SqlitePool, planet: &Planet) -> AppResult<Star> {
-    let mut current_parent = planet.orbital_parent();
-    let mut visited_barycenters = std::collections::HashSet::new();
-
-    loop {
-        match current_parent {
-            OrbitalParent::Star(star_id) => {
-                let row = star_repository
-                    ::get_by_id(pool, &star_id).await?
-                    .ok_or_else(|| DomainError::InvalidInvariant {
-                        field: "parent_star_id".to_string(),
-                        reason: format!("parent star '{}' not found", star_id),
-                    })?;
-                return Ok(Star::try_from(row)?);
-            }
-            OrbitalParent::Planet(planet_id) => {
-                let row = planet_repository
-                    ::get_by_id(pool, &planet_id).await?
-                    .ok_or_else(|| DomainError::InvalidInvariant {
-                        field: "parent_planet_id".to_string(),
-                        reason: format!("parent planet '{}' not found", planet_id),
-                    })?;
-                let parent_planet = Planet::try_from(row)?;
-                current_parent = parent_planet.orbital_parent();
-            }
-            OrbitalParent::MinorPlanet(mp_id) => {
-                let row = minor_planet_repository
-                    ::get_by_id(pool, &mp_id).await?
-                    .ok_or_else(|| DomainError::InvalidInvariant {
-                        field: "parent_minor_planet_id".to_string(),
-                        reason: format!("parent minor planet '{}' not found", mp_id),
-                    })?;
-                let parent_mp = MinorPlanet::try_from(row)?;
-                current_parent = parent_mp.orbital_parent();
-            }
-            OrbitalParent::Barycenter(barycenter_id) => {
-                let stars = collect_stars_from_barycenter(
-                    pool,
-                    &barycenter_id,
-                    &mut visited_barycenters
-                ).await?;
-                let most_massive = stars
-                    .into_iter()
-                    .max_by(|a, b| {
-                        a.mass().partial_cmp(&b.mass()).unwrap_or(std::cmp::Ordering::Equal)
-                    })
-                    .ok_or_else(|| DomainError::InvalidInvariant {
-                        field: "barycenter_stars".to_string(),
-                        reason: format!("no stars found in barycenter '{}' hierarchy", barycenter_id),
-                    })?;
-                return Ok(most_massive);
-            }
-            OrbitalParent::Fixed => {
-                return Err(
-                    (DomainError::InvalidInvariant {
-                        field: "planet_hierarchy".to_string(),
-                        reason: "planet has no parent star in hierarchy".to_string(),
-                    }).into()
-                );
-            }
-        }
-    }
-}
-
 pub async fn resolve_global_mean_temperature(
     pool: &SqlitePool,
     planet_id: Uuid,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<Temperature> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
@@ -334,18 +179,16 @@ pub async fn resolve_global_mean_temperature(
 
     let bond_albedo = planet.bond_albedo().unwrap_or(0.3);
 
-    let star = find_parent_star(pool, &planet).await?;
-    let (star_lum, _, r_emit) = resolve_star_emission_profile(
-        pool,
-        &star,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
+    let (star_lum, _, r_emit) =
+        resolve_star_emission_profile(pool, &star, universe_epoch, at_epoch).await?;
 
-    let system_id = star.star_system_id().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "star_system_id".to_string(),
-        reason: "parent star is not assigned to a star system".to_string(),
-    })?;
+    let system_id = star
+        .star_system_id()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "star_system_id".to_string(),
+            reason: "parent star is not assigned to a star system".to_string(),
+        })?;
 
     let total_epoch = universe_epoch + at_epoch;
     let positions = resolve_system_positions(pool, system_id, total_epoch).await?;
@@ -381,12 +224,12 @@ pub async fn resolve_global_mean_temperature(
         None => Temperature::new(0.0),
     };
 
-    let effective_albedo = if
-        let Some(hydrosphere) = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?
+    let effective_albedo = if let Some(hydrosphere) =
+        hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?
     {
         let base_eq = local_radiative_equilibrium_temperature(
             Irradiance::new(top_irradiance.value() * 0.25),
-            bond_albedo
+            bond_albedo,
         );
         let base_surface_temp = base_eq + greenhouse;
         let pressure = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
@@ -401,7 +244,7 @@ pub async fn resolve_global_mean_temperature(
 
     let eq_temp = local_radiative_equilibrium_temperature(
         Irradiance::new(top_irradiance.value() * 0.25),
-        effective_albedo
+        effective_albedo,
     );
 
     Ok(eq_temp + greenhouse)
@@ -412,40 +255,43 @@ pub async fn resolve_latitudinal_surface_temperature(
     planet_id: Uuid,
     latitude: Angle,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<Temperature> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let star = find_parent_star(pool, &planet).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
 
     let thermal_inertia = planet.thermal_inertia().unwrap_or(0.0);
     let obliquity = planet.obliquity().unwrap_or_else(|| Angle::new(0.0));
-    let solstice_true_anomaly = planet.solstice_true_anomaly().unwrap_or_else(|| Angle::new(0.0));
+    let solstice_true_anomaly = planet
+        .solstice_true_anomaly()
+        .unwrap_or_else(|| Angle::new(0.0));
 
-    let orbital_elements = planet.orbital_elements().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "orbital_elements".to_string(),
-        reason: "planet does not have orbital elements".to_string(),
-    })?;
+    let orbital_elements =
+        planet
+            .orbital_elements()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "orbital_elements".to_string(),
+                reason: "planet does not have orbital elements".to_string(),
+            })?;
 
     let bond_albedo = planet.bond_albedo().unwrap_or(0.3);
 
-    let (star_lum, _, r_emit) = resolve_star_emission_profile(
-        pool,
-        &star,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let (star_lum, _, r_emit) =
+        resolve_star_emission_profile(pool, &star, universe_epoch, at_epoch).await?;
 
-    let system_id = star.star_system_id().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "star_system_id".to_string(),
-        reason: "parent star is not assigned to a star system".to_string(),
-    })?;
+    let system_id = star
+        .star_system_id()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "star_system_id".to_string(),
+            reason: "parent star is not assigned to a star system".to_string(),
+        })?;
 
     let total_epoch = universe_epoch + at_epoch;
     let mu = combined_gravitational_parameter(planet.mass(), star.mass());
@@ -455,7 +301,7 @@ pub async fn resolve_latitudinal_surface_temperature(
         obliquity,
         orbital_elements.argument_of_periapsis(),
         solstice_true_anomaly,
-        true_anomaly
+        true_anomaly,
     );
     let half_angle = day_length_half_angle(latitude, declination);
     let insolation_factor = mean_daily_insolation_factor(latitude, declination, half_angle);
@@ -489,12 +335,8 @@ pub async fn resolve_latitudinal_surface_temperature(
     let local_insolation = top_irradiance * insolation_factor;
 
     let local_eq = local_radiative_equilibrium_temperature(local_insolation, bond_albedo);
-    let global_mean = resolve_global_mean_temperature(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let global_mean =
+        resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
     let blended = blended_local_temperature(global_mean, local_eq, thermal_inertia);
 
     Ok(blended)
@@ -505,39 +347,42 @@ pub async fn resolve_advective_surface_temperature(
     planet_id: Uuid,
     latitude: Angle,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<Temperature> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let star = find_parent_star(pool, &planet).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
 
     let obliquity = planet.obliquity().unwrap_or_else(|| Angle::new(0.0));
-    let solstice_true_anomaly = planet.solstice_true_anomaly().unwrap_or_else(|| Angle::new(0.0));
+    let solstice_true_anomaly = planet
+        .solstice_true_anomaly()
+        .unwrap_or_else(|| Angle::new(0.0));
 
-    let orbital_elements = planet.orbital_elements().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "orbital_elements".to_string(),
-        reason: "planet does not have orbital elements".to_string(),
-    })?;
+    let orbital_elements =
+        planet
+            .orbital_elements()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "orbital_elements".to_string(),
+                reason: "planet does not have orbital elements".to_string(),
+            })?;
 
     let bond_albedo = planet.bond_albedo().unwrap_or(0.3);
 
-    let (star_lum, _, r_emit) = resolve_star_emission_profile(
-        pool,
-        &star,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let (star_lum, _, r_emit) =
+        resolve_star_emission_profile(pool, &star, universe_epoch, at_epoch).await?;
 
-    let system_id = star.star_system_id().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "star_system_id".to_string(),
-        reason: "parent star is not assigned to a star system".to_string(),
-    })?;
+    let system_id = star
+        .star_system_id()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "star_system_id".to_string(),
+            reason: "parent star is not assigned to a star system".to_string(),
+        })?;
 
     let total_epoch = universe_epoch + at_epoch;
     let mu = combined_gravitational_parameter(planet.mass(), star.mass());
@@ -547,7 +392,7 @@ pub async fn resolve_advective_surface_temperature(
         obliquity,
         orbital_elements.argument_of_periapsis(),
         solstice_true_anomaly,
-        true_anomaly
+        true_anomaly,
     );
     let half_angle = day_length_half_angle(latitude, declination);
     let insolation_factor = mean_daily_insolation_factor(latitude, declination, half_angle);
@@ -581,23 +426,15 @@ pub async fn resolve_advective_surface_temperature(
     let local_insolation = top_irradiance * insolation_factor;
 
     let local_eq = local_radiative_equilibrium_temperature(local_insolation, bond_albedo);
-    let global_mean = resolve_global_mean_temperature(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let global_mean =
+        resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
 
-    let circulation = resolve_planetary_circulation(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let circulation =
+        resolve_planetary_circulation(pool, planet_id, universe_epoch, at_epoch).await?;
     let advective = advective_local_temperature(
         global_mean,
         local_eq,
-        circulation.thermal_redistribution_efficiency
+        circulation.thermal_redistribution_efficiency,
     );
 
     Ok(advective)
@@ -607,37 +444,37 @@ pub async fn resolve_planetary_circulation(
     pool: &SqlitePool,
     planet_id: Uuid,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<PlanetaryCirculationDiagnostic> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let radius = planet.equatorial_radius().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "equatorial_radius".to_string(),
-        reason: "planet does not have equatorial radius".to_string(),
-    })?;
+    let radius = planet
+        .equatorial_radius()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "equatorial_radius".to_string(),
+            reason: "planet does not have equatorial radius".to_string(),
+        })?;
 
-    let rot_period = planet.rotation_period().unwrap_or_else(|| Duration::new(86400.0));
+    let rot_period = planet
+        .rotation_period()
+        .unwrap_or_else(|| Duration::new(86400.0));
     let omega = angular_velocity_from_rotation_period(rot_period);
     let beta_eq = rossby_beta_parameter(omega, Angle::new(0.0), radius);
 
     let mu = gravitational_parameter(planet.mass());
     let g = surface_gravity(mu, radius);
 
-    let global_mean = resolve_global_mean_temperature(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let global_mean =
+        resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
 
-    let (scale_h, atm_col_heat_cap) = if
-        let Some(atmosphere) = atmosphere_repository::get_by_planet_id(pool, &planet_id).await?
+    let (scale_h, atm_col_heat_cap) = if let Some(atmosphere) =
+        atmosphere_repository::get_by_planet_id(pool, &planet_id).await?
     {
         let h = atmosphere.scale_height(g, global_mean)?;
         let cp_gas = atmosphere.mean_specific_heat_capacity()?;
@@ -654,15 +491,17 @@ pub async fn resolve_planetary_circulation(
         planet_id,
         Angle::new(0.0),
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
     let temp_pole = resolve_latitudinal_surface_temperature(
         pool,
         planet_id,
         Angle::new(PI / 2.0),
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
 
     let delta_t = (temp_eq.value() - temp_pole.value()).abs().max(1.0);
     let char_u = Speed::new((g.value() * scale_h.value() * (delta_t / global_mean.value())).sqrt());
@@ -670,8 +509,8 @@ pub async fn resolve_planetary_circulation(
 
     let cells = circulation_cells_per_hemisphere(radius, l_beta);
 
-    let (efficiency, col_heat_cap) = if
-        let Some(hydrosphere) = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?
+    let (efficiency, col_heat_cap) = if let Some(hydrosphere) =
+        hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?
     {
         let oce_col_heat_cap = hydrosphere.oceanic_column_heat_capacity()?;
         let cov = hydrosphere.surface_coverage_fraction();
@@ -679,7 +518,7 @@ pub async fn resolve_planetary_circulation(
             atm_col_heat_cap,
             oce_col_heat_cap,
             cov,
-            cells
+            cells,
         );
         let comb_cap = combined_column_heat_capacity(atm_col_heat_cap, oce_col_heat_cap, cov);
         (eff, comb_cap)
@@ -704,22 +543,26 @@ pub async fn resolve_wind_profile_at_latitude(
     planet_id: Uuid,
     latitude: Angle,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<WindProfileDiagnostic> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let radius = planet.equatorial_radius().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "equatorial_radius".to_string(),
-        reason: "planet does not have equatorial radius".to_string(),
-    })?;
+    let radius = planet
+        .equatorial_radius()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "equatorial_radius".to_string(),
+            reason: "planet does not have equatorial radius".to_string(),
+        })?;
 
-    let rot_period = planet.rotation_period().unwrap_or_else(|| Duration::new(86400.0));
+    let rot_period = planet
+        .rotation_period()
+        .unwrap_or_else(|| Duration::new(86400.0));
     let omega = angular_velocity_from_rotation_period(rot_period);
     let f = coriolis_parameter(omega, latitude);
 
@@ -735,22 +578,25 @@ pub async fn resolve_wind_profile_at_latitude(
         planet_id,
         lat_n,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
     let t_s = resolve_advective_surface_temperature(
         pool,
         planet_id,
         lat_s,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
     let t_local = resolve_advective_surface_temperature(
         pool,
         planet_id,
         latitude,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
 
     let t_grad = latitudinal_temperature_gradient(t_n, t_s, lat_n, lat_s, radius);
 
@@ -783,17 +629,17 @@ pub async fn resolve_stellar_wind_at_planet(
     eta: f64,
     wind_scaling: f64,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<StellarWindDiagnostic> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let star = find_parent_star(pool, &planet).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
 
     if star.kind() == StarKind::BlackHole {
         return Ok(StellarWindDiagnostic {
@@ -805,20 +651,24 @@ pub async fn resolve_stellar_wind_at_planet(
         });
     }
 
-    let star_temp = star.effective_temperature().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "effective_temperature".to_string(),
-        reason: "star does not have effective temperature".to_string(),
-    })?;
+    let star_temp = star
+        .effective_temperature()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "effective_temperature".to_string(),
+            reason: "star does not have effective temperature".to_string(),
+        })?;
 
     let star_radius = star.radius().ok_or_else(|| DomainError::InvalidInvariant {
         field: "radius".to_string(),
         reason: "star does not have radius".to_string(),
     })?;
 
-    let system_id = star.star_system_id().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "star_system_id".to_string(),
-        reason: "parent star is not assigned to a star system".to_string(),
-    })?;
+    let system_id = star
+        .star_system_id()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "star_system_id".to_string(),
+            reason: "parent star is not assigned to a star system".to_string(),
+        })?;
 
     let total_epoch = universe_epoch + at_epoch;
     let positions = resolve_system_positions(pool, system_id, total_epoch).await?;
@@ -841,52 +691,49 @@ pub async fn resolve_stellar_wind_at_planet(
 
     let orbital_distance = (planet_pos - star_pos).magnitude();
 
-    Ok(
-        resolve_stellar_wind_at_distance(
-            star.mass(),
-            star_radius,
-            star_temp,
-            orbital_distance,
-            eta,
-            wind_scaling
-        )
-    )
+    Ok(resolve_stellar_wind_at_distance(
+        star.mass(),
+        star_radius,
+        star_temp,
+        orbital_distance,
+        eta,
+        wind_scaling,
+    ))
 }
 
 pub async fn resolve_atmospheric_profile_at_altitude(
     pool: &SqlitePool,
     planet_id: Uuid,
     surface_temperature: Temperature,
-    altitude: Length
+    altitude: Length,
 ) -> AppResult<(Pressure, Temperature, Density)> {
-    let atmosphere = atmosphere_repository
-        ::get_by_planet_id(pool, &planet_id).await?
+    let atmosphere = atmosphere_repository::get_by_planet_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "atmosphere".to_string(),
             reason: format!("planet '{}' has no atmosphere", planet_id),
         })?;
 
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let eq_radius = planet.equatorial_radius().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "equatorial_radius".to_string(),
-        reason: "planet does not have equatorial radius".to_string(),
-    })?;
+    let eq_radius = planet
+        .equatorial_radius()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "equatorial_radius".to_string(),
+            reason: "planet does not have equatorial radius".to_string(),
+        })?;
 
     let mu = gravitational_parameter(planet.mass());
     let gravity = surface_gravity(mu, eq_radius);
 
-    let temp_at_alt = temperature_at_altitude(
-        surface_temperature,
-        altitude,
-        atmosphere.lapse_rate()
-    );
+    let temp_at_alt =
+        temperature_at_altitude(surface_temperature, altitude, atmosphere.lapse_rate());
     let scale_h = atmosphere.scale_height(gravity, surface_temperature)?;
     let press_at_alt = atmosphere.pressure_at_altitude(altitude, scale_h);
     let molar_mass = atmosphere.mean_molar_mass()?;
@@ -899,33 +746,31 @@ pub async fn resolve_atmospheric_stratification(
     pool: &SqlitePool,
     planet_id: Uuid,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<AtmosphericStratificationDiagnostic> {
-    let atmosphere = atmosphere_repository
-        ::get_by_planet_id(pool, &planet_id).await?
+    let atmosphere = atmosphere_repository::get_by_planet_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "atmosphere".to_string(),
             reason: format!("planet '{}' has no atmosphere", planet_id),
         })?;
 
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let eq_radius = planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3));
+    let eq_radius = planet
+        .equatorial_radius()
+        .unwrap_or_else(|| Length::new(6371e3));
     let mu = gravitational_parameter(planet.mass());
     let g = surface_gravity(mu, eq_radius);
 
-    let surf_temp = resolve_global_mean_temperature(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let surf_temp =
+        resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
     let surf_press = atmosphere.surface_pressure();
     let scale_h = atmosphere.scale_height(g, surf_temp)?;
     let atm_molar_mass = atmosphere.mean_molar_mass()?;
@@ -941,32 +786,26 @@ pub async fn resolve_atmospheric_stratification(
             .iter()
             .map(|c| (c.formula().to_string(), c.percentage()))
             .collect();
-        let mm = astronomicon_core::chemistry
-            ::mean_molar_mass(&mapped)
+        let mm = astronomicon_core::chemistry::mean_molar_mass(&mapped)
             .unwrap_or_else(|_| MolarMass::new(0.018015));
         let hum = atmosphere
             .surface_humidity()
             .unwrap_or(0.6 * hydro.surface_coverage_fraction().clamp(0.1, 1.0));
         (props, mm, hum)
     } else {
-        let found = atmosphere
-            .composition()
-            .iter()
-            .find_map(|c| {
-                let formula = c.formula();
-                astronomicon_core::chemistry::solvent_properties_of(formula).and_then(|p| {
-                    astronomicon_core::chemistry
-                        ::molar_mass_of(formula)
-                        .ok()
-                        .map(|mm| (p, mm))
-                })
-            });
+        let found = atmosphere.composition().iter().find_map(|c| {
+            let formula = c.formula();
+            astronomicon_core::chemistry::solvent_properties_of(formula).and_then(|p| {
+                astronomicon_core::chemistry::molar_mass_of(formula)
+                    .ok()
+                    .map(|mm| (p, mm))
+            })
+        });
 
         let (props, mm) = match found {
             Some((p, mm)) => (p, mm),
             None => {
-                let default_p = astronomicon_core::chemistry
-                    ::solvent_properties_of("H2O")
+                let default_p = astronomicon_core::chemistry::solvent_properties_of("H2O")
                     .expect("H2O solvent properties");
                 let default_mm = MolarMass::new(0.018015);
                 (default_p, default_mm)
@@ -976,11 +815,8 @@ pub async fn resolve_atmospheric_stratification(
         (props, mm, hum)
     };
 
-    let dew_point = dew_point_temperature(
-        surf_temp,
-        humidity,
-        solvent_props.enthalpy_of_vaporization
-    );
+    let dew_point =
+        dew_point_temperature(surf_temp, humidity, solvent_props.enthalpy_of_vaporization);
     let moist_gamma = moist_adiabatic_lapse_rate(
         g,
         atm_cp,
@@ -988,7 +824,7 @@ pub async fn resolve_atmospheric_stratification(
         surf_press,
         &solvent_props,
         solvent_molar_mass,
-        atm_molar_mass
+        atm_molar_mass,
     );
 
     let dry_gamma = if env_lapse_rate.value() > 0.0 {
@@ -1002,7 +838,7 @@ pub async fn resolve_atmospheric_stratification(
         dew_point,
         dry_gamma,
         scale_h,
-        solvent_props.enthalpy_of_vaporization
+        solvent_props.enthalpy_of_vaporization,
     );
 
     let cloud_top = cloud_top_altitude(
@@ -1015,7 +851,7 @@ pub async fn resolve_atmospheric_stratification(
         g,
         &solvent_props,
         solvent_molar_mass,
-        atm_molar_mass
+        atm_molar_mass,
     );
 
     Ok(AtmosphericStratificationDiagnostic {

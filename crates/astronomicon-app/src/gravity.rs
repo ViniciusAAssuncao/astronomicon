@@ -1,5 +1,6 @@
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
+use crate::hierarchy::fetch_system_hierarchy;
 use crate::shape::{planet_mean_density, star_mean_density};
 use astronomicon_core::domain::{Barycenter, BarycenterMember, MinorPlanet, Planet, Star};
 use astronomicon_core::error::DomainError;
@@ -20,9 +21,6 @@ use astronomicon_core::math::tidal::{
 };
 use astronomicon_core::units::{
     AccelerationVector, Angle, Duration, Length, Mass, Position,
-};
-use astronomicon_db::repositories::{
-    barycenter_repository, minor_planet_repository, planet_repository, star_repository,
 };
 use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
@@ -60,6 +58,17 @@ struct SystemHierarchy {
 }
 
 impl SystemHierarchy {
+    async fn load(pool: &SqlitePool, star_system_id: &Uuid) -> AppResult<Self> {
+        let (stars, planets, barycenters, minor_planets) =
+            fetch_system_hierarchy(pool, star_system_id).await?;
+        Ok(Self {
+            stars,
+            planets,
+            barycenters,
+            minor_planets,
+        })
+    }
+
     fn maps(
         &self,
     ) -> (
@@ -76,49 +85,12 @@ impl SystemHierarchy {
     }
 }
 
-async fn fetch_system_hierarchy(
-    pool: &SqlitePool,
-    star_system_id: &Uuid,
-) -> AppResult<SystemHierarchy> {
-    let star_rows = star_repository::list_by_system(pool, star_system_id).await?;
-    let stars: Vec<Star> = star_rows
-        .into_iter()
-        .map(Star::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let planet_rows = planet_repository::list_by_system(pool, star_system_id).await?;
-    let planets: Vec<Planet> = planet_rows
-        .into_iter()
-        .map(Planet::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let barycenter_rows = barycenter_repository::list_by_system(pool, star_system_id).await?;
-    let barycenters: Vec<Barycenter> = barycenter_rows
-        .into_iter()
-        .map(Barycenter::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let minor_planet_rows =
-        minor_planet_repository::list_by_system(pool, star_system_id).await?;
-    let minor_planets: Vec<MinorPlanet> = minor_planet_rows
-        .into_iter()
-        .map(MinorPlanet::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(SystemHierarchy {
-        stars,
-        planets,
-        barycenters,
-        minor_planets,
-    })
-}
-
 pub async fn resolve_entity_effective_mass(
     pool: &SqlitePool,
     star_system_id: &Uuid,
     entity_id: &Uuid,
 ) -> AppResult<Mass> {
-    let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
+    let hierarchy = SystemHierarchy::load(pool, star_system_id).await?;
     let (star_map, planet_map, barycenter_map, _) = hierarchy.maps();
 
     if hierarchy.stars.iter().any(|s| s.id() == *entity_id) {
@@ -165,7 +137,7 @@ pub async fn resolve_net_gravitational_acceleration(
     point: Position,
     at_epoch: Duration,
 ) -> AppResult<AccelerationVector> {
-    let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
+    let hierarchy = SystemHierarchy::load(pool, star_system_id).await?;
     let positions = resolve_system_positions(pool, *star_system_id, at_epoch).await?;
     let mut sources = Vec::with_capacity(
         hierarchy.stars.len() + hierarchy.planets.len() + hierarchy.minor_planets.len(),
@@ -197,7 +169,7 @@ pub async fn resolve_hill_sphere(
     star_system_id: &Uuid,
     entity_id: &Uuid,
 ) -> AppResult<Length> {
-    let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
+    let hierarchy = SystemHierarchy::load(pool, star_system_id).await?;
     let (star_map, planet_map, barycenter_map, minor_planet_map) = hierarchy.maps();
 
     if let Some(planet) = hierarchy.planets.iter().find(|p| p.id() == *entity_id) {
@@ -278,7 +250,7 @@ pub async fn resolve_barycenter_stability(
     star_system_id: &Uuid,
     barycenter_id: &Uuid,
 ) -> AppResult<BarycenterStabilityDiagnostic> {
-    let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
+    let hierarchy = SystemHierarchy::load(pool, star_system_id).await?;
     let (star_map, planet_map, barycenter_map, minor_planet_map) = hierarchy.maps();
 
     let barycenter = hierarchy
@@ -345,7 +317,7 @@ pub async fn resolve_kozai_lidov_diagnostic(
     star_system_id: &Uuid,
     barycenter_id: &Uuid,
 ) -> AppResult<KozaiDiagnostic> {
-    let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
+    let hierarchy = SystemHierarchy::load(pool, star_system_id).await?;
     let (star_map, planet_map, barycenter_map, minor_planet_map) = hierarchy.maps();
 
     let barycenter = hierarchy
@@ -442,7 +414,7 @@ pub async fn resolve_roche_limits(
     primary_id: &Uuid,
     satellite_id: &Uuid,
 ) -> AppResult<RocheLimits> {
-    let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
+    let hierarchy = SystemHierarchy::load(pool, star_system_id).await?;
 
     let (primary_density, primary_radius) =
         if let Some(star) = hierarchy.stars.iter().find(|s| s.id() == *primary_id) {
@@ -512,7 +484,7 @@ pub async fn resolve_synchronous_orbit_radius(
     star_system_id: &Uuid,
     primary_id: &Uuid,
 ) -> AppResult<Length> {
-    let hierarchy = fetch_system_hierarchy(pool, star_system_id).await?;
+    let hierarchy = SystemHierarchy::load(pool, star_system_id).await?;
 
     let (mass, rotation_period) =
         if let Some(star) = hierarchy.stars.iter().find(|s| s.id() == *primary_id) {

@@ -1,7 +1,8 @@
-use crate::climate::{find_parent_star, resolve_global_mean_temperature};
+use crate::climate::resolve_global_mean_temperature;
 use crate::error::AppResult;
 use crate::geology::resolve_planetary_geology;
 use crate::geophysics::resolve_planetary_core;
+use crate::hierarchy::find_parent_star;
 use crate::hydrosphere::resolve_hydrosphere_diagnostics;
 use astronomicon_core::chemistry::{
     c_o_molar_ratio, element_mass_fraction, fe_si_molar_ratio, mg_number, mg_si_molar_ratio,
@@ -127,7 +128,7 @@ pub async fn resolve_planetary_bulk_composition(
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let star = find_parent_star(pool, &planet).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
 
     let feh = star.metallicity().unwrap_or(0.0);
     let star_temp = star
@@ -260,7 +261,7 @@ pub async fn resolve_planetary_mineralogy(
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let star = find_parent_star(pool, &planet).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
 
     let feh = star.metallicity().unwrap_or(0.0);
     let star_temp = star
