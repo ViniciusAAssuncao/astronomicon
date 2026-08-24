@@ -371,6 +371,7 @@ pub fn cloud_top_altitude(
     lcl_altitude: Length,
     surface_temperature: Temperature,
     surface_pressure: Pressure,
+    dew_point: Temperature,
     environmental_lapse_rate: TemperatureGradient,
     scale_height: Length,
     gravity: Acceleration,
@@ -381,77 +382,24 @@ pub fn cloud_top_altitude(
     solvent_molar_mass: MolarMass,
     atmospheric_molar_mass: MolarMass,
 ) -> Length {
-    let z_lcl = lcl_altitude.value();
-    let ts = surface_temperature.value();
-    let ps = surface_pressure.value();
-    let gamma_env = environmental_lapse_rate.value();
-    let h = scale_height.value();
-    let z_tropo = tropopause_altitude.value();
-    let t_tropo = tropopause_temperature.value();
-    let cp = specific_heat_capacity;
+    let profile = integrate_parcel_buoyancy_profile(
+        surface_temperature,
+        surface_pressure,
+        dew_point,
+        environmental_lapse_rate,
+        scale_height,
+        gravity,
+        specific_heat_capacity,
+        tropopause_altitude,
+        tropopause_temperature,
+        solvent_properties,
+        solvent_molar_mass,
+        atmospheric_molar_mass,
+    );
 
-    if z_lcl < 0.0 || !z_lcl.is_finite() || ts <= 0.0 || ps <= 0.0 || h <= 0.0 {
-        return Length::new(0.0);
+    let lfc = level_of_free_convection(&profile, lcl_altitude);
+    match lfc.and_then(|z_lfc| equilibrium_level(&profile, z_lfc)) {
+        Some(el) => Length::new(el.value().max(lcl_altitude.value())),
+        None => lcl_altitude,
     }
-
-    if z_tropo.is_finite() && z_tropo > 0.0 && z_lcl >= z_tropo {
-        return lcl_altitude;
-    }
-
-    let gamma_d = dry_adiabatic_lapse_rate(gravity, specific_heat_capacity);
-    let mut t_p = (ts - gamma_d.value() * z_lcl).max(0.0);
-    let t_env_lcl = if z_tropo.is_finite() && z_tropo > 0.0 && z_lcl >= z_tropo {
-        t_tropo
-    } else {
-        (ts - gamma_env * z_lcl).max(t_tropo)
-    };
-
-    if t_p <= t_env_lcl {
-        return lcl_altitude;
-    }
-
-    let z_top = if z_tropo.is_finite() && z_tropo > 0.0 {
-        z_tropo
-    } else {
-        (z_lcl * 2.0).max(10.0 * h)
-    };
-
-    let dz = ((z_top - z_lcl) / 200.0).clamp(10.0, 100.0);
-    let mut z = z_lcl;
-
-    while z < z_top {
-        z += dz;
-        if z > z_top {
-            z = z_top;
-        }
-
-        let p_z = ps * (-z / h).exp();
-        let gamma_m = moist_adiabatic_lapse_rate(
-            gravity,
-            cp,
-            Temperature::new(t_p),
-            Pressure::new(p_z),
-            solvent_properties,
-            solvent_molar_mass,
-            atmospheric_molar_mass,
-        )
-        .value();
-
-        t_p = (t_p - gamma_m * dz).max(0.0);
-        let t_env = if z >= z_tropo && z_tropo.is_finite() && z_tropo > 0.0 {
-            t_tropo
-        } else {
-            (ts - gamma_env * z).max(t_tropo)
-        };
-
-        if t_p <= t_env {
-            return Length::new(z);
-        }
-
-        if z >= z_top {
-            return Length::new(z_top);
-        }
-    }
-
-    Length::new(z.max(z_lcl))
 }

@@ -7,8 +7,9 @@ use astronomicon_core::math::atmosphere::ideal_gas_density;
 use astronomicon_core::math::climate::temperature_at_altitude;
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::thermodynamics::{
-    cloud_top_altitude, dew_point_temperature, grey_atmosphere_skin_temperature,
-    lifting_condensation_level, moist_adiabatic_lapse_rate, tropopause_altitude,
+    cloud_top_altitude, dew_point_temperature, dry_adiabatic_lapse_rate,
+    grey_atmosphere_skin_temperature, lifting_condensation_level, moist_adiabatic_lapse_rate,
+    tropopause_altitude,
 };
 use astronomicon_core::units::{
     Density, Duration, Length, Pressure, Temperature, TemperatureGradient,
@@ -117,11 +118,7 @@ pub async fn resolve_atmospheric_stratification(
         atm_molar_mass,
     );
 
-    let dry_gamma = if env_lapse_rate.value() > 0.0 {
-        env_lapse_rate
-    } else {
-        TemperatureGradient::new(g.value() / atm_cp.max(100.0))
-    };
+    let dry_gamma = dry_adiabatic_lapse_rate(g, atm_cp);
 
     let lcl = lifting_condensation_level(
         surf_temp,
@@ -132,13 +129,14 @@ pub async fn resolve_atmospheric_stratification(
     );
 
     let t_skin = grey_atmosphere_skin_temperature(surf_temp);
-    let z_tropo = tropopause_altitude(surf_temp, t_skin, dry_gamma);
+    let z_tropo = tropopause_altitude(surf_temp, t_skin, env_lapse_rate);
 
     let cloud_top = cloud_top_altitude(
         lcl,
         surf_temp,
         surf_press,
-        dry_gamma,
+        dew_point,
+        env_lapse_rate,
         scale_h,
         g,
         atm_cp,

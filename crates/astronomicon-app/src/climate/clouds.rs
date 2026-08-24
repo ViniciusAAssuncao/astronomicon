@@ -517,21 +517,26 @@ pub async fn resolve_severe_weather(
     let r_bl = mixing_ratio_from_relative_humidity(surface_humidity, r_sat);
     let ck_over_cd = 0.9;
 
-    let v_pot = tropical_cyclone_potential_intensity(
-        surf_temp,
-        outflow_temp,
-        solvent_props.enthalpy_of_vaporization,
-        solvent_molar_mass,
-        r_sat,
-        r_bl,
-        ck_over_cd,
-    );
-
     let hydro_opt = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?;
     let ocean_cov = hydro_opt
         .as_ref()
         .map(|h| h.surface_coverage_fraction())
         .unwrap_or(0.0);
+
+    let v_pot = if ocean_cov <= 0.0 || surf_temp.value() >= solvent_props.critical_temperature.value() {
+        Speed::new(0.0)
+    } else {
+        tropical_cyclone_potential_intensity(
+            surf_temp,
+            outflow_temp,
+            solvent_props.critical_temperature,
+            solvent_props.enthalpy_of_vaporization,
+            solvent_molar_mass,
+            r_sat,
+            r_bl,
+            ck_over_cd,
+        )
+    };
 
     let lat_tropical = Angle::new(15.0 * PI / 180.0);
     let f_coriolis = coriolis_parameter(circulation.angular_velocity, lat_tropical);

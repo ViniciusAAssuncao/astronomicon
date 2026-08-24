@@ -83,6 +83,7 @@ pub fn evaluate_lightning_potential(
 pub fn tropical_cyclone_potential_intensity(
     surface_temperature: Temperature,
     outflow_temperature: Temperature,
+    critical_temperature: Temperature,
     enthalpy_of_vaporization: f64,
     solvent_molar_mass: MolarMass,
     surface_saturation_mixing_ratio: f64,
@@ -91,6 +92,7 @@ pub fn tropical_cyclone_potential_intensity(
 ) -> Speed {
     let ts = surface_temperature.value();
     let to = outflow_temperature.value();
+    let tc = critical_temperature.value();
     let h_vap = enthalpy_of_vaporization;
     let m_solv = solvent_molar_mass.value();
     let r_sat = surface_saturation_mixing_ratio;
@@ -99,6 +101,7 @@ pub fn tropical_cyclone_potential_intensity(
 
     if !ts.is_finite()
         || !to.is_finite()
+        || !tc.is_finite()
         || !h_vap.is_finite()
         || !m_solv.is_finite()
         || !r_sat.is_finite()
@@ -106,6 +109,7 @@ pub fn tropical_cyclone_potential_intensity(
         || !ck_cd.is_finite()
         || to <= 0.0
         || ts <= to
+        || (tc > 0.0 && ts >= tc)
         || m_solv <= 0.0
         || h_vap <= 0.0
         || ck_cd <= 0.0
