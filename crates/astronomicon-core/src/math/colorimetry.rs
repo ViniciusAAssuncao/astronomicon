@@ -1,5 +1,5 @@
-use crate::units::constants::{ CIE_WAVELENGTH_MAX_M, CIE_WAVELENGTH_MIN_M, CIE_WAVELENGTH_STEP_M };
 use crate::math::radiation::planck_spectral_radiance;
+use crate::units::constants::{ CIE_WAVELENGTH_MAX_M, CIE_WAVELENGTH_MIN_M, CIE_WAVELENGTH_STEP_M };
 use crate::units::{ ColorRGB, SpectralRadiance, Temperature, Wavelength };
 use serde::{ Deserialize, Serialize };
 
@@ -16,7 +16,7 @@ impl ColorXYZ {
     }
 
     pub fn zero() -> Self {
-        Self { x: 0.0, y: 0.0, z: 0.0 }
+        Self::new(0.0, 0.0, 0.0)
     }
 
     pub fn x(&self) -> f64 {
@@ -165,6 +165,26 @@ pub fn blackbody_spectrum_to_xyz(temperature: Temperature) -> ColorXYZ {
     })
 }
 
+pub fn chromatically_adapt_xyz(
+    xyz: ColorXYZ,
+    source_white: ColorXYZ,
+    target_white: ColorXYZ
+) -> ColorXYZ {
+    let sx = if source_white.x() > 1e-12 { source_white.x() } else { 1.0 };
+    let sy = if source_white.y() > 1e-12 { source_white.y() } else { 1.0 };
+    let sz = if source_white.z() > 1e-12 { source_white.z() } else { 1.0 };
+
+    let tx = target_white.x();
+    let ty = target_white.y();
+    let tz = target_white.z();
+
+    ColorXYZ::new(
+        xyz.x() * (tx / sx) * (sy / ty),
+        xyz.y(),
+        xyz.z() * (tz / sz) * (sy / ty)
+    )
+}
+
 pub fn xyz_to_linear_srgb(xyz: ColorXYZ) -> ColorRGB {
     let x = xyz.x();
     let y = xyz.y();
@@ -181,20 +201,31 @@ pub fn xyz_to_linear_srgb(xyz: ColorXYZ) -> ColorRGB {
 
 pub fn exposure_tone_map(color: ColorRGB, exposure: f64) -> ColorRGB {
     let e = if exposure.is_finite() && exposure > 0.0 { exposure } else { 1.0 };
-
-    let map_channel = |c: f64| {
-        if !c.is_finite() || c <= 0.0 { 0.0 } else { (1.0 - (-c * e).exp()).clamp(0.0, 1.0) }
-    };
-
-    ColorRGB::new(map_channel(color.r()), map_channel(color.g()), map_channel(color.b()))
+    let lum = color.luminance();
+    if !lum.is_finite() || lum <= 0.0 {
+        return ColorRGB::zero();
+    }
+    let mapped_lum = 1.0 - (-lum * e).exp();
+    let scale = mapped_lum / lum;
+    ColorRGB::new(
+        (color.r() * scale).max(0.0),
+        (color.g() * scale).max(0.0),
+        (color.b() * scale).max(0.0)
+    )
 }
 
 pub fn reinhard_tone_map(color: ColorRGB) -> ColorRGB {
-    let map_channel = |c: f64| {
-        if !c.is_finite() || c <= 0.0 { 0.0 } else { (c / (1.0 + c)).clamp(0.0, 1.0) }
-    };
-
-    ColorRGB::new(map_channel(color.r()), map_channel(color.g()), map_channel(color.b()))
+    let lum = color.luminance();
+    if !lum.is_finite() || lum <= 0.0 {
+        return ColorRGB::zero();
+    }
+    let mapped_lum = lum / (1.0 + lum);
+    let scale = mapped_lum / lum;
+    ColorRGB::new(
+        (color.r() * scale).max(0.0),
+        (color.g() * scale).max(0.0),
+        (color.b() * scale).max(0.0)
+    )
 }
 
 pub fn reinhard_extended_tone_map(color: ColorRGB, white_point_luminance: f64) -> ColorRGB {
@@ -204,17 +235,17 @@ pub fn reinhard_extended_tone_map(color: ColorRGB, white_point_luminance: f64) -
         1.0
     };
     let l_white_sq = l_white * l_white;
-
-    let map_channel = |c: f64| {
-        if !c.is_finite() || c <= 0.0 {
-            0.0
-        } else {
-            let numerator = c * (1.0 + c / l_white_sq);
-            (numerator / (1.0 + c)).clamp(0.0, 1.0)
-        }
-    };
-
-    ColorRGB::new(map_channel(color.r()), map_channel(color.g()), map_channel(color.b()))
+    let lum = color.luminance();
+    if !lum.is_finite() || lum <= 0.0 {
+        return ColorRGB::zero();
+    }
+    let mapped_lum = (lum * (1.0 + lum / l_white_sq)) / (1.0 + lum);
+    let scale = mapped_lum / lum;
+    ColorRGB::new(
+        (color.r() * scale).max(0.0),
+        (color.g() * scale).max(0.0),
+        (color.b() * scale).max(0.0)
+    )
 }
 
 pub fn linear_to_srgb_gamma(color: ColorRGB) -> ColorRGB {

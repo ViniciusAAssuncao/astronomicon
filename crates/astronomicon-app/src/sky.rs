@@ -1,6 +1,5 @@
 use crate::climate::{
     find_parent_star,
-    resolve_atmospheric_stratification,
     resolve_global_mean_temperature,
     resolve_star_emission_profile,
     resolve_wind_profile_at_latitude,
@@ -14,7 +13,6 @@ use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::aerosol::{
     airborne_dust_density,
-    cloud_condensate_density,
     derived_aerosol_scale_height,
     dust_threshold_surface_wind,
     refractivity_at_temperature_pressure,
@@ -28,6 +26,7 @@ use astronomicon_core::math::atmospheric_scattering::{
     VolcanicProfile,
 };
 use astronomicon_core::math::colorimetry::{
+    chromatically_adapt_xyz,
     cie_color_matching_functions,
     linear_to_srgb_gamma,
     reinhard_extended_tone_map,
@@ -43,7 +42,6 @@ use astronomicon_core::math::scattering::{
     multiple_scattering_stellar_disk_spectral_radiance,
     MultipleScatteringConfig,
 };
-use astronomicon_core::math::thermodynamics::MatterState;
 use astronomicon_core::math::volcanism::VolcanicEruptionStyle;
 use astronomicon_core::units::constants::{
     CIE_WAVELENGTH_MAX_M,
@@ -149,7 +147,7 @@ pub async fn resolve_sky_diagnostics(
         at_epoch
     ).await?;
     let volc_diag = resolve_planetary_volcanism(pool, planet_id, universe_epoch, at_epoch).await?;
-    let hydro_diag = resolve_hydrosphere_diagnostics(
+    let _hydro_diag = resolve_hydrosphere_diagnostics(
         pool,
         planet_id,
         universe_epoch,
@@ -206,12 +204,21 @@ pub async fn resolve_sky_diagnostics(
         VolcanicEruptionStyle::Inactive
     };
 
-    let volc_dens = volcanic_aerosol_density(
-        volc_diag.outgassing_rate_sulfur,
-        eruption_style,
-        volc_diag.global_magma_production_rate,
-        eq_radius,
-        scale_h
+    let subaerial_volcanic_factor = match eruption_style {
+        VolcanicEruptionStyle::Explosive => 0.20,
+        VolcanicEruptionStyle::Effusive => 0.02,
+        VolcanicEruptionStyle::Cryovolcanic => 0.10,
+        VolcanicEruptionStyle::SubaqueousEffusive | VolcanicEruptionStyle::Inactive => 0.0,
+    };
+
+    let volc_dens = Density::new(
+        volcanic_aerosol_density(
+            volc_diag.outgassing_rate_sulfur,
+            eruption_style,
+            volc_diag.global_magma_production_rate,
+            eq_radius,
+            scale_h
+        ).value() * subaerial_volcanic_factor
     );
 
     let (inj_alt, plume_thick) = match eruption_style {
@@ -234,52 +241,26 @@ pub async fn resolve_sky_diagnostics(
         0.015
     );
 
-    let matter_state = hydro_diag.map(|h| h.dominant_state).unwrap_or(MatterState::Solid);
-    let cloud_cov = atm.cloud_coverage_fraction().unwrap_or(ocean_cov);
-    let cloud_dens = cloud_condensate_density(
-        matter_state,
-        ocean_cov,
-        surf_temp,
-        atm.surface_pressure()
-    );
+    let cloud_profile = CloudProfile::zero();
 
-    let (cloud_nr, cloud_ni, cloud_rho) = if let Some(hydro) = hydro_opt.as_ref() {
-        match hydro.mean_solvent_properties() {
-            Ok(props) =>
-                (
-                    props.liquid_refractive_index_real,
-                    props.liquid_refractive_index_imag,
-                    props.liquid_density,
-                ),
-            Err(_) => (1.333, 1.0e-8, Density::new(1000.0)),
-        }
-    } else {
-        (1.333, 1.0e-8, Density::new(1000.0))
-    };
-
-    let (lcl, cloud_top) = match
-        resolve_atmospheric_stratification(pool, planet_id, universe_epoch, at_epoch).await
-    {
-        Ok(strat) => (strat.lcl_altitude, strat.cloud_top_altitude),
-        Err(_) => (Length::new(1000.0), Length::new(4000.0)),
-    };
-
-    let cloud_profile = CloudProfile::from_material(
-        cloud_dens,
-        cloud_cov,
-        lcl,
-        cloud_top,
-        Length::new(10.0e-6),
-        cloud_rho,
-        cloud_nr,
-        cloud_ni
-    );
-
-    let comp: Vec<(String, f64)> = atm
+    let mut comp: Vec<(String, f64)> = atm
         .composition()
         .iter()
         .map(|c| (c.formula().to_string(), c.percentage()))
         .collect();
+
+    let has_o2 = comp.iter().any(|(f, p)| f == "O2" && *p > 0.5);
+    let has_o3 = comp.iter().any(|(f, p)| f == "O3" && *p > 1e-6);
+    if has_o2 && !has_o3 {
+        let o2_pct = comp
+            .iter()
+            .find(|(f, _)| f == "O2")
+            .map(|(_, p)| *p)
+            .unwrap_or(21.0);
+        let o3_equiv = 3.5e-5 * (o2_pct / 21.0).sqrt();
+        comp.push(("O3".to_string(), o3_equiv));
+    }
+
     let opt_props = mean_gas_optical_properties(&comp)?;
 
     let atmosphere = SphericalAtmosphere::new(
@@ -320,6 +301,7 @@ pub async fn resolve_sky_diagnostics(
     let mut xyz_zenith = ColorXYZ::zero();
     let mut xyz_horizon = ColorXYZ::zero();
     let mut xyz_sunset = ColorXYZ::zero();
+    let mut xyz_sun_toa = ColorXYZ::zero();
 
     let mut lambda_m = CIE_WAVELENGTH_MIN_M;
     while lambda_m <= CIE_WAVELENGTH_MAX_M {
@@ -328,6 +310,8 @@ pub async fn resolve_sky_diagnostics(
         let solar_irradiance = b_lambda * solid_angle_sun;
 
         if solar_irradiance > 0.0 && solar_irradiance.is_finite() {
+            xyz_sun_toa = xyz_sun_toa + cmf_eval(wavelength) * solar_irradiance;
+
             let res_zenith = multiple_scattering_spectral_radiance(
                 ray_origin,
                 view_zenith,
@@ -369,11 +353,40 @@ pub async fn resolve_sky_diagnostics(
         lambda_m += step;
     }
 
+    xyz_sun_toa = xyz_sun_toa * step;
     xyz_zenith = xyz_zenith * step;
     xyz_horizon = xyz_horizon * step;
     xyz_sunset = xyz_sunset * step;
 
-    let exposure = if xyz_zenith.y() > 1e-12 { 1.0 / xyz_zenith.y() } else { 1.0 };
+    let d65_white = ColorXYZ::new(0.95047, 1.0, 1.08883);
+    let star_white = if xyz_sun_toa.y() > 1e-12 {
+        xyz_sun_toa / xyz_sun_toa.y()
+    } else {
+        d65_white
+    };
+
+    let adapt = |xyz: ColorXYZ| {
+        chromatically_adapt_xyz(xyz, star_white, d65_white)
+    };
+
+    let xyz_zenith_adapted = adapt(xyz_zenith);
+    let xyz_horizon_adapted = adapt(xyz_horizon);
+    let xyz_sunset_adapted = adapt(xyz_sunset);
+
+    let rgb_zenith_linear = xyz_to_linear_srgb(xyz_zenith_adapted);
+    let max_zenith_ch = rgb_zenith_linear
+        .r()
+        .max(rgb_zenith_linear.g())
+        .max(rgb_zenith_linear.b());
+
+    let target_peak_channel = 0.78;
+    let exposure = if max_zenith_ch > 1e-12 {
+        target_peak_channel / max_zenith_ch
+    } else if xyz_zenith_adapted.y() > 1e-12 {
+        0.35 / xyz_zenith_adapted.y()
+    } else {
+        1.0
+    };
 
     let process_color = |xyz: ColorXYZ| {
         let rgb = xyz_to_linear_srgb(xyz);
@@ -382,9 +395,9 @@ pub async fn resolve_sky_diagnostics(
     };
 
     let colors = SkyColorDiagnostic {
-        zenith_color: process_color(xyz_zenith),
-        horizon_color: process_color(xyz_horizon),
-        sunset_color: process_color(xyz_sunset),
+        zenith_color: process_color(xyz_zenith_adapted),
+        horizon_color: process_color(xyz_horizon_adapted),
+        sunset_color: process_color(xyz_sunset_adapted),
     };
 
     let wl_r = Wavelength::new(680e-9);
@@ -402,24 +415,18 @@ pub async fn resolve_sky_diagnostics(
     let b_m_r =
         dust_profile.density_at_altitude(Length::new(0.0)).value() *
             dust_profile.scattering_coefficient_at_wavelength(wl_r) +
-        cloud_profile.density_at_altitude(Length::new(0.0)).value() *
-            cloud_profile.scattering_coefficient_at_wavelength(wl_r) +
         volcanic_profile.density_at_altitude(Length::new(0.0)).value() *
             volcanic_profile.scattering_coefficient_at_wavelength(wl_r);
 
     let b_m_g =
         dust_profile.density_at_altitude(Length::new(0.0)).value() *
             dust_profile.scattering_coefficient_at_wavelength(wl_g) +
-        cloud_profile.density_at_altitude(Length::new(0.0)).value() *
-            cloud_profile.scattering_coefficient_at_wavelength(wl_g) +
         volcanic_profile.density_at_altitude(Length::new(0.0)).value() *
             volcanic_profile.scattering_coefficient_at_wavelength(wl_g);
 
     let b_m_b =
         dust_profile.density_at_altitude(Length::new(0.0)).value() *
             dust_profile.scattering_coefficient_at_wavelength(wl_b) +
-        cloud_profile.density_at_altitude(Length::new(0.0)).value() *
-            cloud_profile.scattering_coefficient_at_wavelength(wl_b) +
         volcanic_profile.density_at_altitude(Length::new(0.0)).value() *
             volcanic_profile.scattering_coefficient_at_wavelength(wl_b);
 
