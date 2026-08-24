@@ -3,10 +3,10 @@ use astronomicon_core::domain::{
     Barycenter, BarycenterMember, MinorPlanet, OrbitalParent, Planet, Star,
 };
 use astronomicon_core::error::DomainError;
+use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     barycenter_repository, minor_planet_repository, planet_repository, star_repository,
 };
-use astronomicon_db::SqlitePool;
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -18,7 +18,10 @@ pub async fn collect_stars_from_barycenter(
     if !visited.insert(*barycenter_id) {
         return Err(DomainError::InvalidInvariant {
             field: "barycenter".to_string(),
-            reason: format!("circular reference detected in barycenter '{}'", barycenter_id),
+            reason: format!(
+                "circular reference detected in barycenter '{}'",
+                barycenter_id
+            ),
         }
         .into());
     }
@@ -95,12 +98,9 @@ pub async fn find_parent_star(
                 current_parent = parent_mp.orbital_parent();
             }
             OrbitalParent::Barycenter(barycenter_id) => {
-                let stars = collect_stars_from_barycenter(
-                    pool,
-                    &barycenter_id,
-                    &mut visited_barycenters,
-                )
-                .await?;
+                let stars =
+                    collect_stars_from_barycenter(pool, &barycenter_id, &mut visited_barycenters)
+                        .await?;
                 let most_massive = stars
                     .into_iter()
                     .max_by(|a, b| {

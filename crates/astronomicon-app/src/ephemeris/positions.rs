@@ -3,10 +3,10 @@ use crate::error::AppResult;
 use astronomicon_core::domain::{Barycenter, MinorPlanet, Planet, Star};
 use astronomicon_core::error::{DomainError, DomainResult};
 use astronomicon_core::units::{Duration, Position};
+use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     barycenter_repository, minor_planet_repository, planet_repository, star_repository,
 };
-use astronomicon_db::SqlitePool;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -130,8 +130,7 @@ pub async fn resolve_system_positions(
         .map(Barycenter::try_from)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let minor_planet_rows =
-        minor_planet_repository::list_by_system(pool, &star_system_id).await?;
+    let minor_planet_rows = minor_planet_repository::list_by_system(pool, &star_system_id).await?;
     let minor_planets = minor_planet_rows
         .into_iter()
         .map(MinorPlanet::try_from)

@@ -13,7 +13,10 @@ pub fn get_parent_j2_and_radius(
     match parent {
         OrbitalParent::Star(pid) => {
             let p = star_map.get(pid).copied();
-            (p.and_then(|s| s.oblateness_j2()), p.and_then(|s| s.radius()))
+            (
+                p.and_then(|s| s.oblateness_j2()),
+                p.and_then(|s| s.radius()),
+            )
         }
         OrbitalParent::Planet(pid) => {
             let p = planet_map.get(pid).copied();

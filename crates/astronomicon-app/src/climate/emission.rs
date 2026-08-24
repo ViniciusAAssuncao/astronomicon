@@ -15,15 +15,8 @@ pub async fn resolve_star_emission_profile(
     at_epoch: Duration,
 ) -> AppResult<(Luminosity, Temperature, Length)> {
     if star.kind() == StarKind::BlackHole {
-        let acc = resolve_black_hole_accretion(
-            pool,
-            star.id(),
-            1.0,
-            1.0,
-            universe_epoch,
-            at_epoch,
-        )
-        .await?;
+        let acc = resolve_black_hole_accretion(pool, star.id(), 1.0, 1.0, universe_epoch, at_epoch)
+            .await?;
         let bh_diag = resolve_black_hole_diagnostics(pool, star.id()).await?;
         let r_emit = bh_diag.isco_radius_prograde;
 
@@ -41,12 +34,12 @@ pub async fn resolve_star_emission_profile(
 
         Ok((acc.total_luminosity, eff_temp, r_emit))
     } else {
-        let star_temp = star
-            .effective_temperature()
-            .ok_or_else(|| DomainError::InvalidInvariant {
-                field: "effective_temperature".to_string(),
-                reason: "star does not have effective temperature".to_string(),
-            })?;
+        let star_temp =
+            star.effective_temperature()
+                .ok_or_else(|| DomainError::InvalidInvariant {
+                    field: "effective_temperature".to_string(),
+                    reason: "star does not have effective temperature".to_string(),
+                })?;
         let star_radius = star.radius().ok_or_else(|| DomainError::InvalidInvariant {
             field: "radius".to_string(),
             reason: "star does not have radius".to_string(),

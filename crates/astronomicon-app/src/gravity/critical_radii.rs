@@ -44,7 +44,11 @@ pub async fn resolve_roche_limits(
                     reason: format!("primary planet '{}' has no equatorial radius", primary_id),
                 })?;
             (planet_mean_density(planet), r)
-        } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *primary_id) {
+        } else if let Some(mp) = hierarchy
+            .minor_planets
+            .iter()
+            .find(|m| m.id() == *primary_id)
+        {
             let grain_rho = grain_density_by_spectral_type(mp.spectral_type());
             let bulk_rho = bulk_density(grain_rho, mp.macroporosity().unwrap_or(0.0));
             let r = match (mp.axis_a(), mp.axis_b(), mp.axis_c()) {
@@ -66,25 +70,28 @@ pub async fn resolve_roche_limits(
             .into());
         };
 
-    let satellite_density = if let Some(star) =
-        hierarchy.stars.iter().find(|s| s.id() == *satellite_id)
-    {
-        star_mean_density(star)
-    } else if let Some(planet) = hierarchy.planets.iter().find(|p| p.id() == *satellite_id) {
-        planet_mean_density(planet)
-    } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *satellite_id) {
-        let grain_rho = grain_density_by_spectral_type(mp.spectral_type());
-        bulk_density(grain_rho, mp.macroporosity().unwrap_or(0.0))
-    } else {
-        return Err(DomainError::InvalidInvariant {
-            field: "satellite_id".to_string(),
-            reason: format!(
-                "satellite entity '{}' not found in system '{}'",
-                satellite_id, star_system_id
-            ),
-        }
-        .into());
-    };
+    let satellite_density =
+        if let Some(star) = hierarchy.stars.iter().find(|s| s.id() == *satellite_id) {
+            star_mean_density(star)
+        } else if let Some(planet) = hierarchy.planets.iter().find(|p| p.id() == *satellite_id) {
+            planet_mean_density(planet)
+        } else if let Some(mp) = hierarchy
+            .minor_planets
+            .iter()
+            .find(|m| m.id() == *satellite_id)
+        {
+            let grain_rho = grain_density_by_spectral_type(mp.spectral_type());
+            bulk_density(grain_rho, mp.macroporosity().unwrap_or(0.0))
+        } else {
+            return Err(DomainError::InvalidInvariant {
+                field: "satellite_id".to_string(),
+                reason: format!(
+                    "satellite entity '{}' not found in system '{}'",
+                    satellite_id, star_system_id
+                ),
+            }
+            .into());
+        };
 
     let rigid = roche_limit_rigid(primary_radius, primary_density, satellite_density);
     let fluid = roche_limit_fluid(primary_radius, primary_density, satellite_density);
@@ -116,7 +123,11 @@ pub async fn resolve_synchronous_orbit_radius(
                     reason: format!("planet '{}' has no rotation period", primary_id),
                 })?;
             (planet.mass(), rot)
-        } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *primary_id) {
+        } else if let Some(mp) = hierarchy
+            .minor_planets
+            .iter()
+            .find(|m| m.id() == *primary_id)
+        {
             let rot = mp
                 .rotation_period()
                 .ok_or_else(|| DomainError::InvalidInvariant {

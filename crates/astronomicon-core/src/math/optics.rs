@@ -1,12 +1,9 @@
 use crate::chemistry::optics::GasOpticalProperties;
 use crate::math::aerosol::AtmosphericAerosolProperties;
 use crate::units::constants::{
-    BOLTZMANN_CONSTANT,
-    OPTICAL_REFERENCE_WAVELENGTH,
-    STANDARD_ATMOSPHERE_PRESSURE,
-    STP_TEMPERATURE,
+    BOLTZMANN_CONSTANT, OPTICAL_REFERENCE_WAVELENGTH, STANDARD_ATMOSPHERE_PRESSURE, STP_TEMPERATURE,
 };
-use crate::units::{ Angle, Density, Length, Pressure, Temperature, Vector3, Wavelength };
+use crate::units::{Angle, Density, Length, Pressure, Temperature, Vector3, Wavelength};
 use std::f64::consts::PI;
 
 pub fn size_parameter(particle_radius: Length, wavelength: Wavelength) -> f64 {
@@ -123,8 +120,10 @@ pub fn mie_angstrom_exponent(
     let x1 = size_parameter(particle_radius, lambda_1);
     let x2 = size_parameter(particle_radius, lambda_2);
 
-    let (_, q_sca1, _) = van_de_hulst_efficiencies(x1, refractive_index_real, refractive_index_imag);
-    let (_, q_sca2, _) = van_de_hulst_efficiencies(x2, refractive_index_real, refractive_index_imag);
+    let (_, q_sca1, _) =
+        van_de_hulst_efficiencies(x1, refractive_index_real, refractive_index_imag);
+    let (_, q_sca2, _) =
+        van_de_hulst_efficiencies(x2, refractive_index_real, refractive_index_imag);
 
     if q_sca1 <= 1.0e-12 || q_sca2 <= 1.0e-12 {
         let x0 = size_parameter(particle_radius, reference_wavelength);
@@ -152,9 +151,15 @@ pub fn mass_optical_efficiencies(
     }
 
     let x = size_parameter(particle_radius, wavelength);
-    let (q_ext, q_sca, q_abs) = van_de_hulst_efficiencies(x, refractive_index_real, refractive_index_imag);
+    let (q_ext, q_sca, q_abs) =
+        van_de_hulst_efficiencies(x, refractive_index_real, refractive_index_imag);
     let g = mie_asymmetry_factor(x, refractive_index_real, refractive_index_imag);
-    let alpha = mie_angstrom_exponent(particle_radius, refractive_index_real, refractive_index_imag, wavelength);
+    let alpha = mie_angstrom_exponent(
+        particle_radius,
+        refractive_index_real,
+        refractive_index_imag,
+        wavelength,
+    );
 
     let factor = 3.0 / (4.0 * rho * r);
     let k_ext = q_ext * factor;
@@ -167,11 +172,15 @@ pub fn mass_optical_efficiencies(
 pub fn rayleigh_scattering_cross_section(
     wavelength: Wavelength,
     refractivity_stp: f64,
-    king_factor: f64
+    king_factor: f64,
 ) -> f64 {
     let lambda = wavelength.value();
     let delta = refractivity_stp;
-    let f_k = if king_factor.is_finite() && king_factor > 0.0 { king_factor } else { 1.0 };
+    let f_k = if king_factor.is_finite() && king_factor > 0.0 {
+        king_factor
+    } else {
+        1.0
+    };
 
     if lambda <= 0.0 || delta <= 0.0 || !lambda.is_finite() || !delta.is_finite() {
         return 0.0;
@@ -206,11 +215,7 @@ pub fn molecular_number_density(pressure: Pressure, temperature: Temperature) ->
     }
 
     let n = p / (BOLTZMANN_CONSTANT * t);
-    if !n.is_finite() || n <= 0.0 {
-        0.0
-    } else {
-        n
-    }
+    if !n.is_finite() || n <= 0.0 { 0.0 } else { n }
 }
 
 pub fn rayleigh_scattering_coefficient(
@@ -218,7 +223,7 @@ pub fn rayleigh_scattering_coefficient(
     refractivity_stp: f64,
     king_factor: f64,
     pressure: Pressure,
-    temperature: Temperature
+    temperature: Temperature,
 ) -> f64 {
     let sigma = rayleigh_scattering_cross_section(wavelength, refractivity_stp, king_factor);
     let n = molecular_number_density(pressure, temperature);
@@ -235,7 +240,7 @@ pub fn absorption_coefficient(
     gas_optical_properties: &GasOpticalProperties,
     wavelength: Wavelength,
     pressure: Pressure,
-    temperature: Temperature
+    temperature: Temperature,
 ) -> f64 {
     let sigma = gas_optical_properties.absorption_cross_section_at(wavelength);
     let n = molecular_number_density(pressure, temperature);
@@ -251,21 +256,20 @@ pub fn absorption_coefficient(
 pub fn mie_scattering_coefficient(
     aerosol_properties: &AtmosphericAerosolProperties,
     wavelength: Wavelength,
-    reference_wavelength: Wavelength
+    reference_wavelength: Wavelength,
 ) -> f64 {
     let beta_0 = aerosol_properties.base_scattering_coefficient();
     let lambda = wavelength.value();
     let lambda_0 = reference_wavelength.value();
     let alpha = aerosol_properties.angstrom_exponent();
 
-    if
-        beta_0 <= 0.0 ||
-        lambda <= 0.0 ||
-        lambda_0 <= 0.0 ||
-        !beta_0.is_finite() ||
-        !lambda.is_finite() ||
-        !lambda_0.is_finite() ||
-        !alpha.is_finite()
+    if beta_0 <= 0.0
+        || lambda <= 0.0
+        || lambda_0 <= 0.0
+        || !beta_0.is_finite()
+        || !lambda.is_finite()
+        || !lambda_0.is_finite()
+        || !alpha.is_finite()
     {
         return 0.0;
     }
@@ -285,7 +289,7 @@ pub fn mie_scattering_coefficient_from_density(
     mass_scattering_efficiency: f64,
     wavelength: Wavelength,
     reference_wavelength: Wavelength,
-    angstrom_exponent: f64
+    angstrom_exponent: f64,
 ) -> f64 {
     let rho = aerosol_density.value();
     let k_s = mass_scattering_efficiency;
@@ -293,16 +297,15 @@ pub fn mie_scattering_coefficient_from_density(
     let lambda_0 = reference_wavelength.value();
     let alpha = angstrom_exponent;
 
-    if
-        rho <= 0.0 ||
-        k_s <= 0.0 ||
-        lambda <= 0.0 ||
-        lambda_0 <= 0.0 ||
-        !rho.is_finite() ||
-        !k_s.is_finite() ||
-        !lambda.is_finite() ||
-        !lambda_0.is_finite() ||
-        !alpha.is_finite()
+    if rho <= 0.0
+        || k_s <= 0.0
+        || lambda <= 0.0
+        || lambda_0 <= 0.0
+        || !rho.is_finite()
+        || !k_s.is_finite()
+        || !lambda.is_finite()
+        || !lambda_0.is_finite()
+        || !alpha.is_finite()
     {
         return 0.0;
     }
@@ -334,10 +337,14 @@ pub fn rayleigh_phase_function(scattering_angle: Angle) -> f64 {
 
 pub fn rayleigh_phase_function_with_depolarization(
     scattering_angle: Angle,
-    king_factor: f64
+    king_factor: f64,
 ) -> f64 {
     let theta = scattering_angle.value();
-    let f_k = if king_factor.is_finite() && king_factor >= 1.0 { king_factor } else { 1.0 };
+    let f_k = if king_factor.is_finite() && king_factor >= 1.0 {
+        king_factor
+    } else {
+        1.0
+    };
 
     if !theta.is_finite() {
         return 1.0 / (4.0 * PI);
@@ -390,7 +397,7 @@ pub fn combined_scattering_phase_function(
     scattering_angle: Angle,
     rayleigh_coeff: f64,
     mie_coeff: f64,
-    asymmetry_factor: f64
+    asymmetry_factor: f64,
 ) -> f64 {
     let b_r = rayleigh_coeff.max(0.0);
     let b_m = mie_coeff.max(0.0);
@@ -434,7 +441,7 @@ pub fn vertical_optical_depth(
     mie_coeff: f64,
     absorption_coeff: f64,
     scale_height: Length,
-    aerosol_scale_height: Length
+    aerosol_scale_height: Length,
 ) -> f64 {
     let b_r = rayleigh_coeff.max(0.0);
     let b_m = mie_coeff.max(0.0);
@@ -470,19 +477,19 @@ pub fn atmospheric_optical_depth(
     aerosol_properties: &AtmosphericAerosolProperties,
     scale_height: Length,
     aerosol_scale_height: Length,
-    zenith_angle: Angle
+    zenith_angle: Angle,
 ) -> f64 {
     let b_r = rayleigh_scattering_coefficient(
         wavelength,
         gas_optical_properties.refractivity_stp(),
         gas_optical_properties.king_factor(),
         pressure,
-        temperature
+        temperature,
     );
     let b_m = mie_scattering_coefficient(
         aerosol_properties,
         wavelength,
-        Wavelength::new(OPTICAL_REFERENCE_WAVELENGTH)
+        Wavelength::new(OPTICAL_REFERENCE_WAVELENGTH),
     );
     let b_a = absorption_coefficient(gas_optical_properties, wavelength, pressure, temperature);
 
@@ -500,7 +507,7 @@ pub fn atmospheric_transmittance(optical_depth: f64) -> f64 {
 pub fn refractive_index_at_altitude(
     surface_refractivity: f64,
     altitude: Length,
-    scale_height: Length
+    scale_height: Length,
 ) -> f64 {
     let z = altitude.value();
     let h = scale_height.value();
@@ -524,7 +531,7 @@ pub fn refractive_index_at_altitude(
 pub fn spherical_snell_invariant(
     refractive_index: f64,
     radius: Length,
-    zenith_angle: Angle
+    zenith_angle: Angle,
 ) -> f64 {
     let n = refractive_index;
     let r = radius.value();
@@ -540,7 +547,7 @@ pub fn spherical_snell_invariant(
 pub fn zenith_angle_from_snell_invariant(
     snell_invariant: f64,
     refractive_index: f64,
-    radius: Length
+    radius: Length,
 ) -> Option<Angle> {
     let inv = snell_invariant;
     let n = refractive_index;
@@ -562,20 +569,19 @@ pub fn atmospheric_refraction_angle(
     apparent_zenith_angle: Angle,
     surface_refractivity: f64,
     scale_height: Length,
-    planet_radius: Length
+    planet_radius: Length,
 ) -> Angle {
     let z_a = apparent_zenith_angle.value().abs();
     let delta_0 = surface_refractivity;
     let h = scale_height.value();
     let r_p = planet_radius.value();
 
-    if
-        delta_0 <= 0.0 ||
-        h <= 0.0 ||
-        r_p <= 0.0 ||
-        !delta_0.is_finite() ||
-        !h.is_finite() ||
-        !r_p.is_finite()
+    if delta_0 <= 0.0
+        || h <= 0.0
+        || r_p <= 0.0
+        || !delta_0.is_finite()
+        || !h.is_finite()
+        || !r_p.is_finite()
     {
         return Angle::new(0.0);
     }
@@ -588,9 +594,9 @@ pub fn atmospheric_refraction_angle(
     let cos_z = z_a.cos();
     let beta = h / r_p;
     let horizon_term = ((2.0 * beta) / PI).sqrt();
-    let denom = (
-        cos_z + (horizon_term * horizon_term + cos_z * cos_z * ((2.0 * beta) / PI)).sqrt()
-    ).max(1e-6);
+    let denom = (cos_z
+        + (horizon_term * horizon_term + cos_z * cos_z * ((2.0 * beta) / PI)).sqrt())
+    .max(1e-6);
 
     let r = delta_0 * (sin_z / denom);
     if !r.is_finite() || r <= 0.0 {
@@ -604,21 +610,21 @@ pub fn apparent_zenith_from_true(
     true_zenith_angle: Angle,
     surface_refractivity: f64,
     scale_height: Length,
-    planet_radius: Length
+    planet_radius: Length,
 ) -> Angle {
     let z_t = true_zenith_angle.value();
     if !z_t.is_finite() || surface_refractivity <= 0.0 {
         return true_zenith_angle;
     }
 
-    let mut z_a =
-        z_t -
-        atmospheric_refraction_angle(
+    let mut z_a = z_t
+        - atmospheric_refraction_angle(
             true_zenith_angle,
             surface_refractivity,
             scale_height,
-            planet_radius
-        ).value();
+            planet_radius,
+        )
+        .value();
     let eps = 1e-6;
 
     for _ in 0..12 {
@@ -626,8 +632,9 @@ pub fn apparent_zenith_from_true(
             Angle::new(z_a),
             surface_refractivity,
             scale_height,
-            planet_radius
-        ).value();
+            planet_radius,
+        )
+        .value();
         let f = z_a + r - z_t;
         if f.abs() < 1e-12 {
             break;
@@ -636,14 +643,16 @@ pub fn apparent_zenith_from_true(
             Angle::new(z_a + eps),
             surface_refractivity,
             scale_height,
-            planet_radius
-        ).value();
+            planet_radius,
+        )
+        .value();
         let r_minus = atmospheric_refraction_angle(
             Angle::new(z_a - eps),
             surface_refractivity,
             scale_height,
-            planet_radius
-        ).value();
+            planet_radius,
+        )
+        .value();
         let df_dz = 1.0 + (r_plus - r_minus) / (2.0 * eps);
         let delta = f / df_dz;
         z_a -= delta;
@@ -656,13 +665,13 @@ pub fn true_zenith_from_apparent(
     apparent_zenith_angle: Angle,
     surface_refractivity: f64,
     scale_height: Length,
-    planet_radius: Length
+    planet_radius: Length,
 ) -> Angle {
     let r = atmospheric_refraction_angle(
         apparent_zenith_angle,
         surface_refractivity,
         scale_height,
-        planet_radius
+        planet_radius,
     );
     apparent_zenith_angle + r
 }
@@ -672,7 +681,7 @@ pub fn refracted_sun_direction(
     up_vector: Vector3,
     surface_refractivity: f64,
     scale_height: Length,
-    planet_radius: Length
+    planet_radius: Length,
 ) -> Vector3 {
     let s = geometric_sun_dir.normalized();
     let u = up_vector.normalized();
@@ -703,7 +712,7 @@ pub fn unrefracted_sun_direction(
     up_vector: Vector3,
     surface_refractivity: f64,
     scale_height: Length,
-    planet_radius: Length
+    planet_radius: Length,
 ) -> Vector3 {
     let s_app = apparent_sun_dir.normalized();
     let u = up_vector.normalized();

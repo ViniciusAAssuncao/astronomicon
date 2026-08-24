@@ -9,8 +9,8 @@ use astronomicon_core::math::tidal::{
     tidal_heating_total_power, tidal_locking_timescale,
 };
 use astronomicon_core::units::{Duration, HeatFlux, Length, Luminosity, Mass};
-use astronomicon_db::repositories::planet_repository;
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::planet_repository;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -101,32 +101,32 @@ pub async fn resolve_tidal_diagnostics(
     let current_age = universe_epoch + at_epoch;
     let is_tidally_locked = timescale.value() > 0.0 && current_age.value() >= timescale.value();
 
-    let (tidal_energy, tidal_flux) =
-        if parent_mass.value() <= 0.0 || semi_major_axis.value() <= 0.0 {
-            (Luminosity::new(0.0), HeatFlux::new(0.0))
-        } else if is_tidally_locked && eccentricity <= 1e-12 {
-            (Luminosity::new(0.0), HeatFlux::new(0.0))
-        } else {
-            let power = tidal_heating_total_power(
-                parent_mass,
-                planet.mass(),
-                semi_major_axis,
-                eccentricity,
-                radius,
-                k2,
-                q,
-            );
-            let flux = tidal_heating_surface_flux(
-                parent_mass,
-                planet.mass(),
-                semi_major_axis,
-                eccentricity,
-                radius,
-                k2,
-                q,
-            );
-            (power, flux)
-        };
+    let (tidal_energy, tidal_flux) = if parent_mass.value() <= 0.0 || semi_major_axis.value() <= 0.0
+    {
+        (Luminosity::new(0.0), HeatFlux::new(0.0))
+    } else if is_tidally_locked && eccentricity <= 1e-12 {
+        (Luminosity::new(0.0), HeatFlux::new(0.0))
+    } else {
+        let power = tidal_heating_total_power(
+            parent_mass,
+            planet.mass(),
+            semi_major_axis,
+            eccentricity,
+            radius,
+            k2,
+            q,
+        );
+        let flux = tidal_heating_surface_flux(
+            parent_mass,
+            planet.mass(),
+            semi_major_axis,
+            eccentricity,
+            radius,
+            k2,
+            q,
+        );
+        (power, flux)
+    };
 
     Ok(TidalDiagnostic {
         love_number_k2: k2,

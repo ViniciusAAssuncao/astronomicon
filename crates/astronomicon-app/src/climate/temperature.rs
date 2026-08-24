@@ -14,10 +14,10 @@ use astronomicon_core::math::gravity::combined_gravitational_parameter;
 use astronomicon_core::math::kepler::true_anomaly_at_epoch;
 use astronomicon_core::math::radiometry::orbital_irradiance;
 use astronomicon_core::units::{Angle, Duration, Irradiance, Pressure, Temperature};
+use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     atmosphere_repository, hydrosphere_repository, planet_repository,
 };
-use astronomicon_db::SqlitePool;
 use uuid::Uuid;
 
 pub async fn resolve_global_mean_temperature(
@@ -50,21 +50,26 @@ pub async fn resolve_global_mean_temperature(
     let total_epoch = universe_epoch + at_epoch;
     let positions = resolve_system_positions(pool, system_id, total_epoch).await?;
 
-    let planet_pos = positions
-        .get(&planet.id())
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "planet_id".to_string(),
-            reason: format!("position for planet '{}' could not be resolved", planet.id()),
-        })?;
+    let planet_pos =
+        positions
+            .get(&planet.id())
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "planet_id".to_string(),
+                reason: format!(
+                    "position for planet '{}' could not be resolved",
+                    planet.id()
+                ),
+            })?;
 
-    let star_pos = positions
-        .get(&star.id())
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "star_id".to_string(),
-            reason: format!("position for star '{}' could not be resolved", star.id()),
-        })?;
+    let star_pos =
+        positions
+            .get(&star.id())
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "star_id".to_string(),
+                reason: format!("position for star '{}' could not be resolved", star.id()),
+            })?;
 
     let orbital_distance = (planet_pos - star_pos).magnitude();
     let z_factor = if star.kind() == StarKind::BlackHole {
@@ -164,21 +169,26 @@ pub async fn resolve_latitudinal_surface_temperature(
     let insolation_factor = mean_daily_insolation_factor(latitude, declination, half_angle);
 
     let positions = resolve_system_positions(pool, system_id, total_epoch).await?;
-    let planet_pos = positions
-        .get(&planet.id())
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "planet_id".to_string(),
-            reason: format!("position for planet '{}' could not be resolved", planet.id()),
-        })?;
+    let planet_pos =
+        positions
+            .get(&planet.id())
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "planet_id".to_string(),
+                reason: format!(
+                    "position for planet '{}' could not be resolved",
+                    planet.id()
+                ),
+            })?;
 
-    let star_pos = positions
-        .get(&star.id())
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "star_id".to_string(),
-            reason: format!("position for star '{}' could not be resolved", star.id()),
-        })?;
+    let star_pos =
+        positions
+            .get(&star.id())
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "star_id".to_string(),
+                reason: format!("position for star '{}' could not be resolved", star.id()),
+            })?;
 
     let orbital_distance = (planet_pos - star_pos).magnitude();
     let z_factor = if star.kind() == StarKind::BlackHole {
@@ -255,21 +265,26 @@ pub async fn resolve_advective_surface_temperature(
     let insolation_factor = mean_daily_insolation_factor(latitude, declination, half_angle);
 
     let positions = resolve_system_positions(pool, system_id, total_epoch).await?;
-    let planet_pos = positions
-        .get(&planet.id())
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "planet_id".to_string(),
-            reason: format!("position for planet '{}' could not be resolved", planet.id()),
-        })?;
+    let planet_pos =
+        positions
+            .get(&planet.id())
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "planet_id".to_string(),
+                reason: format!(
+                    "position for planet '{}' could not be resolved",
+                    planet.id()
+                ),
+            })?;
 
-    let star_pos = positions
-        .get(&star.id())
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "star_id".to_string(),
-            reason: format!("position for star '{}' could not be resolved", star.id()),
-        })?;
+    let star_pos =
+        positions
+            .get(&star.id())
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "star_id".to_string(),
+                reason: format!("position for star '{}' could not be resolved", star.id()),
+            })?;
 
     let orbital_distance = (planet_pos - star_pos).magnitude();
     let z_factor = if star.kind() == StarKind::BlackHole {

@@ -96,7 +96,8 @@ impl MaterialProperties {
         {
             return Err(DomainError::InvalidInvariant {
                 field: "liquidus_temperature".to_string(),
-                reason: "must be finite and greater than or equal to solidus temperature".to_string(),
+                reason: "must be finite and greater than or equal to solidus temperature"
+                    .to_string(),
             });
         }
 

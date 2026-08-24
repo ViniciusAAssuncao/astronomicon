@@ -87,15 +87,16 @@ pub fn resolve_node(
 
         visiting.remove(&id);
 
-        return memo.get(&id).copied().ok_or_else(|| {
-            DomainError::InvalidInvariant {
+        return memo
+            .get(&id)
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
                 field: "barycenter_member".to_string(),
                 reason: format!(
                     "position for member '{}' not resolved by barycenter '{}'",
                     id, parent_bary_id
                 ),
-            }
-        });
+            });
     }
 
     let pos = if let Some(star) = star_map.get(&id).copied() {
@@ -120,12 +121,15 @@ pub fn resolve_node(
                     visiting,
                     time_since_epoch,
                 )?;
-                let elements = star.orbital_elements().ok_or_else(|| {
-                    DomainError::InvalidInvariant {
-                        field: "orbital_elements".to_string(),
-                        reason: format!("star '{}' has orbital parent but no orbital elements", id),
-                    }
-                })?;
+                let elements =
+                    star.orbital_elements()
+                        .ok_or_else(|| DomainError::InvalidInvariant {
+                            field: "orbital_elements".to_string(),
+                            reason: format!(
+                                "star '{}' has orbital parent but no orbital elements",
+                                id
+                            ),
+                        })?;
                 resolve_relative_position_from_parent(
                     parent_pos,
                     star.mass(),
@@ -161,12 +165,16 @@ pub fn resolve_node(
                     visiting,
                     time_since_epoch,
                 )?;
-                let elements = planet.orbital_elements().ok_or_else(|| {
-                    DomainError::InvalidInvariant {
-                        field: "orbital_elements".to_string(),
-                        reason: format!("planet '{}' has orbital parent but no orbital elements", id),
-                    }
-                })?;
+                let elements =
+                    planet
+                        .orbital_elements()
+                        .ok_or_else(|| DomainError::InvalidInvariant {
+                            field: "orbital_elements".to_string(),
+                            reason: format!(
+                                "planet '{}' has orbital parent but no orbital elements",
+                                id
+                            ),
+                        })?;
                 resolve_relative_position_from_parent(
                     parent_pos,
                     planet.mass(),

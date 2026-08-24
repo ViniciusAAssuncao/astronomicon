@@ -10,11 +10,9 @@ use astronomicon_core::math::magnetic_field::{
 };
 use astronomicon_core::math::rotation::angular_velocity_from_rotation_period;
 use astronomicon_core::units::constants::VACUUM_PERMEABILITY;
-use astronomicon_core::units::{
-    Duration, Length, MagneticDipoleMoment, MagneticFluxDensity, Mass,
-};
-use astronomicon_db::repositories::planet_repository;
+use astronomicon_core::units::{Duration, Length, MagneticDipoleMoment, MagneticFluxDensity, Mass};
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::planet_repository;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use uuid::Uuid;

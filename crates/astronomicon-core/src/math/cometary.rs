@@ -1,9 +1,7 @@
 use crate::units::constants::{
     ASTRONOMICAL_UNIT, SPEED_OF_LIGHT, STEFAN_BOLTZMANN_CONSTANT, UNIVERSAL_GAS_CONSTANT,
 };
-use crate::units::{
-    Irradiance, Length, MassRate, MolarMass, Pressure, Speed, Temperature,
-};
+use crate::units::{Irradiance, Length, MassRate, MolarMass, Pressure, Speed, Temperature};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
@@ -46,10 +44,7 @@ pub fn volatile_reference_parameters(volatile: CometaryVolatile) -> (f64, f64) {
     }
 }
 
-pub fn volatile_vapor_pressure(
-    volatile: CometaryVolatile,
-    temperature: Temperature,
-) -> Pressure {
+pub fn volatile_vapor_pressure(volatile: CometaryVolatile, temperature: Temperature) -> Pressure {
     let t = temperature.value();
     if t <= 0.0 || !t.is_finite() {
         return Pressure::new(0.0);
@@ -69,10 +64,7 @@ pub fn volatile_vapor_pressure(
     }
 }
 
-pub fn sublimation_mass_flux(
-    volatile: CometaryVolatile,
-    temperature: Temperature,
-) -> f64 {
+pub fn sublimation_mass_flux(volatile: CometaryVolatile, temperature: Temperature) -> f64 {
     let t = temperature.value();
     if t <= 0.0 || !t.is_finite() {
         return 0.0;
@@ -87,11 +79,7 @@ pub fn sublimation_mass_flux(
     let factor = (mu / (2.0 * PI * UNIVERSAL_GAS_CONSTANT * t)).sqrt();
     let z = p_vap * factor;
 
-    if !z.is_finite() || z <= 0.0 {
-        0.0
-    } else {
-        z
-    }
+    if !z.is_finite() || z <= 0.0 { 0.0 } else { z }
 }
 
 pub fn sublimation_equilibrium(
@@ -152,15 +140,16 @@ pub fn cometary_gas_production_rate(
     let q_mass = z * effective_area;
     let mu = volatile_molar_mass(volatile).value();
     let avogadro = 6.02214076e23;
-    let q_molecules = if mu > 0.0 { (q_mass / mu) * avogadro } else { 0.0 };
+    let q_molecules = if mu > 0.0 {
+        (q_mass / mu) * avogadro
+    } else {
+        0.0
+    };
 
     (MassRate::new(q_mass), q_molecules)
 }
 
-pub fn thermal_gas_expansion_speed(
-    temperature: Temperature,
-    volatile: CometaryVolatile,
-) -> Speed {
+pub fn thermal_gas_expansion_speed(temperature: Temperature, volatile: CometaryVolatile) -> Speed {
     let t = temperature.value();
     let mu = volatile_molar_mass(volatile).value();
     if t <= 0.0 || mu <= 0.0 || !t.is_finite() {

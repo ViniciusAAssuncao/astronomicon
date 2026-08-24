@@ -1,8 +1,8 @@
 use crate::error::AppResult;
 use crate::hierarchy::find_parent_star;
 use astronomicon_core::chemistry::{
-    c_o_molar_ratio, fe_si_molar_ratio, mg_si_molar_ratio, refractory_mass_fraction,
-    solar_abundance_to_mass_fractions, volatile_mass_fraction, ElementalAbundance,
+    ElementalAbundance, c_o_molar_ratio, fe_si_molar_ratio, mg_si_molar_ratio,
+    refractory_mass_fraction, solar_abundance_to_mass_fractions, volatile_mass_fraction,
 };
 use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
@@ -12,8 +12,8 @@ use astronomicon_core::math::mineralogy::{
 use astronomicon_core::math::radiometry::stellar_luminosity;
 use astronomicon_core::units::constants::{ASTRONOMICAL_UNIT, SOLAR_LUMINOSITY, SOLAR_RADIUS};
 use astronomicon_core::units::{Length, Luminosity, Temperature};
-use astronomicon_db::repositories::planet_repository;
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::planet_repository;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -61,11 +61,8 @@ pub async fn resolve_planetary_bulk_composition(
 
     let disk_temp = disk_temperature_at_orbit(star_lum, semi_major_axis);
     let star_abundances = solar_abundance_to_mass_fractions(feh);
-    let planet_abundances = planetary_bulk_composition_from_disk_temp(
-        &star_abundances,
-        disk_temp,
-        planet.kind(),
-    );
+    let planet_abundances =
+        planetary_bulk_composition_from_disk_temp(&star_abundances, disk_temp, planet.kind());
 
     let refractory = refractory_mass_fraction(&planet_abundances);
     let volatile = volatile_mass_fraction(&planet_abundances);

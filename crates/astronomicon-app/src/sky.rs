@@ -22,10 +22,10 @@ use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity}
 use astronomicon_core::math::radiometry::{stellar_angular_radius, stellar_solid_angle};
 use astronomicon_core::math::scattering::MultipleScatteringConfig;
 use astronomicon_core::units::{Angle, ColorRGB, Duration, Length, Vector3};
+use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     atmosphere_repository, hydrosphere_repository, planet_repository,
 };
-use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

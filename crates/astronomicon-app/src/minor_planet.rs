@@ -4,8 +4,8 @@ use crate::hierarchy::find_parent_star;
 use astronomicon_core::domain::{MinorPlanet, SpectralType};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::cometary::{
-    coma_radius, cometary_gas_production_rate, cometary_tail_structure, sublimation_equilibrium,
-    thermal_gas_expansion_speed, CometaryVolatile,
+    CometaryVolatile, coma_radius, cometary_gas_production_rate, cometary_tail_structure,
+    sublimation_equilibrium, thermal_gas_expansion_speed,
 };
 use astronomicon_core::math::gravity::gravitational_parameter;
 use astronomicon_core::math::minor_planet::{
@@ -20,8 +20,8 @@ use astronomicon_core::math::stellar_wind::{
     terminal_wind_speed,
 };
 use astronomicon_core::units::{Density, Duration, Irradiance, Length, MassRate};
-use astronomicon_db::repositories::minor_planet_repository;
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::minor_planet_repository;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use uuid::Uuid;
@@ -122,10 +122,9 @@ pub async fn resolve_minor_planet_diagnostics(
                     let total_epoch = universe_epoch + at_epoch;
                     let positions = resolve_system_positions(pool, sys_id, total_epoch).await?;
 
-                    if let (Some(&pos_mp), Some(&pos_star)) = (
-                        positions.get(&minor_planet.id()),
-                        positions.get(&star.id()),
-                    ) {
+                    if let (Some(&pos_mp), Some(&pos_star)) =
+                        (positions.get(&minor_planet.id()), positions.get(&star.id()))
+                    {
                         let orbital_dist = (pos_mp - pos_star).magnitude();
                         let star_lum = stellar_luminosity(r_star, t_star);
                         let top_irradiance = orbital_irradiance(star_lum, orbital_dist);

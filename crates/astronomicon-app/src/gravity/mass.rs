@@ -39,7 +39,11 @@ pub async fn resolve_entity_effective_mass(
             &barycenter_map,
         )
         .map_err(Into::into)
-    } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *entity_id) {
+    } else if let Some(mp) = hierarchy
+        .minor_planets
+        .iter()
+        .find(|m| m.id() == *entity_id)
+    {
         Ok(mp.mass())
     } else {
         Err(DomainError::InvalidInvariant {

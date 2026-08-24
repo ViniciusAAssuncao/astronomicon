@@ -1,5 +1,7 @@
-use crate::chemistry::abundance::{element_mass_fraction, ElementalAbundance};
-use crate::chemistry::geochemistry::{condensation_fraction, goldschmidt_class_of, GoldschmidtClass};
+use crate::chemistry::abundance::{ElementalAbundance, element_mass_fraction};
+use crate::chemistry::geochemistry::{
+    GoldschmidtClass, condensation_fraction, goldschmidt_class_of,
+};
 use crate::chemistry::periodic_table::atomic_weight;
 use crate::domain::{PlanetKind, TectonicRegime};
 use crate::units::constants::STEFAN_BOLTZMANN_CONSTANT;
@@ -84,11 +86,7 @@ pub fn normative_cipw_mineralogy(abundances: &[ElementalAbundance]) -> Normative
     let get_moles = |sym: &str| -> f64 {
         let w = element_mass_fraction(abundances, sym);
         if let Some(aw) = atomic_weight(sym) {
-            if aw > 0.0 && w > 0.0 {
-                w / aw
-            } else {
-                0.0
-            }
+            if aw > 0.0 && w > 0.0 { w / aw } else { 0.0 }
         } else {
             0.0
         }
@@ -158,7 +156,13 @@ pub fn normative_cipw_mineralogy(abundances: &[ElementalAbundance]) -> Normative
     };
 
     let mass_pyroxene = mass_di + mass_hy;
-    NormativeMineralogy::new(mass_q, mass_plagioclase, mass_k_feldspar, mass_pyroxene, mass_ol)
+    NormativeMineralogy::new(
+        mass_q,
+        mass_plagioclase,
+        mass_k_feldspar,
+        mass_pyroxene,
+        mass_ol,
+    )
 }
 
 pub fn calculate_dominant_oxides(abundances: &[ElementalAbundance]) -> Vec<OxideAbundance> {
@@ -196,7 +200,11 @@ pub fn calculate_dominant_oxides(abundances: &[ElementalAbundance]) -> Vec<Oxide
         .map(|(name, mass)| OxideAbundance::new(name, mass / total_oxide_mass))
         .collect();
 
-    result.sort_by(|a, b| b.mass_fraction.partial_cmp(&a.mass_fraction).unwrap_or(std::cmp::Ordering::Equal));
+    result.sort_by(|a, b| {
+        b.mass_fraction
+            .partial_cmp(&a.mass_fraction)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     result
 }
 
@@ -204,7 +212,8 @@ pub fn incompatible_partition_coefficient(symbol: &str) -> f64 {
     match symbol {
         "U" | "Th" => 0.001,
         "Cs" | "Rb" | "Ba" => 0.002,
-        "La" | "Ce" | "Pr" | "Nd" | "Sm" | "Eu" | "Gd" | "Tb" | "Dy" | "Ho" | "Er" | "Tm" | "Yb" | "Lu" | "Y" => 0.005,
+        "La" | "Ce" | "Pr" | "Nd" | "Sm" | "Eu" | "Gd" | "Tb" | "Dy" | "Ho" | "Er" | "Tm"
+        | "Yb" | "Lu" | "Y" => 0.005,
         "Nb" | "Ta" => 0.004,
         "Li" | "Be" | "B" => 0.015,
         "Zr" | "Hf" => 0.02,
@@ -270,7 +279,9 @@ pub fn crustal_elemental_abundances(
     let (f_si, f_al, f_fe, f_mg, f_ca, f_na, f_k) = match regime {
         TectonicRegime::PlateTectonics if has_water => (1.40, 1.50, 0.30, 0.20, 0.80, 2.00, 2.50),
         TectonicRegime::PlateTectonics => (1.15, 1.20, 0.70, 0.50, 1.00, 1.30, 1.50),
-        TectonicRegime::StagnantLid | TectonicRegime::Inactive => (1.05, 1.30, 0.85, 0.65, 1.20, 1.10, 1.10),
+        TectonicRegime::StagnantLid | TectonicRegime::Inactive => {
+            (1.05, 1.30, 0.85, 0.65, 1.20, 1.10, 1.10)
+        }
         TectonicRegime::HeatPipe => (0.95, 0.90, 1.00, 1.00, 0.90, 0.80, 0.80),
         TectonicRegime::IceTectonics => (1.00, 1.00, 0.80, 0.80, 1.00, 1.00, 1.00),
     };
@@ -314,7 +325,9 @@ pub fn crustal_petrology(
     let (f_si, f_al, f_fe, f_mg, f_ca, f_na, f_k) = match regime {
         TectonicRegime::PlateTectonics if has_water => (1.40, 1.50, 0.30, 0.20, 0.80, 2.00, 2.50),
         TectonicRegime::PlateTectonics => (1.15, 1.20, 0.70, 0.50, 1.00, 1.30, 1.50),
-        TectonicRegime::StagnantLid | TectonicRegime::Inactive => (1.05, 1.30, 0.85, 0.65, 1.20, 1.10, 1.10),
+        TectonicRegime::StagnantLid | TectonicRegime::Inactive => {
+            (1.05, 1.30, 0.85, 0.65, 1.20, 1.10, 1.10)
+        }
         TectonicRegime::HeatPipe => (0.95, 0.90, 1.00, 1.00, 0.90, 0.80, 0.80),
         TectonicRegime::IceTectonics => (1.00, 1.00, 0.80, 0.80, 1.00, 1.00, 1.00),
     };
@@ -405,7 +418,8 @@ pub fn evaporite_deposit_potential(
     }
 
     let f_t = (t_surf / t_boil).clamp(0.0, 1.0);
-    let f_evap = ((f_t - 0.65) / 0.35).clamp(0.0, 1.0) * 0.6 + 0.4 * (t_surf / 373.15).clamp(0.0, 1.0);
+    let f_evap =
+        ((f_t - 0.65) / 0.35).clamp(0.0, 1.0) * 0.6 + 0.4 * (t_surf / 373.15).clamp(0.0, 1.0);
     let f_basin = (4.0 * ocean_coverage * (1.0 - ocean_coverage)).clamp(0.1, 1.0);
     let f_sal = (salinity / 0.035).clamp(0.1, 3.0);
 

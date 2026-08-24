@@ -1,4 +1,4 @@
-use astronomicon_core::chemistry::{element_mass_fraction, ElementalAbundance};
+use astronomicon_core::chemistry::{ElementalAbundance, element_mass_fraction};
 use astronomicon_core::domain::TectonicRegime;
 use astronomicon_core::math::mineralogy::{
     banded_iron_formation_potential, evaporite_deposit_potential, hydrothermal_vein_potential,
@@ -246,11 +246,7 @@ pub fn resolve_pegmatite_deposits(
 ) -> (Vec<OreDepositEstimate>, f64) {
     let mut deposits = Vec::new();
 
-    let (p_peg, e_peg) = pegmatite_ree_potential(
-        felsic_fraction,
-        tectonic_regime,
-        total_epoch,
-    );
+    let (p_peg, e_peg) = pegmatite_ree_potential(felsic_fraction, tectonic_regime, total_epoch);
 
     let w_u = element_mass_fraction(crustal_abundances, "U");
     push_deposit_if_significant(

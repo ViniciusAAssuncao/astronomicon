@@ -1,25 +1,18 @@
 use crate::chemistry::optics::{
-    mean_refractivity_gladstone_dale,
-    mean_refractivity_lorentz_lorenz,
+    mean_refractivity_gladstone_dale, mean_refractivity_lorentz_lorenz,
 };
 use crate::error::DomainResult;
 use crate::math::optics::mass_optical_efficiencies;
 use crate::math::thermodynamics::MatterState;
 use crate::math::volcanism::VolcanicEruptionStyle;
-use crate::units::constants::{ OPTICAL_REFERENCE_WAVELENGTH, STANDARD_ATMOSPHERE_PRESSURE, STANDARD_GRAVITY, STP_TEMPERATURE };
-use crate::units::{
-    Acceleration,
-    Density,
-    Duration,
-    DynamicViscosity,
-    Length,
-    MassRate,
-    Pressure,
-    Speed,
-    Temperature,
-    Wavelength,
+use crate::units::constants::{
+    OPTICAL_REFERENCE_WAVELENGTH, STANDARD_ATMOSPHERE_PRESSURE, STANDARD_GRAVITY, STP_TEMPERATURE,
 };
-use serde::{ Deserialize, Serialize };
+use crate::units::{
+    Acceleration, Density, Duration, DynamicViscosity, Length, MassRate, Pressure, Speed,
+    Temperature, Wavelength,
+};
+use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -464,12 +457,8 @@ pub fn volcanic_aerosol_density(
     let tau_sulfate = Duration::new(2.592e6);
     let tau_ash = Duration::new(6.048e5);
 
-    let rho_sulfate = volcanic_sulfate_aerosol_density(
-        so2_mass_rate,
-        planet_radius,
-        scale_height,
-        tau_sulfate,
-    );
+    let rho_sulfate =
+        volcanic_sulfate_aerosol_density(so2_mass_rate, planet_radius, scale_height, tau_sulfate);
     let rho_ash = volcanic_ash_aerosol_density(
         eruption_style,
         magma_extrusion_rate,

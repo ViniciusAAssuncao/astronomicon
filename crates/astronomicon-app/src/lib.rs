@@ -21,7 +21,7 @@ pub mod tidal;
 pub mod volcanism;
 
 pub use black_hole::*;
-pub use context::{build_context, AppContext};
+pub use context::{AppContext, build_context};
 pub use ephemeris::*;
 pub use error::{AppError, AppResult};
 pub use geology::*;

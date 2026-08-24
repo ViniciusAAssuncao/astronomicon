@@ -13,7 +13,11 @@ impl ColorRGB {
     }
 
     pub fn zero() -> Self {
-        Self { r: 0.0, g: 0.0, b: 0.0 }
+        Self {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+        }
     }
 
     pub fn r(&self) -> f64 {

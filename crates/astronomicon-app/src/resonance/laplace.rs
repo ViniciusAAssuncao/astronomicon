@@ -1,9 +1,9 @@
 use crate::error::AppResult;
 use crate::resonance::orbit_info::load_system_hierarchy;
-use crate::resonance::pairwise::{resolve_orbital_resonance, ResonanceReport};
+use crate::resonance::pairwise::{ResonanceReport, resolve_orbital_resonance};
 use astronomicon_core::math::kepler::mean_longitude_at_epoch;
 use astronomicon_core::math::resonance::{
-    classify_libration, laplace_resonant_argument, ResonanceState,
+    ResonanceState, classify_libration, laplace_resonant_argument,
 };
 use astronomicon_core::units::{Angle, Duration};
 use astronomicon_db::SqlitePool;
@@ -34,11 +34,7 @@ pub async fn resolve_laplace_chain(
     let info2 = hierarchy.get_body_orbit_info(&body_2_id)?;
     let info3 = hierarchy.get_body_orbit_info(&body_3_id)?;
 
-    let mut sorted = [
-        (body_1_id, info1),
-        (body_2_id, info2),
-        (body_3_id, info3),
-    ];
+    let mut sorted = [(body_1_id, info1), (body_2_id, info2), (body_3_id, info3)];
     sorted.sort_by(|a, b| {
         b.1.mean_motion
             .partial_cmp(&a.1.mean_motion)

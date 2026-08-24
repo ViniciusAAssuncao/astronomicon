@@ -101,6 +101,9 @@ impl OrbitalElements {
     }
 
     pub fn longitude_of_periapsis(&self) -> Angle {
-        Angle::new((self.longitude_of_ascending_node.value() + self.argument_of_periapsis.value()).rem_euclid(TAU))
+        Angle::new(
+            (self.longitude_of_ascending_node.value() + self.argument_of_periapsis.value())
+                .rem_euclid(TAU),
+        )
     }
 }

@@ -213,10 +213,11 @@ pub fn mean_solvent_properties(composition: &[(String, f64)]) -> DomainResult<So
     let mut n_sol_i = 0.0;
 
     for (formula, percentage) in composition {
-        let props = solvent_properties_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
-            field: "composition".to_string(),
-            reason: format!("unknown solvent formula '{}'", formula),
-        })?;
+        let props =
+            solvent_properties_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
+                field: "composition".to_string(),
+                reason: format!("unknown solvent formula '{}'", formula),
+            })?;
 
         let fraction = percentage / total_percentage;
         h_vap += props.enthalpy_of_vaporization * fraction;

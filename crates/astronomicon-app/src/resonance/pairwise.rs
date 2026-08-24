@@ -2,8 +2,8 @@ use crate::error::AppResult;
 use crate::resonance::orbit_info::load_system_hierarchy;
 use astronomicon_core::math::kepler::mean_longitude_at_epoch;
 use astronomicon_core::math::resonance::{
-    classify_libration, mean_motion_resonance_search, resonance_order, resonant_argument,
-    ResonanceState,
+    ResonanceState, classify_libration, mean_motion_resonance_search, resonance_order,
+    resonant_argument,
 };
 use astronomicon_core::units::{Angle, Duration};
 use astronomicon_db::SqlitePool;
@@ -68,16 +68,10 @@ pub async fn resolve_orbital_resonance(
         let t_offset = Duration::new((i as f64 / (sample_count - 1) as f64) * time_span);
         let current_t = total_epoch + t_offset;
 
-        let lambda1 = mean_longitude_at_epoch(
-            &inner_info.elements,
-            inner_info.mean_motion,
-            current_t,
-        );
-        let lambda2 = mean_longitude_at_epoch(
-            &outer_info.elements,
-            outer_info.mean_motion,
-            current_t,
-        );
+        let lambda1 =
+            mean_longitude_at_epoch(&inner_info.elements, inner_info.mean_motion, current_t);
+        let lambda2 =
+            mean_longitude_at_epoch(&outer_info.elements, outer_info.mean_motion, current_t);
         let varpi = inner_info.elements.longitude_of_periapsis();
 
         let phi = resonant_argument(p, q, lambda1, lambda2, varpi);

@@ -1,7 +1,7 @@
 use crate::sky::SkyColorDiagnostic;
 use astronomicon_core::math::colorimetry::{
-    chromatically_adapt_xyz, linear_to_srgb_gamma, reinhard_extended_tone_map, xyz_to_linear_srgb,
-    ColorXYZ,
+    ColorXYZ, chromatically_adapt_xyz, linear_to_srgb_gamma, reinhard_extended_tone_map,
+    xyz_to_linear_srgb,
 };
 
 pub fn process_sky_colors(

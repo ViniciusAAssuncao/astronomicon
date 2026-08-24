@@ -33,7 +33,9 @@ pub fn solve_l1_gamma(mass_ratio: f64) -> DomainResult<f64> {
         let g5 = g4 * gamma;
 
         let f = g5 - (3.0 - mu) * g4 + (3.0 - 2.0 * mu) * g3 - mu * g2 + 2.0 * mu * gamma - mu;
-        let f_prime = 5.0 * g4 - 4.0 * (3.0 - mu) * g3 + 3.0 * (3.0 - 2.0 * mu) * g2 - 2.0 * mu * gamma + 2.0 * mu;
+        let f_prime = 5.0 * g4 - 4.0 * (3.0 - mu) * g3 + 3.0 * (3.0 - 2.0 * mu) * g2
+            - 2.0 * mu * gamma
+            + 2.0 * mu;
 
         let delta = f / f_prime;
         gamma -= delta;
@@ -69,7 +71,9 @@ pub fn solve_l2_gamma(mass_ratio: f64) -> DomainResult<f64> {
         let g5 = g4 * gamma;
 
         let f = g5 + (3.0 - mu) * g4 + (3.0 - 2.0 * mu) * g3 - mu * g2 - 2.0 * mu * gamma - mu;
-        let f_prime = 5.0 * g4 + 4.0 * (3.0 - mu) * g3 + 3.0 * (3.0 - 2.0 * mu) * g2 - 2.0 * mu * gamma - 2.0 * mu;
+        let f_prime = 5.0 * g4 + 4.0 * (3.0 - mu) * g3 + 3.0 * (3.0 - 2.0 * mu) * g2
+            - 2.0 * mu * gamma
+            - 2.0 * mu;
 
         let delta = f / f_prime;
         gamma -= delta;
@@ -104,8 +108,13 @@ pub fn solve_l3_gamma(mass_ratio: f64) -> DomainResult<f64> {
         let g4 = g3 * gamma;
         let g5 = g4 * gamma;
 
-        let f = g5 + (2.0 + mu) * g4 + (1.0 + 2.0 * mu) * g3 - (1.0 - mu) * g2 - 2.0 * (1.0 - mu) * gamma - (1.0 - mu);
-        let f_prime = 5.0 * g4 + 4.0 * (2.0 + mu) * g3 + 3.0 * (1.0 + 2.0 * mu) * g2 - 2.0 * (1.0 - mu) * gamma - 2.0 * (1.0 - mu);
+        let f = g5 + (2.0 + mu) * g4 + (1.0 + 2.0 * mu) * g3
+            - (1.0 - mu) * g2
+            - 2.0 * (1.0 - mu) * gamma
+            - (1.0 - mu);
+        let f_prime = 5.0 * g4 + 4.0 * (2.0 + mu) * g3 + 3.0 * (1.0 + 2.0 * mu) * g2
+            - 2.0 * (1.0 - mu) * gamma
+            - 2.0 * (1.0 - mu);
 
         let delta = f / f_prime;
         gamma -= delta;
@@ -174,7 +183,8 @@ pub fn lagrange_point_position(
     if distance <= 0.0 || !distance.is_finite() {
         return Err(DomainError::InvalidInvariant {
             field: "separation".to_string(),
-            reason: "distance between primary and secondary must be positive and finite".to_string(),
+            reason: "distance between primary and secondary must be positive and finite"
+                .to_string(),
         });
     }
 
@@ -183,15 +193,30 @@ pub fn lagrange_point_position(
     match point {
         LagrangePoint::L1 => {
             let gamma = solve_l1_gamma(mass_ratio)?;
-            Ok(collinear_point_position(LagrangePoint::L1, primary_pos, secondary_pos, gamma))
+            Ok(collinear_point_position(
+                LagrangePoint::L1,
+                primary_pos,
+                secondary_pos,
+                gamma,
+            ))
         }
         LagrangePoint::L2 => {
             let gamma = solve_l2_gamma(mass_ratio)?;
-            Ok(collinear_point_position(LagrangePoint::L2, primary_pos, secondary_pos, gamma))
+            Ok(collinear_point_position(
+                LagrangePoint::L2,
+                primary_pos,
+                secondary_pos,
+                gamma,
+            ))
         }
         LagrangePoint::L3 => {
             let gamma = solve_l3_gamma(mass_ratio)?;
-            Ok(collinear_point_position(LagrangePoint::L3, primary_pos, secondary_pos, gamma))
+            Ok(collinear_point_position(
+                LagrangePoint::L3,
+                primary_pos,
+                secondary_pos,
+                gamma,
+            ))
         }
         LagrangePoint::L4 => {
             if orbital_normal.magnitude() < 1e-12

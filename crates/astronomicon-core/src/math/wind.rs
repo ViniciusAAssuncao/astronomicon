@@ -1,5 +1,7 @@
 use crate::math::rotation::coriolis_parameter;
-use crate::units::{Acceleration, Angle, AngularVelocity, Length, Speed, Temperature, TemperatureGradient};
+use crate::units::{
+    Acceleration, Angle, AngularVelocity, Length, Speed, Temperature, TemperatureGradient,
+};
 use std::f64::consts::PI;
 
 pub fn latitudinal_temperature_gradient(
@@ -36,7 +38,13 @@ pub fn thermal_wind_shear(
     let t = mean_temperature.value();
     let dt_dy = temp_gradient_y.value();
 
-    if f.abs() <= 1e-12 || t <= 0.0 || !g.is_finite() || !f.is_finite() || !t.is_finite() || !dt_dy.is_finite() {
+    if f.abs() <= 1e-12
+        || t <= 0.0
+        || !g.is_finite()
+        || !f.is_finite()
+        || !t.is_finite()
+        || !dt_dy.is_finite()
+    {
         return 0.0;
     }
 
@@ -76,8 +84,10 @@ pub fn zonal_jet_stream_speed(
         let f_pos = coriolis_parameter(planetary_rotation, Angle::new(equatorial_limit));
         let f_neg = coriolis_parameter(planetary_rotation, Angle::new(-equatorial_limit));
 
-        let u_pos = thermal_wind_speed(gravity, f_pos, mean_temperature, temp_gradient_y, height).value();
-        let u_neg = thermal_wind_speed(gravity, f_neg, mean_temperature, temp_gradient_y, height).value();
+        let u_pos =
+            thermal_wind_speed(gravity, f_pos, mean_temperature, temp_gradient_y, height).value();
+        let u_neg =
+            thermal_wind_speed(gravity, f_neg, mean_temperature, temp_gradient_y, height).value();
 
         let factor = (lat_val + equatorial_limit) / (2.0 * equatorial_limit);
         let interpolated = u_neg + factor * (u_pos - u_neg);

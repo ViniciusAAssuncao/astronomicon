@@ -23,10 +23,10 @@ use astronomicon_core::math::wind::{
 use astronomicon_core::units::{
     Angle, AngularVelocity, Duration, Length, Speed, TemperatureGradient,
 };
+use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     atmosphere_repository, hydrosphere_repository, planet_repository,
 };
-use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use uuid::Uuid;
@@ -186,30 +186,15 @@ pub async fn resolve_wind_profile_at_latitude(
     let lat_n = Angle::new((latitude.value() + d_phi).min(PI / 2.0));
     let lat_s = Angle::new((latitude.value() - d_phi).max(-PI / 2.0));
 
-    let t_n = resolve_advective_surface_temperature(
-        pool,
-        planet_id,
-        lat_n,
-        universe_epoch,
-        at_epoch,
-    )
-    .await?;
-    let t_s = resolve_advective_surface_temperature(
-        pool,
-        planet_id,
-        lat_s,
-        universe_epoch,
-        at_epoch,
-    )
-    .await?;
-    let t_local = resolve_advective_surface_temperature(
-        pool,
-        planet_id,
-        latitude,
-        universe_epoch,
-        at_epoch,
-    )
-    .await?;
+    let t_n =
+        resolve_advective_surface_temperature(pool, planet_id, lat_n, universe_epoch, at_epoch)
+            .await?;
+    let t_s =
+        resolve_advective_surface_temperature(pool, planet_id, lat_s, universe_epoch, at_epoch)
+            .await?;
+    let t_local =
+        resolve_advective_surface_temperature(pool, planet_id, latitude, universe_epoch, at_epoch)
+            .await?;
 
     let t_grad = latitudinal_temperature_gradient(t_n, t_s, lat_n, lat_s, radius);
 

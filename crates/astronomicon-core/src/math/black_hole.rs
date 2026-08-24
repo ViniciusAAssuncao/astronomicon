@@ -301,10 +301,7 @@ pub fn dimensionless_spin_from_angular_velocity(
     a_star.clamp(0.0, THORNE_SPIN_LIMIT)
 }
 
-pub fn dimensionless_spin_from_rotation_period(
-    mass: Mass,
-    rotation_period: Duration,
-) -> f64 {
+pub fn dimensionless_spin_from_rotation_period(mass: Mass, rotation_period: Duration) -> f64 {
     let period = rotation_period.value();
     if period <= 0.0 || !period.is_finite() {
         return 0.0;

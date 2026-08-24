@@ -44,7 +44,13 @@ pub fn local_rossby_number(
     let d = layer_thickness.value();
     let omega = angular_velocity.value().abs();
 
-    if f <= 0.0 || d <= 0.0 || omega <= 0.0 || !f.is_finite() || !d.is_finite() || !omega.is_finite() {
+    if f <= 0.0
+        || d <= 0.0
+        || omega <= 0.0
+        || !f.is_finite()
+        || !d.is_finite()
+        || !omega.is_finite()
+    {
         return f64::INFINITY;
     }
 

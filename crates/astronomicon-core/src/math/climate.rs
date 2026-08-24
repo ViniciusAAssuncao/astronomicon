@@ -84,7 +84,8 @@ pub fn oceanic_column_heat_capacity(
     let rho = liquid_density.value();
     let cp = specific_heat_capacity;
 
-    if d <= 0.0 || rho <= 0.0 || cp <= 0.0 || !d.is_finite() || !rho.is_finite() || !cp.is_finite() {
+    if d <= 0.0 || rho <= 0.0 || cp <= 0.0 || !d.is_finite() || !rho.is_finite() || !cp.is_finite()
+    {
         return 0.0;
     }
 
@@ -96,11 +97,12 @@ pub fn combined_column_heat_capacity(
     oceanic_column_heat_capacity: f64,
     ocean_coverage_fraction: f64,
 ) -> f64 {
-    let c_atm = if atmospheric_column_heat_capacity.is_finite() && atmospheric_column_heat_capacity > 0.0 {
-        atmospheric_column_heat_capacity
-    } else {
-        0.0
-    };
+    let c_atm =
+        if atmospheric_column_heat_capacity.is_finite() && atmospheric_column_heat_capacity > 0.0 {
+            atmospheric_column_heat_capacity
+        } else {
+            0.0
+        };
     let c_oce = if oceanic_column_heat_capacity.is_finite() && oceanic_column_heat_capacity > 0.0 {
         oceanic_column_heat_capacity
     } else {

@@ -122,36 +122,92 @@ fn o3_absorption_bands() -> Vec<AbsorptionBand> {
     vec![
         AbsorptionBand::new(Wavelength::new(255.0e-9), 1.1e-21, Wavelength::new(40.0e-9)),
         AbsorptionBand::new(Wavelength::new(325.0e-9), 5.0e-23, Wavelength::new(50.0e-9)),
-        AbsorptionBand::new(Wavelength::new(600.0e-9), 5.0e-25, Wavelength::new(150.0e-9)),
+        AbsorptionBand::new(
+            Wavelength::new(600.0e-9),
+            5.0e-25,
+            Wavelength::new(150.0e-9),
+        ),
     ]
 }
 
 fn h2o_absorption_bands() -> Vec<AbsorptionBand> {
     vec![
         AbsorptionBand::new(Wavelength::new(942.0e-9), 1.0e-25, Wavelength::new(40.0e-9)),
-        AbsorptionBand::new(Wavelength::new(1130.0e-9), 3.0e-25, Wavelength::new(60.0e-9)),
-        AbsorptionBand::new(Wavelength::new(1380.0e-9), 2.0e-24, Wavelength::new(90.0e-9)),
-        AbsorptionBand::new(Wavelength::new(1870.0e-9), 4.0e-24, Wavelength::new(120.0e-9)),
-        AbsorptionBand::new(Wavelength::new(2700.0e-9), 1.5e-23, Wavelength::new(200.0e-9)),
-        AbsorptionBand::new(Wavelength::new(6270.0e-9), 3.0e-23, Wavelength::new(1000.0e-9)),
+        AbsorptionBand::new(
+            Wavelength::new(1130.0e-9),
+            3.0e-25,
+            Wavelength::new(60.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(1380.0e-9),
+            2.0e-24,
+            Wavelength::new(90.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(1870.0e-9),
+            4.0e-24,
+            Wavelength::new(120.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(2700.0e-9),
+            1.5e-23,
+            Wavelength::new(200.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(6270.0e-9),
+            3.0e-23,
+            Wavelength::new(1000.0e-9),
+        ),
     ]
 }
 
 fn co2_absorption_bands() -> Vec<AbsorptionBand> {
     vec![
-        AbsorptionBand::new(Wavelength::new(2000.0e-9), 5.0e-25, Wavelength::new(80.0e-9)),
-        AbsorptionBand::new(Wavelength::new(2700.0e-9), 5.0e-24, Wavelength::new(150.0e-9)),
-        AbsorptionBand::new(Wavelength::new(4300.0e-9), 5.0e-22, Wavelength::new(300.0e-9)),
-        AbsorptionBand::new(Wavelength::new(15000.0e-9), 2.0e-22, Wavelength::new(2000.0e-9)),
+        AbsorptionBand::new(
+            Wavelength::new(2000.0e-9),
+            5.0e-25,
+            Wavelength::new(80.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(2700.0e-9),
+            5.0e-24,
+            Wavelength::new(150.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(4300.0e-9),
+            5.0e-22,
+            Wavelength::new(300.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(15000.0e-9),
+            2.0e-22,
+            Wavelength::new(2000.0e-9),
+        ),
     ]
 }
 
 fn ch4_absorption_bands() -> Vec<AbsorptionBand> {
     vec![
-        AbsorptionBand::new(Wavelength::new(1650.0e-9), 1.0e-24, Wavelength::new(60.0e-9)),
-        AbsorptionBand::new(Wavelength::new(2300.0e-9), 5.0e-24, Wavelength::new(100.0e-9)),
-        AbsorptionBand::new(Wavelength::new(3300.0e-9), 2.0e-22, Wavelength::new(200.0e-9)),
-        AbsorptionBand::new(Wavelength::new(7700.0e-9), 8.0e-23, Wavelength::new(400.0e-9)),
+        AbsorptionBand::new(
+            Wavelength::new(1650.0e-9),
+            1.0e-24,
+            Wavelength::new(60.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(2300.0e-9),
+            5.0e-24,
+            Wavelength::new(100.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(3300.0e-9),
+            2.0e-22,
+            Wavelength::new(200.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(7700.0e-9),
+            8.0e-23,
+            Wavelength::new(400.0e-9),
+        ),
     ]
 }
 
@@ -164,10 +220,26 @@ pub fn gas_optical_properties(formula: &str) -> Option<GasOpticalProperties> {
         "H2" => Some(GasOpticalProperties::new(1.386e-4, 1.032, Vec::new())),
         "N2" => Some(GasOpticalProperties::new(2.980e-4, 1.034, Vec::new())),
         "O2" => Some(GasOpticalProperties::new(2.663e-4, 1.096, Vec::new())),
-        "H2O" => Some(GasOpticalProperties::new(2.550e-4, 1.001, h2o_absorption_bands())),
-        "O3" => Some(GasOpticalProperties::new(5.200e-4, 1.060, o3_absorption_bands())),
-        "CO2" => Some(GasOpticalProperties::new(4.494e-4, 1.150, co2_absorption_bands())),
-        "CH4" => Some(GasOpticalProperties::new(4.439e-4, 1.000, ch4_absorption_bands())),
+        "H2O" => Some(GasOpticalProperties::new(
+            2.550e-4,
+            1.001,
+            h2o_absorption_bands(),
+        )),
+        "O3" => Some(GasOpticalProperties::new(
+            5.200e-4,
+            1.060,
+            o3_absorption_bands(),
+        )),
+        "CO2" => Some(GasOpticalProperties::new(
+            4.494e-4,
+            1.150,
+            co2_absorption_bands(),
+        )),
+        "CH4" => Some(GasOpticalProperties::new(
+            4.439e-4,
+            1.000,
+            ch4_absorption_bands(),
+        )),
         "NH3" => Some(GasOpticalProperties::new(3.760e-4, 1.070, Vec::new())),
         "SO2" => Some(GasOpticalProperties::new(6.860e-4, 1.240, Vec::new())),
         _ => None,
@@ -217,10 +289,11 @@ pub fn mean_refractivity_lorentz_lorenz(composition: &[(String, f64)]) -> Domain
     let mut ll_sum = 0.0;
 
     for (formula, fraction) in composition {
-        let refractivity = refractivity_stp_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
-            field: "composition".to_string(),
-            reason: format!("unknown gas optical formula '{}'", formula),
-        })?;
+        let refractivity =
+            refractivity_stp_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
+                field: "composition".to_string(),
+                reason: format!("unknown gas optical formula '{}'", formula),
+            })?;
 
         let x = fraction / total_fraction;
         ll_sum += x * lorentz_lorenz_term(refractivity);
@@ -242,10 +315,11 @@ pub fn mean_refractivity_gladstone_dale(composition: &[(String, f64)]) -> Domain
     let mut refractivity_sum = 0.0;
 
     for (formula, fraction) in composition {
-        let refractivity = refractivity_stp_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
-            field: "composition".to_string(),
-            reason: format!("unknown gas optical formula '{}'", formula),
-        })?;
+        let refractivity =
+            refractivity_stp_of(formula).ok_or_else(|| DomainError::InvalidInvariant {
+                field: "composition".to_string(),
+                reason: format!("unknown gas optical formula '{}'", formula),
+            })?;
 
         let x = fraction / total_fraction;
         refractivity_sum += x * refractivity;
@@ -272,10 +346,11 @@ pub fn mean_gas_optical_properties(
     let mut combined_bands: Vec<AbsorptionBand> = Vec::new();
 
     for (formula, fraction) in composition {
-        let props = gas_optical_properties(formula).ok_or_else(|| DomainError::InvalidInvariant {
-            field: "composition".to_string(),
-            reason: format!("unknown gas optical formula '{}'", formula),
-        })?;
+        let props =
+            gas_optical_properties(formula).ok_or_else(|| DomainError::InvalidInvariant {
+                field: "composition".to_string(),
+                reason: format!("unknown gas optical formula '{}'", formula),
+            })?;
 
         let x = fraction / total_fraction;
         king_weighted_sum += x * props.king_factor();

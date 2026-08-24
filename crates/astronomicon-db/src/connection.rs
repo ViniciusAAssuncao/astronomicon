@@ -1,7 +1,7 @@
 use crate::error::DbResult;
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 use std::str::FromStr;
 

@@ -3,8 +3,8 @@ use crate::hierarchy::traversal::collect_stars_from_barycenter;
 use astronomicon_core::domain::{MinorPlanet, OrbitalParent, Planet, Star};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::units::Mass;
-use astronomicon_db::repositories::{minor_planet_repository, planet_repository, star_repository};
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::{minor_planet_repository, planet_repository, star_repository};
 use std::collections::HashSet;
 
 pub async fn resolve_parent_mass(pool: &SqlitePool, parent: &OrbitalParent) -> AppResult<Mass> {

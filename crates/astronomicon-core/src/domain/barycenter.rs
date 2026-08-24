@@ -73,7 +73,8 @@ impl Barycenter {
         if orbital_parent != OrbitalParent::Fixed && external_orbital_elements.is_none() {
             return Err(DomainError::InvalidInvariant {
                 field: "external_orbital_elements".to_string(),
-                reason: "non-fixed orbiting barycenter must have external orbital elements".to_string(),
+                reason: "non-fixed orbiting barycenter must have external orbital elements"
+                    .to_string(),
             });
         }
 

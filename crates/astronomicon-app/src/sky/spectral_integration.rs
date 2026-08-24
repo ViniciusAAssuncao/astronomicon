@@ -1,11 +1,11 @@
 use astronomicon_core::math::aerosol::refractivity_at_temperature_pressure;
 use astronomicon_core::math::atmospheric_scattering::SphericalAtmosphere;
-use astronomicon_core::math::colorimetry::{cie_color_matching_functions, ColorXYZ};
+use astronomicon_core::math::colorimetry::{ColorXYZ, cie_color_matching_functions};
 use astronomicon_core::math::optics::refracted_sun_direction;
 use astronomicon_core::math::radiation::planck_spectral_radiance;
 use astronomicon_core::math::scattering::{
-    multiple_scattering_spectral_radiance, multiple_scattering_stellar_disk_spectral_radiance,
-    MultipleScatteringConfig,
+    MultipleScatteringConfig, multiple_scattering_spectral_radiance,
+    multiple_scattering_stellar_disk_spectral_radiance,
 };
 use astronomicon_core::units::constants::{
     CIE_WAVELENGTH_MAX_M, CIE_WAVELENGTH_MIN_M, CIE_WAVELENGTH_STEP_M,
@@ -42,8 +42,7 @@ pub fn integrate_sky_spectrum(
 
     let view_zenith = Vector3::new(0.0, 1.0, 0.0);
     let sun_dir_day = Vector3::new((PI / 4.0).sin(), (PI / 4.0).cos(), 0.0).normalized();
-    let s_refracted_day =
-        refracted_sun_direction(sun_dir_day, up, refr_actual, scale_h, eq_radius);
+    let s_refracted_day = refracted_sun_direction(sun_dir_day, up, refr_actual, scale_h, eq_radius);
 
     let view_horizon = Vector3::new(1.0, 0.0, 0.0);
     let view_sunset = Vector3::new(1.0, 0.0, 0.0);

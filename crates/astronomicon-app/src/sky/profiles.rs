@@ -1,6 +1,6 @@
 use crate::error::AppResult;
 use crate::volcanism::VolcanicDiagnostic;
-use astronomicon_core::chemistry::optics::{mean_gas_optical_properties, GasOpticalProperties};
+use astronomicon_core::chemistry::optics::{GasOpticalProperties, mean_gas_optical_properties};
 use astronomicon_core::domain::{Atmosphere, Planet};
 use astronomicon_core::math::aerosol::{
     airborne_dust_density, derived_aerosol_scale_height, dust_threshold_surface_wind,
@@ -91,12 +91,14 @@ pub fn build_sky_atmosphere(
     );
 
     let (inj_alt, plume_thick) = match eruption_style {
-        VolcanicEruptionStyle::Explosive => {
-            (Length::new(scale_h.value() * 1.8), Length::new(scale_h.value() * 0.4))
-        }
-        VolcanicEruptionStyle::Cryovolcanic => {
-            (Length::new(scale_h.value() * 1.2), Length::new(scale_h.value() * 0.3))
-        }
+        VolcanicEruptionStyle::Explosive => (
+            Length::new(scale_h.value() * 1.8),
+            Length::new(scale_h.value() * 0.4),
+        ),
+        VolcanicEruptionStyle::Cryovolcanic => (
+            Length::new(scale_h.value() * 1.2),
+            Length::new(scale_h.value() * 0.3),
+        ),
         VolcanicEruptionStyle::Effusive | VolcanicEruptionStyle::SubaqueousEffusive => {
             (Length::new(0.0), Length::new(scale_h.value() * 0.6))
         }
@@ -147,5 +149,11 @@ pub fn build_sky_atmosphere(
         volcanic_profile,
     );
 
-    Ok((atmosphere, dust_profile, volcanic_profile, opt_props, scale_h))
+    Ok((
+        atmosphere,
+        dust_profile,
+        volcanic_profile,
+        opt_props,
+        scale_h,
+    ))
 }

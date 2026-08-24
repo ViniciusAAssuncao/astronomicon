@@ -1,7 +1,7 @@
 use crate::sky::ScatteringCoefficients;
 use astronomicon_core::chemistry::optics::GasOpticalProperties;
 use astronomicon_core::math::atmospheric_scattering::{
-    spherical_optical_depth_segment, DustProfile, SphericalAtmosphere, VolcanicProfile,
+    DustProfile, SphericalAtmosphere, VolcanicProfile, spherical_optical_depth_segment,
 };
 use astronomicon_core::math::optics::rayleigh_scattering_coefficient;
 use astronomicon_core::units::{Length, Pressure, Temperature, Vector3, Wavelength};
@@ -65,8 +65,7 @@ pub fn resolve_scattering_summary(
     };
 
     let vertical_top = Vector3::new(0.0, atmosphere.atmosphere_top_radius.value(), 0.0);
-    let vertical_depth =
-        spherical_optical_depth_segment(ray_origin, vertical_top, atmosphere, 64);
+    let vertical_depth = spherical_optical_depth_segment(ray_origin, vertical_top, atmosphere, 64);
 
     let tau_tot_r = vertical_depth.total_extinction_optical_depth(wl_r, atmosphere);
     let tau_tot_g = vertical_depth.total_extinction_optical_depth(wl_g, atmosphere);

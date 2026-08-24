@@ -12,15 +12,15 @@ use astronomicon_core::error::DomainError;
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::hydrosphere::HydrosphereStructure;
 use astronomicon_core::math::seismology::{
-    equilibrium_tidal_bulge_height, radial_tidal_stress_amplitude,
-    tectonic_seismic_energy_rate, tidal_seismic_energy_rate,
+    equilibrium_tidal_bulge_height, radial_tidal_stress_amplitude, tectonic_seismic_energy_rate,
+    tidal_seismic_energy_rate,
 };
 use astronomicon_core::math::tidal::fallback_love_number_k2;
 use astronomicon_core::units::{Duration, Length, Luminosity, Mass, Pressure, Speed};
+use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     hydrosphere_repository, lithosphere_repository, planet_repository,
 };
-use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -141,28 +141,25 @@ pub async fn resolve_seismic_diagnostics(
             }
         };
 
-    let (h_tide, delta_sigma) =
-        if parent_mass.value() > 0.0 && semi_major_axis.value() > 0.0 && eccentricity > 0.0 {
-            let mean_rho = planet_mean_density(&planet);
-            let k2 = planet
-                .love_number_k2()
-                .unwrap_or_else(|| fallback_love_number_k2(planet.kind(), Some(mean_rho)));
+    let (h_tide, delta_sigma) = if parent_mass.value() > 0.0
+        && semi_major_axis.value() > 0.0
+        && eccentricity > 0.0
+    {
+        let mean_rho = planet_mean_density(&planet);
+        let k2 = planet
+            .love_number_k2()
+            .unwrap_or_else(|| fallback_love_number_k2(planet.kind(), Some(mean_rho)));
 
-            let h_bulge = equilibrium_tidal_bulge_height(
-                parent_mass,
-                planet.mass(),
-                radius,
-                semi_major_axis,
-                k2,
-            );
+        let h_bulge =
+            equilibrium_tidal_bulge_height(parent_mass, planet.mass(), radius, semi_major_axis, k2);
 
-            let crust_rho = rheology.mean_density();
-            let d_sigma = radial_tidal_stress_amplitude(eccentricity, crust_rho, g, h_bulge);
+        let crust_rho = rheology.mean_density();
+        let d_sigma = radial_tidal_stress_amplitude(eccentricity, crust_rho, g, h_bulge);
 
-            (h_bulge, d_sigma)
-        } else {
-            (Length::new(0.0), Pressure::new(0.0))
-        };
+        (h_bulge, d_sigma)
+    } else {
+        (Length::new(0.0), Pressure::new(0.0))
+    };
 
     let tidal_energy = tidal_seismic_energy_rate(
         tidal_diag.tidal_heating_energy,

@@ -19,7 +19,10 @@ struct HydrosphereComponentRow {
     percentage: f64,
 }
 
-pub async fn get_by_planet_id(pool: &SqlitePool, planet_id: &Uuid) -> DbResult<Option<Hydrosphere>> {
+pub async fn get_by_planet_id(
+    pool: &SqlitePool,
+    planet_id: &Uuid,
+) -> DbResult<Option<Hydrosphere>> {
     let base_row = sqlx::query_as::<_, HydrosphereRow>(
         "SELECT id, planet_id, average_depth_m, surface_coverage_fraction, salinity_or_solute_mass_fraction \
          FROM hydrospheres WHERE planet_id = ?",

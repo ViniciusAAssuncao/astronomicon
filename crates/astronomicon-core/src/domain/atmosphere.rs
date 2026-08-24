@@ -3,9 +3,7 @@ use crate::chemistry::molar_mass::{
 };
 use crate::domain::gas_component::GasComponent;
 use crate::error::{DomainError, DomainResult};
-use crate::units::constants::{
-    ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT,
-};
+use crate::units::constants::{ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT};
 use crate::units::{
     Acceleration, Density, Length, MassAttenuationCoefficient, MolarMass, Pressure, Temperature,
     TemperatureGradient,
@@ -162,7 +160,13 @@ impl Atmosphere {
         greenhouse_effect: Temperature,
         lapse_rate: TemperatureGradient,
     ) -> AtmosphereBuilder {
-        AtmosphereBuilder::new(id, planet_id, surface_pressure, greenhouse_effect, lapse_rate)
+        AtmosphereBuilder::new(
+            id,
+            planet_id,
+            surface_pressure,
+            greenhouse_effect,
+            lapse_rate,
+        )
     }
 
     pub fn new(
@@ -175,11 +179,17 @@ impl Atmosphere {
         surface_humidity: Option<f64>,
         cloud_coverage_fraction: Option<f64>,
     ) -> DomainResult<Self> {
-        Self::builder(id, planet_id, surface_pressure, greenhouse_effect, lapse_rate)
-            .with_composition(composition)
-            .with_surface_humidity(surface_humidity)
-            .with_cloud_coverage_fraction(cloud_coverage_fraction)
-            .build()
+        Self::builder(
+            id,
+            planet_id,
+            surface_pressure,
+            greenhouse_effect,
+            lapse_rate,
+        )
+        .with_composition(composition)
+        .with_surface_humidity(surface_humidity)
+        .with_cloud_coverage_fraction(cloud_coverage_fraction)
+        .build()
     }
 
     pub fn id(&self) -> Uuid {
@@ -248,7 +258,9 @@ impl Atmosphere {
     pub fn radiation_transmission(&self, gravity: Acceleration) -> DomainResult<f64> {
         let mu = self.mean_mass_attenuation_coefficient()?;
         let mass_col = self.mass_column(gravity);
-        Ok(crate::math::radiation::atmospheric_transmission(mass_col, mu))
+        Ok(crate::math::radiation::atmospheric_transmission(
+            mass_col, mu,
+        ))
     }
 
     pub fn column_heat_capacity(&self, gravity: Acceleration) -> DomainResult<f64> {

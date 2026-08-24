@@ -1,13 +1,11 @@
-use crate::chemistry::solvent::{solvent_properties_of, SolventProperties};
+use crate::chemistry::solvent::{SolventProperties, solvent_properties_of};
 use crate::domain::Hydrosphere;
 use crate::error::{DomainError, DomainResult};
 use crate::units::constants::{
     DEFAULT_SOLUTE_MOLAR_MASS_KG, DEFAULT_VAN_T_HOFF_FACTOR, STANDARD_ATMOSPHERE_PRESSURE,
     UNIVERSAL_GAS_CONSTANT,
 };
-use crate::units::{
-    Acceleration, Length, MolarMass, Pressure, Temperature, TemperatureGradient,
-};
+use crate::units::{Acceleration, Length, MolarMass, Pressure, Temperature, TemperatureGradient};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

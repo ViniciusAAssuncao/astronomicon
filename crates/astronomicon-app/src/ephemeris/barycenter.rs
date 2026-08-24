@@ -17,20 +17,17 @@ pub fn split_barycenter_positions(
     memo: &mut HashMap<Uuid, Position>,
     time_since_epoch: Duration,
 ) -> DomainResult<()> {
-    let bary = barycenter_map
-        .get(&bary_id)
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "barycenter_id".to_string(),
-            reason: format!("barycenter '{}' not found", bary_id),
-        })?;
+    let bary =
+        barycenter_map
+            .get(&bary_id)
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "barycenter_id".to_string(),
+                reason: format!("barycenter '{}' not found", bary_id),
+            })?;
 
-    let m_pri = calculate_effective_mass(
-        &bary.member_primary(),
-        star_map,
-        planet_map,
-        barycenter_map,
-    )?;
+    let m_pri =
+        calculate_effective_mass(&bary.member_primary(), star_map, planet_map, barycenter_map)?;
     let m_sec = calculate_effective_mass(
         &bary.member_secondary(),
         star_map,

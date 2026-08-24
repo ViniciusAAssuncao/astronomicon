@@ -12,8 +12,8 @@ use astronomicon_core::math::black_hole::{
 use astronomicon_core::math::gravity::combined_gravitational_parameter;
 use astronomicon_core::math::kepler::orbital_speed;
 use astronomicon_core::units::{Duration, Luminosity, MassRate};
-use astronomicon_db::repositories::star_repository;
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::star_repository;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -73,10 +73,9 @@ pub async fn resolve_black_hole_accretion(
                     let total_epoch = universe_epoch + at_epoch;
                     let positions = resolve_system_positions(pool, sys_id, total_epoch).await?;
 
-                    if let (Some(&bh_pos), Some(&comp_pos)) = (
-                        positions.get(&star.id()),
-                        positions.get(&companion.id()),
-                    ) {
+                    if let (Some(&bh_pos), Some(&comp_pos)) =
+                        (positions.get(&star.id()), positions.get(&companion.id()))
+                    {
                         let orbital_dist = (bh_pos - comp_pos).magnitude();
                         let wind_diag = resolve_stellar_wind_at_distance(
                             companion.mass(),

@@ -13,17 +13,19 @@ use crate::error::AppResult;
 use crate::geology::resolve_planetary_geology;
 use crate::geophysics::resolve_planetary_core;
 use crate::hydrosphere::resolve_hydrosphere_diagnostics;
-use astronomicon_core::chemistry::{element_mass_fraction, ElementalAbundance};
+use astronomicon_core::chemistry::{ElementalAbundance, element_mass_fraction};
 use astronomicon_core::domain::{Planet, TectonicRegime};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::mineralogy::{
-    calculate_dominant_oxides, crustal_elemental_abundances, normative_cipw_mineralogy,
-    NormativeMineralogy, OxideAbundance,
+    NormativeMineralogy, OxideAbundance, calculate_dominant_oxides, crustal_elemental_abundances,
+    normative_cipw_mineralogy,
 };
 use astronomicon_core::math::thermodynamics::MatterState;
 use astronomicon_core::units::{Duration, Pressure, Temperature};
-use astronomicon_db::repositories::{atmosphere_repository, hydrosphere_repository, planet_repository};
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::{
+    atmosphere_repository, hydrosphere_repository, planet_repository,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -79,11 +81,13 @@ pub async fn resolve_planetary_mineralogy(
 
     let total_epoch = universe_epoch + at_epoch;
     let geology_diag = resolve_planetary_geology(pool, planet_id, universe_epoch, at_epoch).await?;
-    let hydro_diag = resolve_hydrosphere_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
+    let hydro_diag =
+        resolve_hydrosphere_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
     let core_diag = resolve_planetary_core(pool, planet_id, universe_epoch, at_epoch).await?;
     let atm_opt = atmosphere_repository::get_by_planet_id(pool, &planet_id).await?;
     let hydro_opt = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?;
-    let surf_temp = resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
+    let surf_temp =
+        resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
 
     let has_water = hydro_diag
         .map(|h| h.liquid_depth.value() > 0.0 || h.ice_thickness.value() > 0.0)
@@ -91,7 +95,10 @@ pub async fn resolve_planetary_mineralogy(
         || planet.mantle_hydration_fraction().unwrap_or(0.0) > 0.001;
 
     let is_liquid_or_supercritical = hydro_diag
-        .map(|h| h.dominant_state == MatterState::Liquid || h.dominant_state == MatterState::Supercritical)
+        .map(|h| {
+            h.dominant_state == MatterState::Liquid
+                || h.dominant_state == MatterState::Supercritical
+        })
         .unwrap_or(false);
 
     let is_liquid_ocean = hydro_diag
@@ -120,7 +127,10 @@ pub async fn resolve_planetary_mineralogy(
         .map(|h| h.surface_coverage_fraction())
         .unwrap_or(0.0);
     let boiling_pt = if let Some(h) = hydro_opt.as_ref() {
-        let press = atm_opt.as_ref().map(|a| a.surface_pressure()).unwrap_or(Pressure::new(0.0));
+        let press = atm_opt
+            .as_ref()
+            .map(|a| a.surface_pressure())
+            .unwrap_or(Pressure::new(0.0));
         h.boiling_point(press).unwrap_or(Temperature::new(373.15))
     } else {
         Temperature::new(373.15)
@@ -181,7 +191,11 @@ pub async fn resolve_planetary_mineralogy(
     deposits.extend(magmatic_deposits);
     deposits.extend(pegmatite_deposits);
 
-    deposits.sort_by(|a, b| b.probability.partial_cmp(&a.probability).unwrap_or(std::cmp::Ordering::Equal));
+    deposits.sort_by(|a, b| {
+        b.probability
+            .partial_cmp(&a.probability)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let w_fe = element_mass_fraction(&crustal_abundances, "Fe");
 

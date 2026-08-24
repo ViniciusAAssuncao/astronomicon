@@ -1,38 +1,20 @@
 use crate::chemistry::optics::GasOpticalProperties;
 use crate::math::aerosol::refractivity_at_temperature_pressure;
 use crate::math::colorimetry::{
-    cie_color_matching_functions,
-    exposure_tone_map,
-    linear_to_srgb_gamma,
+    ColorXYZ, cie_color_matching_functions, exposure_tone_map, linear_to_srgb_gamma,
     xyz_to_linear_srgb,
-    ColorXYZ,
 };
 use crate::math::optics::{
-    absorption_coefficient,
-    henyey_greenstein_phase_function,
-    rayleigh_phase_function_with_depolarization,
-    rayleigh_scattering_coefficient,
-    refracted_sun_direction,
-    unrefracted_sun_direction,
+    absorption_coefficient, henyey_greenstein_phase_function,
+    rayleigh_phase_function_with_depolarization, rayleigh_scattering_coefficient,
+    refracted_sun_direction, unrefracted_sun_direction,
 };
 use crate::math::radiation::planck_spectral_radiance;
 use crate::math::radiometry::{stellar_disk_sample_directions, stellar_limb_darkening};
 use crate::units::constants::{
-    CIE_WAVELENGTH_MAX_M,
-    CIE_WAVELENGTH_MIN_M,
-    CIE_WAVELENGTH_STEP_M,
-    OPTICAL_REFERENCE_WAVELENGTH,
+    CIE_WAVELENGTH_MAX_M, CIE_WAVELENGTH_MIN_M, CIE_WAVELENGTH_STEP_M, OPTICAL_REFERENCE_WAVELENGTH,
 };
-use crate::units::{
-    Angle,
-    ColorRGB,
-    Density,
-    Length,
-    Pressure,
-    Temperature,
-    Vector3,
-    Wavelength,
-};
+use crate::units::{Angle, ColorRGB, Density, Length, Pressure, Temperature, Vector3, Wavelength};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
@@ -168,7 +150,13 @@ impl DustProfile {
         let z = altitude.value();
         let h = self.scale_height.value();
         let rho0 = self.surface_density.value();
-        if z < 0.0 || rho0 <= 0.0 || h <= 0.0 || !z.is_finite() || !rho0.is_finite() || !h.is_finite() {
+        if z < 0.0
+            || rho0 <= 0.0
+            || h <= 0.0
+            || !z.is_finite()
+            || !rho0.is_finite()
+            || !h.is_finite()
+        {
             return Density::new(0.0);
         }
         let exponent = -z / h;
@@ -317,7 +305,13 @@ impl CloudProfile {
         let cov = self.coverage_fraction.clamp(0.0, 1.0);
         let rho_base = self.base_density.value();
 
-        if z < z_lcl || z > z_top || z_top <= z_lcl || cov <= 0.0 || rho_base <= 0.0 || !z.is_finite() {
+        if z < z_lcl
+            || z > z_top
+            || z_top <= z_lcl
+            || cov <= 0.0
+            || rho_base <= 0.0
+            || !z.is_finite()
+        {
             return Density::new(0.0);
         }
 
@@ -473,7 +467,12 @@ impl VolcanicProfile {
         let h_plume = self.plume_thickness.value();
         let rho_peak = self.peak_density.value();
 
-        if rho_peak <= 0.0 || h_plume <= 0.0 || !z.is_finite() || !rho_peak.is_finite() || !h_plume.is_finite() {
+        if rho_peak <= 0.0
+            || h_plume <= 0.0
+            || !z.is_finite()
+            || !rho_peak.is_finite()
+            || !h_plume.is_finite()
+        {
             return Density::new(0.0);
         }
 
@@ -541,9 +540,8 @@ impl SphericalAtmosphere {
         cloud_profile: CloudProfile,
         volcanic_profile: VolcanicProfile,
     ) -> Self {
-        let top_r = Length::new(
-            planet_radius.value() + atmosphere_top_altitude.value().max(1000.0),
-        );
+        let top_r =
+            Length::new(planet_radius.value() + atmosphere_top_altitude.value().max(1000.0));
         Self {
             planet_radius,
             atmosphere_top_radius: top_r,
@@ -605,9 +603,15 @@ impl SphericalOpticalDepth {
         );
         let beta_e_r0 = beta_s_r0 + beta_a_g0;
 
-        let k_e_dust = atmosphere.dust_profile.extinction_coefficient_at_wavelength(wavelength);
-        let k_e_cloud = atmosphere.cloud_profile.extinction_coefficient_at_wavelength(wavelength);
-        let k_e_volc = atmosphere.volcanic_profile.extinction_coefficient_at_wavelength(wavelength);
+        let k_e_dust = atmosphere
+            .dust_profile
+            .extinction_coefficient_at_wavelength(wavelength);
+        let k_e_cloud = atmosphere
+            .cloud_profile
+            .extinction_coefficient_at_wavelength(wavelength);
+        let k_e_volc = atmosphere
+            .volcanic_profile
+            .extinction_coefficient_at_wavelength(wavelength);
 
         beta_e_r0 * self.gas_depth
             + k_e_dust * self.dust_depth
@@ -755,8 +759,14 @@ pub fn spherical_optical_depth_segment(
 
         let alt_len = Length::new(alt);
         let rho_d = atmosphere.dust_profile.density_at_altitude(alt_len).value();
-        let rho_c = atmosphere.cloud_profile.density_at_altitude(alt_len).value();
-        let rho_v = atmosphere.volcanic_profile.density_at_altitude(alt_len).value();
+        let rho_c = atmosphere
+            .cloud_profile
+            .density_at_altitude(alt_len)
+            .value();
+        let rho_v = atmosphere
+            .volcanic_profile
+            .density_at_altitude(alt_len)
+            .value();
 
         tau_dust += rho_d * ds;
         tau_cloud += rho_c * ds;
@@ -833,15 +843,23 @@ pub fn sun_path_optical_depth(
 
         let alt_len = Length::new(alt_j);
         let rho_d = atmosphere.dust_profile.density_at_altitude(alt_len).value();
-        let rho_c = atmosphere.cloud_profile.density_at_altitude(alt_len).value();
-        let rho_v = atmosphere.volcanic_profile.density_at_altitude(alt_len).value();
+        let rho_c = atmosphere
+            .cloud_profile
+            .density_at_altitude(alt_len)
+            .value();
+        let rho_v = atmosphere
+            .volcanic_profile
+            .density_at_altitude(alt_len)
+            .value();
 
         tau_dust += rho_d * ds;
         tau_cloud += rho_c * ds;
         tau_volc += rho_v * ds;
     }
 
-    Some(SphericalOpticalDepth::new(tau_gas, tau_dust, tau_cloud, tau_volc))
+    Some(SphericalOpticalDepth::new(
+        tau_gas, tau_dust, tau_cloud, tau_volc,
+    ))
 }
 
 pub fn single_scattering_spectral_radiance(
@@ -908,16 +926,28 @@ pub fn single_scattering_spectral_radiance(
 
     let beta_e_r0 = beta_s_r0 + beta_a_g0;
 
-    let k_s_dust = atmosphere.dust_profile.scattering_coefficient_at_wavelength(wavelength);
-    let k_e_dust = atmosphere.dust_profile.extinction_coefficient_at_wavelength(wavelength);
+    let k_s_dust = atmosphere
+        .dust_profile
+        .scattering_coefficient_at_wavelength(wavelength);
+    let k_e_dust = atmosphere
+        .dust_profile
+        .extinction_coefficient_at_wavelength(wavelength);
     let g_dust = atmosphere.dust_profile.asymmetry_factor_g;
 
-    let k_s_cloud = atmosphere.cloud_profile.scattering_coefficient_at_wavelength(wavelength);
-    let k_e_cloud = atmosphere.cloud_profile.extinction_coefficient_at_wavelength(wavelength);
+    let k_s_cloud = atmosphere
+        .cloud_profile
+        .scattering_coefficient_at_wavelength(wavelength);
+    let k_e_cloud = atmosphere
+        .cloud_profile
+        .extinction_coefficient_at_wavelength(wavelength);
     let g_cloud = atmosphere.cloud_profile.asymmetry_factor_g;
 
-    let k_s_volc = atmosphere.volcanic_profile.scattering_coefficient_at_wavelength(wavelength);
-    let k_e_volc = atmosphere.volcanic_profile.extinction_coefficient_at_wavelength(wavelength);
+    let k_s_volc = atmosphere
+        .volcanic_profile
+        .scattering_coefficient_at_wavelength(wavelength);
+    let k_e_volc = atmosphere
+        .volcanic_profile
+        .extinction_coefficient_at_wavelength(wavelength);
     let g_volc = atmosphere.volcanic_profile.asymmetry_factor_g;
 
     let cos_theta = v_dir.dot(&s_dir).clamp(-1.0, 1.0);
@@ -951,12 +981,22 @@ pub fn single_scattering_spectral_radiance(
         }
 
         let exp_gas = -alt_i / h_gas;
-        let rho_g = if exp_gas >= -700.0 { exp_gas.exp() } else { 0.0 };
+        let rho_g = if exp_gas >= -700.0 {
+            exp_gas.exp()
+        } else {
+            0.0
+        };
 
         let alt_len = Length::new(alt_i);
         let rho_d = atmosphere.dust_profile.density_at_altitude(alt_len).value();
-        let rho_c = atmosphere.cloud_profile.density_at_altitude(alt_len).value();
-        let rho_v = atmosphere.volcanic_profile.density_at_altitude(alt_len).value();
+        let rho_c = atmosphere
+            .cloud_profile
+            .density_at_altitude(alt_len)
+            .value();
+        let rho_v = atmosphere
+            .volcanic_profile
+            .density_at_altitude(alt_len)
+            .value();
 
         tau_view_gas += rho_g * ds;
         tau_view_dust += rho_d * ds;
@@ -976,12 +1016,7 @@ pub fn single_scattering_spectral_radiance(
 
         let phase_m = henyey_greenstein_phase_function(theta, g_eff);
 
-        let sun_depth = sun_path_optical_depth(
-            pos_i,
-            s_dir,
-            atmosphere,
-            config.sun_samples,
-        );
+        let sun_depth = sun_path_optical_depth(pos_i, s_dir, atmosphere, config.sun_samples);
 
         if let Some(sun_tau) = sun_depth {
             let total_tau = beta_e_r0 * (tau_view_gas + sun_tau.gas_depth)
@@ -989,7 +1024,11 @@ pub fn single_scattering_spectral_radiance(
                 + k_e_cloud * (tau_view_cloud + sun_tau.cloud_depth)
                 + k_e_volc * (tau_view_volc + sun_tau.volcanic_depth);
 
-            let attenuation = if total_tau > 700.0 { 0.0 } else { (-total_tau).exp() };
+            let attenuation = if total_tau > 700.0 {
+                0.0
+            } else {
+                (-total_tau).exp()
+            };
 
             let scatter_coeff = beta_s_r0 * rho_g * phase_r + b_s_aero * phase_m;
             in_scatter_accum += solar_spectral_irradiance * attenuation * scatter_coeff * ds;

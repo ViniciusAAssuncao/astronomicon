@@ -1,19 +1,14 @@
 use crate::error::AppResult;
-use astronomicon_core::domain::{ Star, StarKind };
+use astronomicon_core::domain::{Star, StarKind};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::black_hole::{
-    dimensionless_spin_from_rotation_period,
-    eddington_luminosity,
-    event_horizon_radius,
-    hawking_luminosity,
-    hawking_temperature,
-    isco_radii,
-    photon_sphere_radii,
+    dimensionless_spin_from_rotation_period, eddington_luminosity, event_horizon_radius,
+    hawking_luminosity, hawking_temperature, isco_radii, photon_sphere_radii,
 };
-use astronomicon_core::units::{ Length, Luminosity, Temperature };
-use astronomicon_db::repositories::star_repository;
+use astronomicon_core::units::{Length, Luminosity, Temperature};
 use astronomicon_db::SqlitePool;
-use serde::{ Deserialize, Serialize };
+use astronomicon_db::repositories::star_repository;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -31,10 +26,10 @@ pub struct BlackHoleDiagnostic {
 
 pub async fn resolve_black_hole_diagnostics(
     pool: &SqlitePool,
-    star_id: Uuid
+    star_id: Uuid,
 ) -> AppResult<BlackHoleDiagnostic> {
-    let row = star_repository
-        ::get_by_id(pool, &star_id).await?
+    let row = star_repository::get_by_id(pool, &star_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "star_id".to_string(),
             reason: format!("star '{}' not found", star_id),
@@ -42,12 +37,11 @@ pub async fn resolve_black_hole_diagnostics(
     let star = Star::try_from(row)?;
 
     if star.kind() != StarKind::BlackHole {
-        return Err(
-            (DomainError::InvalidInvariant {
-                field: "kind".to_string(),
-                reason: format!("star '{}' is not a black hole", star_id),
-            }).into()
-        );
+        return Err((DomainError::InvalidInvariant {
+            field: "kind".to_string(),
+            reason: format!("star '{}' is not a black hole", star_id),
+        })
+        .into());
     }
 
     let spin = star

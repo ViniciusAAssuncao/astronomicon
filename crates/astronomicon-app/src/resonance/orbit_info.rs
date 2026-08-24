@@ -67,12 +67,12 @@ impl SystemHierarchyContext {
                 period,
             })
         } else if let Some(star) = self.star_map.get(body_id) {
-            let elements = star
-                .orbital_elements()
-                .ok_or_else(|| DomainError::InvalidInvariant {
-                    field: "orbital_elements".to_string(),
-                    reason: format!("star '{}' has no orbital elements", body_id),
-                })?;
+            let elements =
+                star.orbital_elements()
+                    .ok_or_else(|| DomainError::InvalidInvariant {
+                        field: "orbital_elements".to_string(),
+                        reason: format!("star '{}' has no orbital elements", body_id),
+                    })?;
             let parent_mass = calculate_parent_effective_mass(
                 &star.orbital_parent(),
                 &star_ref_map,
@@ -94,15 +94,15 @@ impl SystemHierarchyContext {
                 period,
             })
         } else if let Some(bary) = self.barycenter_map.get(body_id) {
-            let elements = bary
-                .external_orbital_elements()
-                .ok_or_else(|| DomainError::InvalidInvariant {
-                    field: "external_orbital_elements".to_string(),
-                    reason: format!(
-                        "barycenter '{}' has no external orbital elements",
-                        body_id
-                    ),
-                })?;
+            let elements =
+                bary.external_orbital_elements()
+                    .ok_or_else(|| DomainError::InvalidInvariant {
+                        field: "external_orbital_elements".to_string(),
+                        reason: format!(
+                            "barycenter '{}' has no external orbital elements",
+                            body_id
+                        ),
+                    })?;
             let inner_mass = calculate_effective_mass(
                 &BarycenterMember::Barycenter(*body_id),
                 &star_ref_map,

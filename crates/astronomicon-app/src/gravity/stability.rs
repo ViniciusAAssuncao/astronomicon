@@ -9,8 +9,7 @@ use astronomicon_core::math::gravity::{
 use astronomicon_core::math::kepler::orbital_period;
 use astronomicon_core::math::stability::{
     hill_sphere_radius, kozai_constant, kozai_critical_inclination, kozai_max_eccentricity,
-    kozai_oscillation_timescale, mardling_aarseth_critical_ratio,
-    mardling_aarseth_stability_ratio,
+    kozai_oscillation_timescale, mardling_aarseth_critical_ratio, mardling_aarseth_stability_ratio,
 };
 use astronomicon_core::units::{Angle, Duration, Length};
 use astronomicon_db::SqlitePool;
@@ -43,13 +42,12 @@ pub async fn resolve_hill_sphere(
     let (star_map, planet_map, barycenter_map, minor_planet_map) = hierarchy.maps();
 
     if let Some(planet) = hierarchy.planets.iter().find(|p| p.id() == *entity_id) {
-        let elements =
-            planet
-                .orbital_elements()
-                .ok_or_else(|| DomainError::InvalidInvariant {
-                    field: "orbital_elements".to_string(),
-                    reason: format!("planet '{}' has no orbital elements", entity_id),
-                })?;
+        let elements = planet
+            .orbital_elements()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "orbital_elements".to_string(),
+                reason: format!("planet '{}' has no orbital elements", entity_id),
+            })?;
         let parent_mass = calculate_parent_effective_mass(
             &planet.orbital_parent(),
             &star_map,
@@ -83,7 +81,11 @@ pub async fn resolve_hill_sphere(
             star.mass(),
             parent_mass,
         ))
-    } else if let Some(mp) = hierarchy.minor_planets.iter().find(|m| m.id() == *entity_id) {
+    } else if let Some(mp) = hierarchy
+        .minor_planets
+        .iter()
+        .find(|m| m.id() == *entity_id)
+    {
         let elements = mp
             .orbital_elements()
             .ok_or_else(|| DomainError::InvalidInvariant {
@@ -135,15 +137,16 @@ pub async fn resolve_barycenter_stability(
             ),
         })?;
 
-    let ext_elements = barycenter
-        .external_orbital_elements()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "external_orbital_elements".to_string(),
-            reason: format!(
-                "barycenter '{}' has no external orbital elements",
-                barycenter_id
-            ),
-        })?;
+    let ext_elements =
+        barycenter
+            .external_orbital_elements()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "external_orbital_elements".to_string(),
+                reason: format!(
+                    "barycenter '{}' has no external orbital elements",
+                    barycenter_id
+                ),
+            })?;
 
     let inner_mass = calculate_effective_mass(
         &BarycenterMember::Barycenter(*barycenter_id),
@@ -202,15 +205,16 @@ pub async fn resolve_kozai_lidov_diagnostic(
             ),
         })?;
 
-    let ext_elements = barycenter
-        .external_orbital_elements()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "external_orbital_elements".to_string(),
-            reason: format!(
-                "barycenter '{}' has no external orbital elements",
-                barycenter_id
-            ),
-        })?;
+    let ext_elements =
+        barycenter
+            .external_orbital_elements()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "external_orbital_elements".to_string(),
+                reason: format!(
+                    "barycenter '{}' has no external orbital elements",
+                    barycenter_id
+                ),
+            })?;
 
     let inner_elements = barycenter.internal_orbital_elements();
 
@@ -230,26 +234,28 @@ pub async fn resolve_kozai_lidov_diagnostic(
     )?;
 
     let mu_inner = gravitational_parameter(inner_mass);
-    let inner_period = orbital_period(inner_elements.semi_major_axis(), mu_inner).ok_or_else(
-        || DomainError::InvalidInvariant {
-            field: "internal_orbital_elements".to_string(),
-            reason: format!(
-                "invalid internal orbital period for barycenter '{}'",
-                barycenter_id
-            ),
-        },
-    )?;
+    let inner_period =
+        orbital_period(inner_elements.semi_major_axis(), mu_inner).ok_or_else(|| {
+            DomainError::InvalidInvariant {
+                field: "internal_orbital_elements".to_string(),
+                reason: format!(
+                    "invalid internal orbital period for barycenter '{}'",
+                    barycenter_id
+                ),
+            }
+        })?;
 
     let mu_outer = combined_gravitational_parameter(inner_mass, outer_mass);
-    let outer_period = orbital_period(ext_elements.semi_major_axis(), mu_outer).ok_or_else(
-        || DomainError::InvalidInvariant {
-            field: "external_orbital_elements".to_string(),
-            reason: format!(
-                "invalid external orbital period for barycenter '{}'",
-                barycenter_id
-            ),
-        },
-    )?;
+    let outer_period =
+        orbital_period(ext_elements.semi_major_axis(), mu_outer).ok_or_else(|| {
+            DomainError::InvalidInvariant {
+                field: "external_orbital_elements".to_string(),
+                reason: format!(
+                    "invalid external orbital period for barycenter '{}'",
+                    barycenter_id
+                ),
+            }
+        })?;
 
     let mutual_inc = Angle::new(
         (ext_elements.inclination().value() - inner_elements.inclination().value()).abs(),

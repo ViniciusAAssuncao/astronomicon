@@ -12,8 +12,8 @@ use astronomicon_core::math::seismology::{
     tectonic_seismic_energy_rate, tidal_seismic_energy_rate,
 };
 use astronomicon_core::units::{Duration, Length, Luminosity, Speed};
-use astronomicon_db::repositories::{lithosphere_repository, planet_repository};
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::{lithosphere_repository, planet_repository};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -58,8 +58,7 @@ pub async fn resolve_planetary_geology(
     let core_diag = resolve_planetary_core(pool, planet_id, universe_epoch, at_epoch).await?;
     let hydro_diag =
         resolve_hydrosphere_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
-    let tidal_diag =
-        resolve_tidal_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
+    let tidal_diag = resolve_tidal_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
 
     let mu_planet = gravitational_parameter(planet.mass());
     let g = surface_gravity(mu_planet, radius);
@@ -80,8 +79,8 @@ pub async fn resolve_planetary_geology(
         None => (false, None),
     };
 
-    let has_water_weakening = has_surface_liquid
-        || planet.mantle_hydration_fraction().unwrap_or(0.0) > 0.001;
+    let has_water_weakening =
+        has_surface_liquid || planet.mantle_hydration_fraction().unwrap_or(0.0) > 0.001;
 
     let tectonic = resolve_tectonic_setup(
         &planet,

@@ -4,10 +4,10 @@ use crate::hydrosphere::resolve_hydrosphere_diagnostics;
 use crate::mineralogy::differentiation::resolve_planetary_differentiation;
 use astronomicon_core::domain::{Planet, TectonicRegime};
 use astronomicon_core::error::DomainError;
-use astronomicon_core::math::mineralogy::{crustal_petrology, NormativeMineralogy};
+use astronomicon_core::math::mineralogy::{NormativeMineralogy, crustal_petrology};
 use astronomicon_core::units::Duration;
-use astronomicon_db::repositories::planet_repository;
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::planet_repository;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

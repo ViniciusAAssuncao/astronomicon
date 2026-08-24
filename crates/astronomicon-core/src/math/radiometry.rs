@@ -1,4 +1,3 @@
-
 pub use crate::math::black_hole::schwarzschild_radius;
 use crate::units::constants::STEFAN_BOLTZMANN_CONSTANT;
 use crate::units::{

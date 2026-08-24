@@ -59,10 +59,8 @@ pub fn resolve_tectonic_setup(
     let plate_count = tectonic_plate_count(radius, z_lith, regime);
     let plate_velocity = plate_rms_velocity(core_diag.convective_heat_flux, regime);
 
-    let yield_strength = lithosphere_yield_strength(
-        rheology.mean_base_yield_stress(),
-        has_water_weakening,
-    );
+    let yield_strength =
+        lithosphere_yield_strength(rheology.mean_base_yield_stress(), has_water_weakening);
 
     let seismic_eff = seismic_efficiency(yield_strength, rheology.mean_shear_modulus());
 

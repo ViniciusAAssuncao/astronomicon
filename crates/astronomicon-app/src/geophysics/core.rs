@@ -12,8 +12,8 @@ use astronomicon_core::math::tidal::{
     fallback_love_number_k2, fallback_tidal_dissipation_factor_q, tidal_heating_surface_flux,
 };
 use astronomicon_core::units::{Density, Duration, HeatFlux, Length, Mass};
-use astronomicon_db::repositories::planet_repository;
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::planet_repository;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

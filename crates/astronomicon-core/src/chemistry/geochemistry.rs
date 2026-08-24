@@ -404,13 +404,11 @@ pub fn condensation_fraction(
     transition_width: f64,
 ) -> f64 {
     match condensation_temperature_50_of(element_symbol) {
-        Some(tc) => {
-            crate::math::mineralogy::thermal_condensation_efficiency(
-                tc,
-                disk_temperature,
-                transition_width,
-            )
-        }
+        Some(tc) => crate::math::mineralogy::thermal_condensation_efficiency(
+            tc,
+            disk_temperature,
+            transition_width,
+        ),
         None => 0.0,
     }
 }
