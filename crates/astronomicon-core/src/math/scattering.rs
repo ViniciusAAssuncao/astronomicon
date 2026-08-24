@@ -1,4 +1,4 @@
-use crate::math::aerosol::{mie_scattering_coefficient_at_wavelength, refractivity_at_temperature_pressure};
+use crate::math::aerosol::refractivity_at_temperature_pressure;
 use crate::math::atmospheric_scattering::{
     ray_atmosphere_segment,
     sun_path_optical_depth,
@@ -14,7 +14,6 @@ use crate::math::colorimetry::{
 use crate::math::optics::{
     absorption_coefficient,
     henyey_greenstein_phase_function,
-    mie_scattering_coefficient,
     rayleigh_phase_function_with_depolarization,
     rayleigh_scattering_coefficient,
     refracted_sun_direction,
@@ -25,10 +24,9 @@ use crate::units::constants::{
     CIE_WAVELENGTH_MAX_M,
     CIE_WAVELENGTH_MIN_M,
     CIE_WAVELENGTH_STEP_M,
-    OPTICAL_REFERENCE_WAVELENGTH,
 };
-use crate::units::{ Angle, ColorRGB, Length, Temperature, Vector3, Wavelength };
-use serde::{ Deserialize, Serialize };
+use crate::units::{Angle, ColorRGB, Length, Temperature, Vector3, Wavelength};
+use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -46,7 +44,7 @@ impl MultipleScatteringConfig {
         sun_samples: u32,
         atmosphere_top_altitude: Length,
         ground_albedo: f64,
-        multiple_scattering_factor: f64
+        multiple_scattering_factor: f64,
     ) -> Self {
         Self {
             view_samples: view_samples.max(4),
@@ -162,7 +160,7 @@ pub fn isotropic_multiple_scattering_source(
     ground_irradiance: f64,
     ssa: f64,
     optical_depth: f64,
-    multiple_scattering_factor: f64
+    multiple_scattering_factor: f64,
 ) -> f64 {
     let f_dir = direct_irradiance.max(0.0);
     let f_ground = ground_irradiance.max(0.0);
@@ -172,9 +170,8 @@ pub fn isotropic_multiple_scattering_source(
         return 0.0;
     }
 
-    let f_ms =
-        multiple_scattering_transfer_factor(optical_depth) *
-        multiple_scattering_factor.clamp(0.0, 5.0);
+    let f_ms = multiple_scattering_transfer_factor(optical_depth)
+        * multiple_scattering_factor.clamp(0.0, 5.0);
     let j1 = (ssa / (4.0 * PI)) * total_flux;
     let order_2_factor = ssa * f_ms;
     let denom = (1.0 - order_2_factor).max(0.005);
@@ -194,7 +191,7 @@ pub fn multiple_scattering_spectral_radiance(
     solar_spectral_irradiance: f64,
     wavelength: Wavelength,
     atmosphere: &SphericalAtmosphere,
-    config: &MultipleScatteringConfig
+    config: &MultipleScatteringConfig,
 ) -> MultipleScatteringResult {
     if solar_spectral_irradiance <= 0.0 || !solar_spectral_irradiance.is_finite() {
         return MultipleScatteringResult {
@@ -213,7 +210,7 @@ pub fn multiple_scattering_spectral_radiance(
         ray_origin,
         v_dir,
         atmosphere.planet_radius,
-        atmosphere.atmosphere_top_radius
+        atmosphere.atmosphere_top_radius,
     );
 
     let (t_start, t_end, _hits_ground) = match segment {
@@ -245,62 +242,52 @@ pub fn multiple_scattering_spectral_radiance(
         atmosphere.gas_optical_properties.refractivity_stp(),
         atmosphere.gas_optical_properties.king_factor(),
         atmosphere.surface_pressure,
-        atmosphere.surface_temperature
+        atmosphere.surface_temperature,
     );
 
     let beta_a_g0 = absorption_coefficient(
         &atmosphere.gas_optical_properties,
         wavelength,
         atmosphere.surface_pressure,
-        atmosphere.surface_temperature
+        atmosphere.surface_temperature,
     );
 
     let beta_e_r0 = beta_s_r0 + beta_a_g0;
 
-    let ref_wavelength = Wavelength::new(OPTICAL_REFERENCE_WAVELENGTH);
-    let beta_s_m0 = mie_scattering_coefficient(
-        &atmosphere.aerosol_properties,
-        wavelength,
-        ref_wavelength
-    );
+    let k_s_dust = atmosphere.dust_profile.scattering_coefficient_at_wavelength(wavelength);
+    let k_e_dust = atmosphere.dust_profile.extinction_coefficient_at_wavelength(wavelength);
+    let g_dust = atmosphere.dust_profile.asymmetry_factor_g;
 
-    let beta_e_m0 = mie_scattering_coefficient_at_wavelength(
-        atmosphere.aerosol_properties.base_extinction_coefficient(),
-        wavelength,
-        ref_wavelength,
-        atmosphere.aerosol_properties.angstrom_exponent()
-    ).max(beta_s_m0);
+    let k_s_cloud = atmosphere.cloud_profile.scattering_coefficient_at_wavelength(wavelength);
+    let k_e_cloud = atmosphere.cloud_profile.extinction_coefficient_at_wavelength(wavelength);
+    let g_cloud = atmosphere.cloud_profile.asymmetry_factor_g;
+
+    let k_s_volc = atmosphere.volcanic_profile.scattering_coefficient_at_wavelength(wavelength);
+    let k_e_volc = atmosphere.volcanic_profile.extinction_coefficient_at_wavelength(wavelength);
+    let g_volc = atmosphere.volcanic_profile.asymmetry_factor_g;
 
     let cos_theta = v_dir.dot(&s_dir).clamp(-1.0, 1.0);
     let theta = Angle::new(cos_theta.acos());
     let phase_r = rayleigh_phase_function_with_depolarization(
         theta,
-        atmosphere.gas_optical_properties.king_factor()
-    );
-    let phase_m = henyey_greenstein_phase_function(
-        theta,
-        atmosphere.aerosol_properties.asymmetry_factor_g()
+        atmosphere.gas_optical_properties.king_factor(),
     );
 
     let r_p = atmosphere.planet_radius.value();
     let r_top = atmosphere.atmosphere_top_radius.value();
     let h_gas = atmosphere.gas_scale_height.value().max(1.0);
-    let h_aero = atmosphere.aerosol_scale_height.value().max(1.0);
 
     let subsolar_ground_pos = s_dir * r_p;
     let ground_sun_depth = sun_path_optical_depth(
         subsolar_ground_pos,
         s_dir,
-        atmosphere.planet_radius,
-        atmosphere.atmosphere_top_radius,
-        atmosphere.gas_scale_height,
-        atmosphere.aerosol_scale_height,
-        config.sun_samples
+        atmosphere,
+        config.sun_samples,
     );
 
     let ground_incident_irradiance = match ground_sun_depth {
         Some(sd) => {
-            let tau_g = beta_e_r0 * sd.gas_depth + beta_e_m0 * sd.aerosol_depth;
+            let tau_g = sd.total_extinction_optical_depth(wavelength, atmosphere);
             if tau_g > 700.0 {
                 0.0
             } else {
@@ -316,7 +303,9 @@ pub fn multiple_scattering_spectral_radiance(
     let ds = total_path_len / (n_view as f64);
 
     let mut tau_view_gas = 0.0;
-    let mut tau_view_aero = 0.0;
+    let mut tau_view_dust = 0.0;
+    let mut tau_view_cloud = 0.0;
+    let mut tau_view_volc = 0.0;
     let mut in_scatter_ss = 0.0;
     let mut in_scatter_ms = 0.0;
 
@@ -331,19 +320,45 @@ pub fn multiple_scattering_spectral_radiance(
         }
 
         let exp_gas = -alt_i / h_gas;
-        let exp_aero = -alt_i / h_aero;
-
         let rho_g = if exp_gas >= -700.0 { exp_gas.exp() } else { 0.0 };
-        let rho_a = if exp_aero >= -700.0 { exp_aero.exp() } else { 0.0 };
+
+        let alt_len = Length::new(alt_i);
+        let rho_d = atmosphere.dust_profile.density_at_altitude(alt_len).value();
+        let rho_c = atmosphere.cloud_profile.density_at_altitude(alt_len).value();
+        let rho_v = atmosphere.volcanic_profile.density_at_altitude(alt_len).value();
 
         tau_view_gas += rho_g * ds;
-        tau_view_aero += rho_a * ds;
+        tau_view_dust += rho_d * ds;
+        tau_view_cloud += rho_c * ds;
+        tau_view_volc += rho_v * ds;
 
-        let beta_s_loc = beta_s_r0 * rho_g + beta_s_m0 * rho_a;
-        let beta_e_loc = beta_e_r0 * rho_g + beta_e_m0 * rho_a;
+        let b_s_d = rho_d * k_s_dust;
+        let b_s_c = rho_c * k_s_cloud;
+        let b_s_v = rho_v * k_s_volc;
+        let b_s_aero = b_s_d + b_s_c + b_s_v;
+
+        let b_e_d = rho_d * k_e_dust;
+        let b_e_c = rho_c * k_e_cloud;
+        let b_e_v = rho_v * k_e_volc;
+        let b_e_aero = b_e_d + b_e_c + b_e_v;
+
+        let g_eff = if b_s_aero > 0.0 {
+            (b_s_d * g_dust + b_s_c * g_cloud + b_s_v * g_volc) / b_s_aero
+        } else {
+            0.0
+        };
+
+        let phase_m = henyey_greenstein_phase_function(theta, g_eff);
+
+        let beta_s_loc = beta_s_r0 * rho_g + b_s_aero;
+        let beta_e_loc = beta_e_r0 * rho_g + b_e_aero;
         let ssa_loc = single_scattering_albedo(beta_s_loc, beta_e_loc);
 
-        let current_view_tau = beta_e_r0 * tau_view_gas + beta_e_m0 * tau_view_aero;
+        let current_view_tau = beta_e_r0 * tau_view_gas
+            + k_e_dust * tau_view_dust
+            + k_e_cloud * tau_view_cloud
+            + k_e_volc * tau_view_volc;
+
         let view_transmittance = if current_view_tau > 700.0 {
             0.0
         } else {
@@ -353,16 +368,13 @@ pub fn multiple_scattering_spectral_radiance(
         let sun_depth = sun_path_optical_depth(
             pos_i,
             s_dir,
-            atmosphere.planet_radius,
-            atmosphere.atmosphere_top_radius,
-            atmosphere.gas_scale_height,
-            atmosphere.aerosol_scale_height,
-            config.sun_samples
+            atmosphere,
+            config.sun_samples,
         );
 
         let (dir_irradiance_at_pos, sun_transmittance) = match sun_depth {
             Some(sun_tau) => {
-                let tau_sun = beta_e_r0 * sun_tau.gas_depth + beta_e_m0 * sun_tau.aerosol_depth;
+                let tau_sun = sun_tau.total_extinction_optical_depth(wavelength, atmosphere);
                 let trans = if tau_sun > 700.0 { 0.0 } else { (-tau_sun).exp() };
                 (solar_spectral_irradiance * trans, trans)
             }
@@ -370,33 +382,44 @@ pub fn multiple_scattering_spectral_radiance(
         };
 
         if sun_transmittance > 0.0 {
-            let scatter_coeff = beta_s_r0 * rho_g * phase_r + beta_s_m0 * rho_a * phase_m;
-            in_scatter_ss +=
-                solar_spectral_irradiance *
-                sun_transmittance *
-                scatter_coeff *
-                view_transmittance *
-                ds;
+            let scatter_coeff = beta_s_r0 * rho_g * phase_r + b_s_aero * phase_m;
+            in_scatter_ss += solar_spectral_irradiance
+                * sun_transmittance
+                * scatter_coeff
+                * view_transmittance
+                * ds;
         }
 
         let w_ground = ground_solid_angle_factor(Length::new(alt_i), atmosphere.planet_radius);
-        let tau_g_to_z = beta_e_r0 * h_gas * (1.0 - rho_g) + beta_e_m0 * h_aero * (1.0 - rho_a);
+        let tau_g_to_z = beta_e_r0 * h_gas * (1.0 - rho_g)
+            + k_e_dust * atmosphere.dust_profile.integrated_column_between(Length::new(0.0), alt_len)
+            + k_e_cloud * atmosphere.cloud_profile.integrated_column_between(Length::new(0.0), alt_len)
+            + k_e_volc * atmosphere.volcanic_profile.density_at_altitude(alt_len).value() * alt_i.min(atmosphere.volcanic_profile.plume_thickness.value());
+
         let trans_g_to_z = if tau_g_to_z > 700.0 { 0.0 } else { (-tau_g_to_z).exp() };
         let ground_irradiance_at_pos = l_ground * 2.0 * PI * w_ground * trans_g_to_z;
 
-        let tau_top = beta_e_r0 * h_gas * rho_g + beta_e_m0 * h_aero * rho_a;
+        let tau_top = beta_e_r0 * h_gas * rho_g
+            + k_e_dust * atmosphere.dust_profile.integrated_column_between(alt_len, Length::new(r_top - r_p))
+            + k_e_cloud * atmosphere.cloud_profile.integrated_column_between(alt_len, Length::new(r_top - r_p))
+            + k_e_volc * atmosphere.volcanic_profile.density_at_altitude(alt_len).value() * (r_top - r_p - alt_i).max(0.0).min(atmosphere.volcanic_profile.plume_thickness.value());
+
         let j_ms = isotropic_multiple_scattering_source(
             dir_irradiance_at_pos,
             ground_irradiance_at_pos,
             ssa_loc,
             tau_top,
-            config.multiple_scattering_factor
+            config.multiple_scattering_factor,
         );
 
         in_scatter_ms += j_ms * beta_s_loc * view_transmittance * ds;
     }
 
-    let ray_total_tau = beta_e_r0 * tau_view_gas + beta_e_m0 * tau_view_aero;
+    let ray_total_tau = beta_e_r0 * tau_view_gas
+        + k_e_dust * tau_view_dust
+        + k_e_cloud * tau_view_cloud
+        + k_e_volc * tau_view_volc;
+
     let final_transmittance = if ray_total_tau > 700.0 {
         0.0
     } else {
@@ -421,7 +444,7 @@ pub fn multiple_scattering_sky_color_xyz(
     solar_temperature: Temperature,
     solar_angular_radius_rad: f64,
     atmosphere: &SphericalAtmosphere,
-    config: &MultipleScatteringConfig
+    config: &MultipleScatteringConfig,
 ) -> ColorXYZ {
     let t_sun = solar_temperature.value();
     let theta_sun = solar_angular_radius_rad.clamp(0.0, PI / 2.0);
@@ -448,7 +471,7 @@ pub fn multiple_scattering_sky_color_xyz(
                 solar_irradiance,
                 wavelength,
                 atmosphere,
-                config
+                config,
             );
 
             let cmf = cie_color_matching_functions(wavelength);
@@ -469,7 +492,7 @@ pub fn multiple_scattering_sky_color_rgb(
     solar_angular_radius_rad: f64,
     atmosphere: &SphericalAtmosphere,
     exposure: f64,
-    config: &MultipleScatteringConfig
+    config: &MultipleScatteringConfig,
 ) -> ColorRGB {
     let xyz = multiple_scattering_sky_color_xyz(
         ray_origin,
@@ -478,7 +501,7 @@ pub fn multiple_scattering_sky_color_rgb(
         solar_temperature,
         solar_angular_radius_rad,
         atmosphere,
-        config
+        config,
     );
     let linear_rgb = xyz_to_linear_srgb(xyz);
     let exposed = exposure_tone_map(linear_rgb, exposure);
@@ -491,7 +514,7 @@ pub fn multiple_scattering_sky_rgb_fast(
     sun_dir: Vector3,
     solar_irradiance_rgb: ColorRGB,
     atmosphere: &SphericalAtmosphere,
-    config: &MultipleScatteringConfig
+    config: &MultipleScatteringConfig,
 ) -> (ColorRGB, ColorRGB, ColorRGB) {
     let w_r = Wavelength::new(680.0e-9);
     let w_g = Wavelength::new(550.0e-9);
@@ -504,7 +527,7 @@ pub fn multiple_scattering_sky_rgb_fast(
         solar_irradiance_rgb.r(),
         w_r,
         atmosphere,
-        config
+        config,
     );
 
     let res_g = multiple_scattering_spectral_radiance(
@@ -514,7 +537,7 @@ pub fn multiple_scattering_sky_rgb_fast(
         solar_irradiance_rgb.g(),
         w_g,
         atmosphere,
-        config
+        config,
     );
 
     let res_b = multiple_scattering_spectral_radiance(
@@ -524,25 +547,25 @@ pub fn multiple_scattering_sky_rgb_fast(
         solar_irradiance_rgb.b(),
         w_b,
         atmosphere,
-        config
+        config,
     );
 
     let single_scattered = ColorRGB::new(
         res_r.single_scattered_radiance,
         res_g.single_scattered_radiance,
-        res_b.single_scattered_radiance
+        res_b.single_scattered_radiance,
     );
 
     let multiple_scattered = ColorRGB::new(
         res_r.multiple_scattered_radiance,
         res_g.multiple_scattered_radiance,
-        res_b.multiple_scattered_radiance
+        res_b.multiple_scattered_radiance,
     );
 
     let transmittance = ColorRGB::new(
         res_r.transmittance,
         res_g.transmittance,
-        res_b.transmittance
+        res_b.transmittance,
     );
 
     (single_scattered, multiple_scattered, transmittance)
@@ -553,18 +576,41 @@ pub fn multiple_scattering_view_transmittance(
     ray_dir: Vector3,
     wavelength: Wavelength,
     atmosphere: &SphericalAtmosphere,
-    config: &MultipleScatteringConfig
+    config: &MultipleScatteringConfig,
 ) -> f64 {
-    let res = multiple_scattering_spectral_radiance(
+    let v_dir = ray_dir.normalized();
+    let segment = ray_atmosphere_segment(
         ray_origin,
-        ray_dir,
-        Vector3::new(0.0, 1.0, 0.0),
-        1.0,
-        wavelength,
-        atmosphere,
-        config
+        v_dir,
+        atmosphere.planet_radius,
+        atmosphere.atmosphere_top_radius,
     );
-    res.transmittance
+
+    let (t_start, t_end, _hits_ground) = match segment {
+        Some(seg) => seg,
+        None => {
+            return 1.0;
+        }
+    };
+
+    let total_path_len = t_end.value() - t_start.value();
+    if total_path_len <= 0.0 || !total_path_len.is_finite() {
+        return 1.0;
+    }
+
+    let depth = crate::math::atmospheric_scattering::spherical_optical_depth_segment(
+        ray_origin + v_dir * t_start.value(),
+        ray_origin + v_dir * t_end.value(),
+        atmosphere,
+        config.view_samples,
+    );
+
+    let total_tau = depth.total_extinction_optical_depth(wavelength, atmosphere);
+    if total_tau > 700.0 {
+        0.0
+    } else {
+        (-total_tau).exp().clamp(0.0, 1.0)
+    }
 }
 
 pub fn multiple_scattering_stellar_disk_spectral_radiance(
