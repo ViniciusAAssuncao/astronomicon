@@ -2,14 +2,16 @@ use crate::chemistry::molar_mass::{
     mean_mass_attenuation_coefficient, mean_molar_mass, mean_specific_heat_capacity,
 };
 use crate::domain::gas_component::GasComponent;
-use crate::error::{DomainError, DomainResult};
+use crate::domain::validation::{
+    validate_composition, validate_finite, validate_finite_and_non_negative, validate_unit_interval,
+};
+use crate::error::DomainResult;
 use crate::units::constants::{ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT};
 use crate::units::{
     Acceleration, Density, Length, MassAttenuationCoefficient, MolarMass, Pressure, Temperature,
     TemperatureGradient,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -68,64 +70,26 @@ impl AtmosphereBuilder {
     }
 
     pub fn build(self) -> DomainResult<Atmosphere> {
-        if !self.surface_pressure.value().is_finite() || self.surface_pressure.value() < 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "surface_pressure".to_string(),
-                reason: "must be finite and non-negative".to_string(),
-            });
-        }
-
-        if !self.greenhouse_effect.value().is_finite() {
-            return Err(DomainError::InvalidInvariant {
-                field: "greenhouse_effect".to_string(),
-                reason: "must be finite".to_string(),
-            });
-        }
-
-        if !self.lapse_rate.value().is_finite() {
-            return Err(DomainError::InvalidInvariant {
-                field: "lapse_rate".to_string(),
-                reason: "must be finite".to_string(),
-            });
-        }
+        validate_finite_and_non_negative(self.surface_pressure.value(), "surface_pressure")?;
+        validate_finite(self.greenhouse_effect.value(), "greenhouse_effect")?;
+        validate_finite(self.lapse_rate.value(), "lapse_rate")?;
 
         if let Some(sh) = self.surface_humidity {
-            if !sh.is_finite() || !(0.0..=1.0).contains(&sh) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "surface_humidity".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(sh, "surface_humidity")?;
         }
 
         if let Some(cc) = self.cloud_coverage_fraction {
-            if !cc.is_finite() || !(0.0..=1.0).contains(&cc) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "cloud_coverage_fraction".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(cc, "cloud_coverage_fraction")?;
         }
 
-        let mut total_percentage = 0.0;
-        let mut formulas = HashSet::new();
-
-        for comp in &self.composition {
-            total_percentage += comp.percentage();
-            if !formulas.insert(comp.formula()) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "composition".to_string(),
-                    reason: format!("duplicate formula '{}'", comp.formula()),
-                });
-            }
-        }
-
-        if total_percentage > 100.0 + ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE {
-            return Err(DomainError::InvalidInvariant {
-                field: "composition".to_string(),
-                reason: "total percentage exceeds limit".to_string(),
-            });
-        }
+        validate_composition(
+            &self.composition,
+            |c| c.percentage(),
+            |c| c.formula(),
+            "composition",
+            "formula",
+            ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE,
+        )?;
 
         Ok(Atmosphere {
             id: self.id,

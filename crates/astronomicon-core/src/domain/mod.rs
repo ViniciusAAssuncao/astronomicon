@@ -11,6 +11,7 @@ pub mod planet;
 pub mod rheology;
 pub mod star;
 pub mod star_system;
+pub mod validation;
 
 pub use atmosphere::{Atmosphere, AtmosphereBuilder};
 pub use barycenter::{Barycenter, BarycenterMember};
@@ -25,3 +26,4 @@ pub use planet::{Planet, PlanetBuilder, PlanetKind, TectonicRegime};
 pub use rheology::{LithosphereComponent, PlanetRheology};
 pub use star::{Star, StarBuilder, StarKind};
 pub use star_system::StarSystem;
+pub use validation::*;

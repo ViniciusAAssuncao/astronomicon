@@ -1,3 +1,6 @@
+use crate::domain::validation::{
+    validate_finite_and_non_negative, validate_not_empty, validate_positive_finite,
+};
 use crate::error::{DomainError, DomainResult};
 use crate::units::{Density, Pressure, Temperature};
 use serde::{Deserialize, Serialize};
@@ -35,61 +38,14 @@ impl MaterialProperties {
         refractive_index_imag: f64,
     ) -> DomainResult<Self> {
         let name = name.into();
-        if name.trim().is_empty() {
-            return Err(DomainError::InvalidInvariant {
-                field: "name".to_string(),
-                reason: "cannot be empty".to_string(),
-            });
-        }
-
-        if !density.value().is_finite() || density.value() <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "density".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
-
-        if !shear_modulus.value().is_finite() || shear_modulus.value() <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "shear_modulus".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
-
-        if !base_yield_stress.value().is_finite() || base_yield_stress.value() <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "base_yield_stress".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
-
-        if !thermal_conductivity.is_finite() || thermal_conductivity <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "thermal_conductivity".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
-
-        if !specific_heat_capacity.is_finite() || specific_heat_capacity <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "specific_heat_capacity".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
-
-        if !thermal_expansion.is_finite() || thermal_expansion <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "thermal_expansion".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
-
-        if !solidus_temperature.value().is_finite() || solidus_temperature.value() <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "solidus_temperature".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
+        validate_not_empty(&name, "name")?;
+        validate_positive_finite(density.value(), "density")?;
+        validate_positive_finite(shear_modulus.value(), "shear_modulus")?;
+        validate_positive_finite(base_yield_stress.value(), "base_yield_stress")?;
+        validate_positive_finite(thermal_conductivity, "thermal_conductivity")?;
+        validate_positive_finite(specific_heat_capacity, "specific_heat_capacity")?;
+        validate_positive_finite(thermal_expansion, "thermal_expansion")?;
+        validate_positive_finite(solidus_temperature.value(), "solidus_temperature")?;
 
         if !liquidus_temperature.value().is_finite()
             || liquidus_temperature.value() < solidus_temperature.value()
@@ -108,12 +64,7 @@ impl MaterialProperties {
             });
         }
 
-        if !refractive_index_imag.is_finite() || refractive_index_imag < 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "refractive_index_imag".to_string(),
-                reason: "must be finite and non-negative".to_string(),
-            });
-        }
+        validate_finite_and_non_negative(refractive_index_imag, "refractive_index_imag")?;
 
         Ok(Self {
             id,

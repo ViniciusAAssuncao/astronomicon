@@ -1,6 +1,10 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
 use crate::domain::rheology::PlanetRheology;
+use crate::domain::validation::{
+    validate_finite, validate_non_negative_finite, validate_not_empty, validate_positive_finite,
+    validate_unit_interval,
+};
 use crate::error::{DomainError, DomainResult};
 use crate::units::{Angle, Duration, Length, MagneticFluxDensity, Mass};
 use serde::{Deserialize, Serialize};
@@ -209,19 +213,8 @@ impl PlanetBuilder {
     }
 
     pub fn build(self) -> DomainResult<Planet> {
-        if self.name.trim().is_empty() {
-            return Err(DomainError::InvalidInvariant {
-                field: "name".to_string(),
-                reason: "cannot be empty".to_string(),
-            });
-        }
-
-        if !self.mass.value().is_finite() || self.mass.value() <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "mass".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
+        validate_not_empty(&self.name, "name")?;
+        validate_positive_finite(self.mass.value(), "mass")?;
 
         if self.orbital_parent == OrbitalParent::Fixed && self.orbital_elements.is_some() {
             return Err(DomainError::InvalidInvariant {
@@ -238,147 +231,67 @@ impl PlanetBuilder {
         }
 
         if let Some(r) = self.equatorial_radius {
-            if !r.value().is_finite() || r.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "equatorial_radius".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(r.value(), "equatorial_radius")?;
         }
 
         if let Some(r) = self.polar_radius {
-            if !r.value().is_finite() || r.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "polar_radius".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(r.value(), "polar_radius")?;
         }
 
         if let Some(rot) = self.rotation_period {
-            if !rot.value().is_finite() || rot.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "rotation_period".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(rot.value(), "rotation_period")?;
         }
 
         if let Some(ob) = self.obliquity {
-            if !ob.value().is_finite() {
-                return Err(DomainError::InvalidInvariant {
-                    field: "obliquity".to_string(),
-                    reason: "must be finite".to_string(),
-                });
-            }
+            validate_finite(ob.value(), "obliquity")?;
         }
 
         if let Some(geo) = self.geometric_albedo {
-            if !geo.is_finite() || !(0.0..=1.0).contains(&geo) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "geometric_albedo".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(geo, "geometric_albedo")?;
         }
 
         if let Some(bond) = self.bond_albedo {
-            if !bond.is_finite() || !(0.0..=1.0).contains(&bond) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "bond_albedo".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(bond, "bond_albedo")?;
         }
 
         if let Some(ti) = self.thermal_inertia {
-            if !ti.is_finite() || !(0.0..=1.0).contains(&ti) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "thermal_inertia".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(ti, "thermal_inertia")?;
         }
 
         if let Some(sta) = self.solstice_true_anomaly {
-            if !sta.value().is_finite() {
-                return Err(DomainError::InvalidInvariant {
-                    field: "solstice_true_anomaly".to_string(),
-                    reason: "must be finite".to_string(),
-                });
-            }
+            validate_finite(sta.value(), "solstice_true_anomaly")?;
         }
 
         if let Some(j2) = self.oblateness_j2 {
-            if !j2.is_finite() {
-                return Err(DomainError::InvalidInvariant {
-                    field: "oblateness_j2".to_string(),
-                    reason: "must be finite".to_string(),
-                });
-            }
+            validate_finite(j2, "oblateness_j2")?;
         }
 
         if let Some(cmf) = self.core_mass_fraction {
-            if !cmf.is_finite() || !(0.0..=1.0).contains(&cmf) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "core_mass_fraction".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(cmf, "core_mass_fraction")?;
         }
 
         if let Some(rhr) = self.radioactive_heating_rate {
-            if !rhr.is_finite() || rhr < 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "radioactive_heating_rate".to_string(),
-                    reason: "must be non-negative and finite".to_string(),
-                });
-            }
+            validate_non_negative_finite(rhr, "radioactive_heating_rate")?;
         }
 
         if let Some(b) = self.magnetic_field_locked {
-            if !b.value().is_finite() || b.value() < 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "magnetic_field_locked".to_string(),
-                    reason: "must be non-negative and finite".to_string(),
-                });
-            }
+            validate_non_negative_finite(b.value(), "magnetic_field_locked")?;
         }
 
         if let Some(k2) = self.love_number_k2 {
-            if !k2.is_finite() || k2 <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "love_number_k2".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(k2, "love_number_k2")?;
         }
 
         if let Some(q) = self.tidal_dissipation_factor_q {
-            if !q.is_finite() || q <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "tidal_dissipation_factor_q".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(q, "tidal_dissipation_factor_q")?;
         }
 
         if let Some(hf) = self.mantle_hydration_fraction {
-            if !hf.is_finite() || !(0.0..=1.0).contains(&hf) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "mantle_hydration_fraction".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(hf, "mantle_hydration_fraction")?;
         }
 
         if let Some(daf) = self.dust_availability_factor {
-            if !daf.is_finite() || !(0.0..=1.0).contains(&daf) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "dust_availability_factor".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(daf, "dust_availability_factor")?;
         }
 
         let solstice_true_anomaly = self

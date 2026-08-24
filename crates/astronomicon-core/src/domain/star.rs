@@ -1,5 +1,6 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
+use crate::domain::validation::{validate_finite, validate_not_empty, validate_positive_finite};
 use crate::error::{DomainError, DomainResult};
 use crate::math::black_hole::{dimensionless_spin_from_rotation_period, event_horizon_radius};
 use crate::units::{Angle, Duration, Length, Mass, Temperature};
@@ -105,74 +106,33 @@ impl StarBuilder {
     }
 
     pub fn build(self) -> DomainResult<Star> {
-        if self.name.trim().is_empty() {
-            return Err(DomainError::InvalidInvariant {
-                field: "name".to_string(),
-                reason: "cannot be empty".to_string(),
-            });
-        }
-
-        if !self.mass.value().is_finite() || self.mass.value() <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "mass".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
+        validate_not_empty(&self.name, "name")?;
+        validate_positive_finite(self.mass.value(), "mass")?;
 
         if self.kind != StarKind::BlackHole {
             if let Some(r) = self.radius {
-                if !r.value().is_finite() || r.value() <= 0.0 {
-                    return Err(DomainError::InvalidInvariant {
-                        field: "radius".to_string(),
-                        reason: "must be positive and finite".to_string(),
-                    });
-                }
+                validate_positive_finite(r.value(), "radius")?;
             }
         }
 
         if let Some(t) = self.effective_temperature {
-            if !t.value().is_finite() || t.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "effective_temperature".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(t.value(), "effective_temperature")?;
         }
 
         if let Some(rot) = self.rotation_period {
-            if !rot.value().is_finite() || rot.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "rotation_period".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(rot.value(), "rotation_period")?;
         }
 
         if let Some(ob) = self.obliquity {
-            if !ob.value().is_finite() {
-                return Err(DomainError::InvalidInvariant {
-                    field: "obliquity".to_string(),
-                    reason: "must be finite".to_string(),
-                });
-            }
+            validate_finite(ob.value(), "obliquity")?;
         }
 
         if let Some(j2) = self.oblateness_j2 {
-            if !j2.is_finite() {
-                return Err(DomainError::InvalidInvariant {
-                    field: "oblateness_j2".to_string(),
-                    reason: "must be finite".to_string(),
-                });
-            }
+            validate_finite(j2, "oblateness_j2")?;
         }
 
         if let Some(met) = self.metallicity {
-            if !met.is_finite() {
-                return Err(DomainError::InvalidInvariant {
-                    field: "metallicity".to_string(),
-                    reason: "must be finite".to_string(),
-                });
-            }
+            validate_finite(met, "metallicity")?;
         }
 
         if self.orbital_parent == OrbitalParent::Fixed && self.orbital_elements.is_some() {

@@ -1,5 +1,6 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
+use crate::domain::validation::validate_not_empty;
 use crate::error::{DomainError, DomainResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -42,12 +43,7 @@ impl Barycenter {
         orbital_parent: OrbitalParent,
         external_orbital_elements: Option<OrbitalElements>,
     ) -> DomainResult<Self> {
-        if name.trim().is_empty() {
-            return Err(DomainError::InvalidInvariant {
-                field: "name".to_string(),
-                reason: "cannot be empty".to_string(),
-            });
-        }
+        validate_not_empty(&name, "name")?;
 
         if member_primary == member_secondary || member_primary.id() == member_secondary.id() {
             return Err(DomainError::InvalidInvariant {

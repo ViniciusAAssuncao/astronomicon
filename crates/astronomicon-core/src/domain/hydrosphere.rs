@@ -1,6 +1,9 @@
-use crate::chemistry::molecular_formula::parse;
 use crate::chemistry::solvent::{SolventProperties, mean_solvent_properties};
-use crate::error::{DomainError, DomainResult};
+use crate::domain::validation::{
+    validate_composition, validate_finite_and_non_negative, validate_formula_component,
+    validate_unit_interval,
+};
+use crate::error::DomainResult;
 use crate::math::hydrosphere::{
     HydrosphereStructure, analyze_hydrosphere_structure, equilibrium_ice_thickness,
     hydrosphere_mass, spherical_shell_volume,
@@ -14,7 +17,6 @@ use crate::units::constants::{
 };
 use crate::units::{HeatFlux, Length, Mass, Pressure, Temperature};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -25,14 +27,7 @@ pub struct HydrosphereComponent {
 
 impl HydrosphereComponent {
     pub fn new(formula: String, percentage: f64) -> DomainResult<Self> {
-        if !percentage.is_finite() || !(0.0..=100.0).contains(&percentage) {
-            return Err(DomainError::InvalidInvariant {
-                field: "percentage".to_string(),
-                reason: "must be between 0.0 and 100.0".to_string(),
-            });
-        }
-
-        parse(&formula)?;
+        validate_formula_component(&formula, percentage)?;
 
         Ok(Self {
             formula,
@@ -68,50 +63,20 @@ impl Hydrosphere {
         salinity_or_solute_mass_fraction: f64,
         composition: Vec<HydrosphereComponent>,
     ) -> DomainResult<Self> {
-        if !average_depth.value().is_finite() || average_depth.value() < 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "average_depth".to_string(),
-                reason: "must be finite and non-negative".to_string(),
-            });
-        }
-
-        if !surface_coverage_fraction.is_finite()
-            || !(0.0..=1.0).contains(&surface_coverage_fraction)
-        {
-            return Err(DomainError::InvalidInvariant {
-                field: "surface_coverage_fraction".to_string(),
-                reason: "must be between 0.0 and 1.0".to_string(),
-            });
-        }
-
-        if !salinity_or_solute_mass_fraction.is_finite()
-            || !(0.0..=1.0).contains(&salinity_or_solute_mass_fraction)
-        {
-            return Err(DomainError::InvalidInvariant {
-                field: "salinity_or_solute_mass_fraction".to_string(),
-                reason: "must be between 0.0 and 1.0".to_string(),
-            });
-        }
-
-        let mut total_percentage = 0.0;
-        let mut formulas = HashSet::new();
-
-        for comp in &composition {
-            total_percentage += comp.percentage();
-            if !formulas.insert(comp.formula()) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "composition".to_string(),
-                    reason: format!("duplicate formula '{}'", comp.formula()),
-                });
-            }
-        }
-
-        if total_percentage > 100.0 + ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE {
-            return Err(DomainError::InvalidInvariant {
-                field: "composition".to_string(),
-                reason: "total percentage exceeds limit".to_string(),
-            });
-        }
+        validate_finite_and_non_negative(average_depth.value(), "average_depth")?;
+        validate_unit_interval(surface_coverage_fraction, "surface_coverage_fraction")?;
+        validate_unit_interval(
+            salinity_or_solute_mass_fraction,
+            "salinity_or_solute_mass_fraction",
+        )?;
+        validate_composition(
+            &composition,
+            |c| c.percentage(),
+            |c| c.formula(),
+            "composition",
+            "formula",
+            ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE,
+        )?;
 
         Ok(Self {
             id,

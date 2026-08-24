@@ -1,10 +1,10 @@
 use crate::domain::material::MaterialProperties;
 use crate::domain::planet::PlanetKind;
+use crate::domain::validation::{validate_composition, validate_percentage};
 use crate::error::{DomainError, DomainResult};
 use crate::units::constants::ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE;
 use crate::units::{Density, Pressure, Temperature};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -15,12 +15,7 @@ pub struct LithosphereComponent {
 
 impl LithosphereComponent {
     pub fn new(material: MaterialProperties, percentage: f64) -> DomainResult<Self> {
-        if !percentage.is_finite() || !(0.0..=100.0).contains(&percentage) {
-            return Err(DomainError::InvalidInvariant {
-                field: "percentage".to_string(),
-                reason: "must be between 0.0 and 100.0".to_string(),
-            });
-        }
+        validate_percentage(percentage, "percentage")?;
 
         Ok(Self {
             material,
@@ -99,26 +94,16 @@ impl PlanetRheology {
             });
         }
 
-        let mut total_percentage = 0.0;
-        let mut material_ids: HashSet<Uuid> = HashSet::new();
+        validate_composition(
+            &components,
+            |c| c.percentage(),
+            |c| c.material().id(),
+            "components",
+            "material id",
+            ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE,
+        )?;
 
-        for comp in &components {
-            total_percentage += comp.percentage();
-            if !material_ids.insert(comp.material().id()) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "components".to_string(),
-                    reason: format!("duplicate material id '{}'", comp.material().id()),
-                });
-            }
-        }
-
-        if total_percentage > 100.0 + ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE {
-            return Err(DomainError::InvalidInvariant {
-                field: "components".to_string(),
-                reason: "total percentage exceeds limit".to_string(),
-            });
-        }
-
+        let total_percentage: f64 = components.iter().map(|c| c.percentage()).sum();
         if total_percentage <= 0.0 {
             return Err(DomainError::InvalidInvariant {
                 field: "components".to_string(),
