@@ -1,4 +1,6 @@
-use crate::domain::validation::{validate_finite, validate_half_open_unit_interval, validate_positive_finite};
+use crate::domain::validation::{
+    validate_finite, validate_half_open_unit_interval, validate_positive_finite,
+};
 use crate::error::DomainResult;
 use crate::units::{Angle, Length};
 use serde::{Deserialize, Serialize};

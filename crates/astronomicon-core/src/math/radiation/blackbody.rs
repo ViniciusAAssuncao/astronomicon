@@ -56,9 +56,5 @@ pub fn cmb_energy_density(temperature: Temperature) -> f64 {
     }
 
     let u = (4.0 * STEFAN_BOLTZMANN_CONSTANT / SPEED_OF_LIGHT) * t.powi(4);
-    if !u.is_finite() || u < 0.0 {
-        0.0
-    } else {
-        u
-    }
+    if !u.is_finite() || u < 0.0 { 0.0 } else { u }
 }

@@ -1,5 +1,5 @@
 use crate::chemistry::abundance::ElementalAbundance;
-use crate::chemistry::geochemistry::{goldschmidt_class_of, GoldschmidtClass};
+use crate::chemistry::geochemistry::{GoldschmidtClass, goldschmidt_class_of};
 
 pub fn metal_silicate_partition_coefficient(symbol: &str) -> f64 {
     match symbol {

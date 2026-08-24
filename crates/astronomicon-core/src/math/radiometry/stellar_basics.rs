@@ -1,15 +1,7 @@
 use crate::units::constants::STEFAN_BOLTZMANN_CONSTANT;
 use crate::units::{
-    Angle,
-    Density,
-    GravitationalParameter,
-    Irradiance,
-    Length,
-    Luminosity,
-    Mass,
-    SolidAngle,
-    Speed,
-    Temperature,
+    Angle, Density, GravitationalParameter, Irradiance, Length, Luminosity, Mass, SolidAngle,
+    Speed, Temperature,
 };
 use std::f64::consts::PI;
 
@@ -52,7 +44,7 @@ pub fn equilibrium_temperature(
     star_temperature: Temperature,
     star_radius: Length,
     orbital_distance: Length,
-    bond_albedo: f64
+    bond_albedo: f64,
 ) -> Temperature {
     let luminosity = stellar_luminosity(star_radius, star_temperature);
     let irradiance = orbital_irradiance(luminosity, orbital_distance);

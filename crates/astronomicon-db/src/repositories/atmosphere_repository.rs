@@ -5,10 +5,7 @@ use astronomicon_core::domain::{Atmosphere, GasComponent};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-pub async fn get_by_planet_id(
-    pool: &SqlitePool,
-    planet_id: &Uuid,
-) -> DbResult<Option<Atmosphere>> {
+pub async fn get_by_planet_id(pool: &SqlitePool, planet_id: &Uuid) -> DbResult<Option<Atmosphere>> {
     let base_row = fetch_optional_by_param::<AtmosphereRow, _>(
         pool,
         "SELECT id, planet_id, pressure_pa, greenhouse_effect_k, lapse_rate_k_per_m, \

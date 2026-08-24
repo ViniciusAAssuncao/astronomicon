@@ -1,4 +1,4 @@
-use crate::chemistry::abundance::{element_mass_fraction, ElementalAbundance};
+use crate::chemistry::abundance::{ElementalAbundance, element_mass_fraction};
 use crate::chemistry::periodic_table::atomic_weight;
 use serde::{Deserialize, Serialize};
 

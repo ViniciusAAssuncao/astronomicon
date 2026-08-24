@@ -1,6 +1,6 @@
 use crate::chemistry::optics::refractivity_at_temperature_pressure;
 use crate::math::atmospheric_scattering::{
-    ray_atmosphere_segment, sun_path_optical_depth, SphericalAtmosphere,
+    SphericalAtmosphere, ray_atmosphere_segment, sun_path_optical_depth,
 };
 use crate::math::optics::{
     absorption_coefficient, henyey_greenstein_phase_function,

@@ -1,7 +1,7 @@
 use crate::chemistry::abundance::ElementalAbundance;
-use crate::chemistry::geochemistry::{goldschmidt_class_of, GoldschmidtClass};
+use crate::chemistry::geochemistry::{GoldschmidtClass, goldschmidt_class_of};
 use crate::domain::TectonicRegime;
-use crate::math::mineralogy::petrology::{normative_cipw_mineralogy, NormativeMineralogy};
+use crate::math::mineralogy::petrology::{NormativeMineralogy, normative_cipw_mineralogy};
 use crate::units::{Duration, HeatFlux};
 
 pub fn incompatible_partition_coefficient(symbol: &str) -> f64 {

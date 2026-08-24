@@ -1,6 +1,6 @@
 use crate::math::atmospheric_scattering::{
-    color_xyz_to_exposed_srgb, integrate_spectrum_to_xyz, sample_3channel_rgb_fast,
-    SphericalAtmosphere,
+    SphericalAtmosphere, color_xyz_to_exposed_srgb, integrate_spectrum_to_xyz,
+    sample_3channel_rgb_fast,
 };
 use crate::math::colorimetry::ColorXYZ;
 use crate::math::scattering::config::MultipleScatteringConfig;
@@ -68,13 +68,7 @@ pub fn multiple_scattering_sky_rgb_fast(
 ) -> (ColorRGB, ColorRGB, ColorRGB) {
     sample_3channel_rgb_fast(solar_irradiance_rgb, |w, irr| {
         let res = multiple_scattering_spectral_radiance(
-            ray_origin,
-            ray_dir,
-            sun_dir,
-            irr,
-            w,
-            atmosphere,
-            config,
+            ray_origin, ray_dir, sun_dir, irr, w, atmosphere, config,
         );
         (
             res.single_scattered_radiance,

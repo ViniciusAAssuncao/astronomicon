@@ -1,7 +1,5 @@
 use crate::chemistry::optics::GasOpticalProperties;
-use crate::units::constants::{
-    BOLTZMANN_CONSTANT, STANDARD_ATMOSPHERE_PRESSURE, STP_TEMPERATURE,
-};
+use crate::units::constants::{BOLTZMANN_CONSTANT, STANDARD_ATMOSPHERE_PRESSURE, STP_TEMPERATURE};
 use crate::units::{Pressure, Temperature, Wavelength};
 use std::f64::consts::PI;
 
@@ -51,11 +49,7 @@ pub fn molecular_number_density(pressure: Pressure, temperature: Temperature) ->
     }
 
     let n = p / (BOLTZMANN_CONSTANT * t);
-    if !n.is_finite() || n <= 0.0 {
-        0.0
-    } else {
-        n
-    }
+    if !n.is_finite() || n <= 0.0 { 0.0 } else { n }
 }
 
 pub fn rayleigh_scattering_coefficient(

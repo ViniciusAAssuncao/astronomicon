@@ -1,4 +1,3 @@
-
 use crate::units::{Acceleration, MassAttenuationCoefficient, Pressure};
 
 pub fn atmospheric_mass_column(surface_pressure: Pressure, gravity: Acceleration) -> f64 {

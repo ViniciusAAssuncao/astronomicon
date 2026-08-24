@@ -1,7 +1,5 @@
 use crate::units::constants::GALACTIC_COSMIC_RAY_BACKGROUND_DOSE;
-use crate::units::{
-    Angle, Energy, Length, MagneticDipoleMoment, MagneticRigidity, RadiationDose,
-};
+use crate::units::{Angle, Energy, Length, MagneticDipoleMoment, MagneticRigidity, RadiationDose};
 
 pub fn galactic_cosmic_ray_background() -> RadiationDose {
     RadiationDose::new(GALACTIC_COSMIC_RAY_BACKGROUND_DOSE)

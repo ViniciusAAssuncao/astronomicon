@@ -1,4 +1,3 @@
-
 use crate::units::{Length, Vector3};
 
 pub fn ray_sphere_intersections(

@@ -5,8 +5,8 @@ use crate::math::atmospheric_scattering::single_scattering::{
     single_scattering_spectral_radiance, stellar_disk_integrated_single_scattering,
 };
 use crate::math::colorimetry::{
-    cie_color_matching_functions, exposure_tone_map, linear_to_srgb_gamma, xyz_to_linear_srgb,
-    ColorXYZ,
+    ColorXYZ, cie_color_matching_functions, exposure_tone_map, linear_to_srgb_gamma,
+    xyz_to_linear_srgb,
 };
 use crate::math::radiation::planck_spectral_radiance;
 use crate::units::constants::{CIE_WAVELENGTH_MAX_M, CIE_WAVELENGTH_MIN_M, CIE_WAVELENGTH_STEP_M};
@@ -155,13 +155,7 @@ pub fn spherical_sky_rgb_fast(
 ) -> (ColorRGB, ColorRGB) {
     sample_2channel_rgb_fast(solar_irradiance_rgb, |w, irr| {
         let res = single_scattering_spectral_radiance(
-            ray_origin,
-            ray_dir,
-            sun_dir,
-            irr,
-            w,
-            atmosphere,
-            config,
+            ray_origin, ray_dir, sun_dir, irr, w, atmosphere, config,
         );
         (res.in_scattered_radiance, res.transmittance)
     })

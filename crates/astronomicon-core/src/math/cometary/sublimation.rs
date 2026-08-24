@@ -69,11 +69,7 @@ pub fn sublimation_mass_flux(volatile: CometaryVolatile, temperature: Temperatur
     let factor = (mu / (2.0 * PI * UNIVERSAL_GAS_CONSTANT * t)).sqrt();
     let z = p_vap * factor;
 
-    if !z.is_finite() || z <= 0.0 {
-        0.0
-    } else {
-        z
-    }
+    if !z.is_finite() || z <= 0.0 { 0.0 } else { z }
 }
 
 pub fn sublimation_equilibrium(
