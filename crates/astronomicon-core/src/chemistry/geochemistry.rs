@@ -397,18 +397,3 @@ pub fn goldschmidt_class_of(symbol: &str) -> Option<GoldschmidtClass> {
 pub fn condensation_temperature_50_of(symbol: &str) -> Option<Temperature> {
     element_geochemistry(symbol).map(|e| e.condensation_temperature_50())
 }
-
-pub fn condensation_fraction(
-    element_symbol: &str,
-    disk_temperature: Temperature,
-    transition_width: f64,
-) -> f64 {
-    match condensation_temperature_50_of(element_symbol) {
-        Some(tc) => crate::math::mineralogy::thermal_condensation_efficiency(
-            tc,
-            disk_temperature,
-            transition_width,
-        ),
-        None => 0.0,
-    }
-}

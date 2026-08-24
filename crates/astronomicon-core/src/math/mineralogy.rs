@@ -1,7 +1,6 @@
 use crate::chemistry::abundance::{ElementalAbundance, element_mass_fraction};
-use crate::chemistry::geochemistry::{
-    GoldschmidtClass, condensation_fraction, goldschmidt_class_of,
-};
+use crate::chemistry::condensation::{condensation_fraction, thermal_condensation_efficiency};
+use crate::chemistry::geochemistry::{GoldschmidtClass, goldschmidt_class_of};
 use crate::chemistry::periodic_table::atomic_weight;
 use crate::domain::{PlanetKind, TectonicRegime};
 use crate::units::constants::STEFAN_BOLTZMANN_CONSTANT;
@@ -543,41 +542,6 @@ pub fn disk_temperature_at_orbit(
     orbital_distance: Length,
 ) -> Temperature {
     protoplanetary_disk_temperature(star_luminosity, orbital_distance, 0.5)
-}
-
-pub fn thermal_condensation_efficiency(
-    condensation_temperature: Temperature,
-    local_temperature: Temperature,
-    transition_width: f64,
-) -> f64 {
-    let tc = condensation_temperature.value();
-    let td = local_temperature.value();
-
-    if !tc.is_finite() || !td.is_finite() || tc <= 0.0 {
-        return 0.0;
-    }
-
-    if td <= 0.0 {
-        return 1.0;
-    }
-
-    let width = if transition_width.is_finite() && transition_width > 0.0 {
-        transition_width
-    } else {
-        50.0
-    };
-
-    let scale = width * 0.25;
-    let arg = (td - tc) / scale;
-
-    if arg >= 50.0 {
-        0.0
-    } else if arg <= -50.0 {
-        1.0
-    } else {
-        let val = 1.0 / (1.0 + arg.exp());
-        val.clamp(0.0, 1.0)
-    }
 }
 
 pub fn condensation_fraction_with_tc(
