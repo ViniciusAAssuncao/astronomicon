@@ -6,8 +6,8 @@ use astronomicon_core::math::atmosphere::ideal_gas_density;
 use astronomicon_core::math::climate::temperature_at_altitude;
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::thermodynamics::{
-    cloud_top_altitude, dew_point_temperature, lifting_condensation_level,
-    moist_adiabatic_lapse_rate,
+    cloud_top_altitude, dew_point_temperature, grey_atmosphere_skin_temperature,
+    lifting_condensation_level, moist_adiabatic_lapse_rate, tropopause_altitude,
 };
 use astronomicon_core::units::{
     Density, Duration, Length, MolarMass, Pressure, Temperature, TemperatureGradient,
@@ -167,14 +167,19 @@ pub async fn resolve_atmospheric_stratification(
         solvent_props.enthalpy_of_vaporization,
     );
 
+    let t_skin = grey_atmosphere_skin_temperature(surf_temp);
+    let z_tropo = tropopause_altitude(surf_temp, t_skin, dry_gamma);
+
     let cloud_top = cloud_top_altitude(
         lcl,
         surf_temp,
         surf_press,
         dry_gamma,
-        moist_gamma,
         scale_h,
         g,
+        atm_cp,
+        z_tropo,
+        t_skin,
         &solvent_props,
         solvent_molar_mass,
         atm_molar_mass,
