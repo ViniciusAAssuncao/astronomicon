@@ -1,4 +1,7 @@
-use crate::error::{DomainError, DomainResult};
+use crate::domain::validation::{
+    validate_finite, validate_half_open_unit_interval, validate_positive_finite,
+};
+use crate::error::DomainResult;
 use crate::units::{Angle, Length};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::TAU;
@@ -22,47 +25,15 @@ impl OrbitalElements {
         argument_of_periapsis: Angle,
         mean_anomaly_at_epoch: Angle,
     ) -> DomainResult<Self> {
-        if !semi_major_axis.value().is_finite() || semi_major_axis.value() <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "semi_major_axis".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
-
-        if !eccentricity.is_finite() || eccentricity < 0.0 || eccentricity >= 1.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "eccentricity".to_string(),
-                reason: "must be in range [0, 1)".to_string(),
-            });
-        }
-
-        if !inclination.value().is_finite() {
-            return Err(DomainError::InvalidInvariant {
-                field: "inclination".to_string(),
-                reason: "must be finite".to_string(),
-            });
-        }
-
-        if !longitude_of_ascending_node.value().is_finite() {
-            return Err(DomainError::InvalidInvariant {
-                field: "longitude_of_ascending_node".to_string(),
-                reason: "must be finite".to_string(),
-            });
-        }
-
-        if !argument_of_periapsis.value().is_finite() {
-            return Err(DomainError::InvalidInvariant {
-                field: "argument_of_periapsis".to_string(),
-                reason: "must be finite".to_string(),
-            });
-        }
-
-        if !mean_anomaly_at_epoch.value().is_finite() {
-            return Err(DomainError::InvalidInvariant {
-                field: "mean_anomaly_at_epoch".to_string(),
-                reason: "must be finite".to_string(),
-            });
-        }
+        validate_positive_finite(semi_major_axis.value(), "semi_major_axis")?;
+        validate_half_open_unit_interval(eccentricity, "eccentricity")?;
+        validate_finite(inclination.value(), "inclination")?;
+        validate_finite(
+            longitude_of_ascending_node.value(),
+            "longitude_of_ascending_node",
+        )?;
+        validate_finite(argument_of_periapsis.value(), "argument_of_periapsis")?;
+        validate_finite(mean_anomaly_at_epoch.value(), "mean_anomaly_at_epoch")?;
 
         let normalize = |angle: Angle| Angle::new(angle.value().rem_euclid(TAU));
 
@@ -101,6 +72,9 @@ impl OrbitalElements {
     }
 
     pub fn longitude_of_periapsis(&self) -> Angle {
-        Angle::new((self.longitude_of_ascending_node.value() + self.argument_of_periapsis.value()).rem_euclid(TAU))
+        Angle::new(
+            (self.longitude_of_ascending_node.value() + self.argument_of_periapsis.value())
+                .rem_euclid(TAU),
+        )
     }
 }

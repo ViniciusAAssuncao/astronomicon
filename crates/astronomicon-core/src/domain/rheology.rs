@@ -1,10 +1,10 @@
 use crate::domain::material::MaterialProperties;
 use crate::domain::planet::PlanetKind;
+use crate::domain::validation::{validate_composition, validate_percentage};
 use crate::error::{DomainError, DomainResult};
 use crate::units::constants::ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE;
 use crate::units::{Density, Pressure, Temperature};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -15,12 +15,7 @@ pub struct LithosphereComponent {
 
 impl LithosphereComponent {
     pub fn new(material: MaterialProperties, percentage: f64) -> DomainResult<Self> {
-        if !percentage.is_finite() || !(0.0..=100.0).contains(&percentage) {
-            return Err(DomainError::InvalidInvariant {
-                field: "percentage".to_string(),
-                reason: "must be between 0.0 and 100.0".to_string(),
-            });
-        }
+        validate_percentage(percentage, "percentage")?;
 
         Ok(Self {
             material,
@@ -44,7 +39,7 @@ pub struct PlanetRheology {
 
 impl PlanetRheology {
     pub fn fallback_for_kind(kind: PlanetKind) -> Self {
-        let (name, density, shear, yield_s, k, cp, alpha, t_sol, t_liq) = match kind {
+        let (name, density, shear, yield_s, k, cp, alpha, t_sol, t_liq, n_r, n_i) = match kind {
             PlanetKind::IcyBody | PlanetKind::IceGiant | PlanetKind::DwarfPlanet => (
                 "Water Ice",
                 Density::new(920.0),
@@ -55,6 +50,8 @@ impl PlanetRheology {
                 5.0e-5,
                 Temperature::new(273.15),
                 Temperature::new(273.15),
+                1.31,
+                1.0e-8,
             ),
             _ => (
                 "Silicate Rock",
@@ -66,6 +63,8 @@ impl PlanetRheology {
                 3.0e-5,
                 Temperature::new(1373.15),
                 Temperature::new(1673.15),
+                1.55,
+                0.005,
             ),
         };
         let mat = MaterialProperties::new(
@@ -79,6 +78,8 @@ impl PlanetRheology {
             alpha,
             t_sol,
             t_liq,
+            n_r,
+            n_i,
         )
         .expect("valid fallback material");
         let comp = LithosphereComponent::new(mat, 100.0).expect("valid fallback component");
@@ -93,26 +94,16 @@ impl PlanetRheology {
             });
         }
 
-        let mut total_percentage = 0.0;
-        let mut material_ids: HashSet<Uuid> = HashSet::new();
+        validate_composition(
+            &components,
+            |c| c.percentage(),
+            |c| c.material().id(),
+            "components",
+            "material id",
+            ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE,
+        )?;
 
-        for comp in &components {
-            total_percentage += comp.percentage();
-            if !material_ids.insert(comp.material().id()) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "components".to_string(),
-                    reason: format!("duplicate material id '{}'", comp.material().id()),
-                });
-            }
-        }
-
-        if total_percentage > 100.0 + ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE {
-            return Err(DomainError::InvalidInvariant {
-                field: "components".to_string(),
-                reason: "total percentage exceeds limit".to_string(),
-            });
-        }
-
+        let total_percentage: f64 = components.iter().map(|c| c.percentage()).sum();
         if total_percentage <= 0.0 {
             return Err(DomainError::InvalidInvariant {
                 field: "components".to_string(),
@@ -203,5 +194,21 @@ impl PlanetRheology {
             .map(|c| c.material().liquidus_temperature().value() * (c.percentage() / total))
             .sum();
         Temperature::new(sum)
+    }
+
+    pub fn mean_refractive_index_real(&self) -> f64 {
+        let total = self.total_percentage();
+        self.components
+            .iter()
+            .map(|c| c.material().refractive_index_real() * (c.percentage() / total))
+            .sum()
+    }
+
+    pub fn mean_refractive_index_imag(&self) -> f64 {
+        let total = self.total_percentage();
+        self.components
+            .iter()
+            .map(|c| c.material().refractive_index_imag() * (c.percentage() / total))
+            .sum()
     }
 }

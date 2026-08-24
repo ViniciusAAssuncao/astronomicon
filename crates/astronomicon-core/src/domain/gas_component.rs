@@ -1,5 +1,5 @@
-use crate::chemistry::molecular_formula::parse;
-use crate::error::{DomainError, DomainResult};
+use crate::domain::validation::validate_formula_component;
+use crate::error::DomainResult;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -10,14 +10,7 @@ pub struct GasComponent {
 
 impl GasComponent {
     pub fn new(formula: String, percentage: f64) -> DomainResult<Self> {
-        if !percentage.is_finite() || !(0.0..=100.0).contains(&percentage) {
-            return Err(DomainError::InvalidInvariant {
-                field: "percentage".to_string(),
-                reason: "must be between 0.0 and 100.0".to_string(),
-            });
-        }
-
-        parse(&formula)?;
+        validate_formula_component(&formula, percentage)?;
 
         Ok(Self {
             formula,

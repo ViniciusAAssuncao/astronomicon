@@ -1,4 +1,5 @@
-use crate::error::{DomainError, DomainResult};
+use crate::domain::validation::{validate_finite, validate_not_empty, validate_positive_finite};
+use crate::error::DomainResult;
 use crate::units::{Angle, Length};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -20,38 +21,18 @@ impl StarSystem {
         declination: Option<Angle>,
         distance_from_sun: Option<Length>,
     ) -> DomainResult<Self> {
-        if name.trim().is_empty() {
-            return Err(DomainError::InvalidInvariant {
-                field: "name".to_string(),
-                reason: "cannot be empty".to_string(),
-            });
-        }
+        validate_not_empty(&name, "name")?;
 
         if let Some(dist) = distance_from_sun {
-            if !dist.value().is_finite() || dist.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "distance_from_sun".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(dist.value(), "distance_from_sun")?;
         }
 
         if let Some(ra) = right_ascension {
-            if !ra.value().is_finite() {
-                return Err(DomainError::InvalidInvariant {
-                    field: "right_ascension".to_string(),
-                    reason: "must be finite".to_string(),
-                });
-            }
+            validate_finite(ra.value(), "right_ascension")?;
         }
 
         if let Some(dec) = declination {
-            if !dec.value().is_finite() {
-                return Err(DomainError::InvalidInvariant {
-                    field: "declination".to_string(),
-                    reason: "must be finite".to_string(),
-                });
-            }
+            validate_finite(dec.value(), "declination")?;
         }
 
         Ok(Self {

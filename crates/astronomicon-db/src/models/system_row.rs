@@ -22,7 +22,13 @@ impl TryFrom<StarSystemRow> for StarSystem {
         let declination = row.declination_rad.map(Angle::new);
         let distance_from_sun = row.distance_from_sol_m.map(Length::new);
 
-        let system = StarSystem::new(id, row.name, right_ascension, declination, distance_from_sun)?;
+        let system = StarSystem::new(
+            id,
+            row.name,
+            right_ascension,
+            declination,
+            distance_from_sun,
+        )?;
         Ok(system)
     }
 }

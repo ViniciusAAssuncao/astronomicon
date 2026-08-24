@@ -1,5 +1,6 @@
 use crate::error::DbError;
-use astronomicon_core::domain::{OrbitalElements, OrbitalParent, Planet, PlanetKind};
+use crate::models::orbital_parsing::{parse_orbital_elements, parse_orbital_parent};
+use astronomicon_core::domain::{Planet, PlanetKind};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::units::{Angle, Duration, Length, MagneticFluxDensity, Mass};
 use sqlx::FromRow;
@@ -37,65 +38,7 @@ pub struct PlanetRow {
     pub love_number_k2: Option<f64>,
     pub tidal_dissipation_factor_q: Option<f64>,
     pub mantle_hydration_fraction: Option<f64>,
-}
-
-fn parse_orbital_parent(
-    parent_star_id: Option<String>,
-    parent_planet_id: Option<String>,
-    parent_barycenter_id: Option<String>,
-    parent_minor_planet_id: Option<String>,
-) -> Result<OrbitalParent, DbError> {
-    match (
-        parent_star_id,
-        parent_planet_id,
-        parent_barycenter_id,
-        parent_minor_planet_id,
-    ) {
-        (None, None, None, None) => Ok(OrbitalParent::Fixed),
-        (Some(id), None, None, None) => Ok(OrbitalParent::Star(Uuid::parse_str(&id)?)),
-        (None, Some(id), None, None) => Ok(OrbitalParent::Planet(Uuid::parse_str(&id)?)),
-        (None, None, Some(id), None) => Ok(OrbitalParent::Barycenter(Uuid::parse_str(&id)?)),
-        (None, None, None, Some(id)) => Ok(OrbitalParent::MinorPlanet(Uuid::parse_str(&id)?)),
-        _ => Err(DbError::Domain(DomainError::InvalidInvariant {
-            field: "orbital_parent".to_string(),
-            reason: "multiple orbital parents specified".to_string(),
-        })),
-    }
-}
-
-fn parse_orbital_elements(
-    semi_major_axis_m: Option<f64>,
-    eccentricity: Option<f64>,
-    inclination_rad: Option<f64>,
-    longitude_ascending_node_rad: Option<f64>,
-    argument_periapsis_rad: Option<f64>,
-    mean_anomaly_at_epoch_rad: Option<f64>,
-) -> Result<Option<OrbitalElements>, DbError> {
-    match (
-        semi_major_axis_m,
-        eccentricity,
-        inclination_rad,
-        longitude_ascending_node_rad,
-        argument_periapsis_rad,
-        mean_anomaly_at_epoch_rad,
-    ) {
-        (None, None, None, None, None, None) => Ok(None),
-        (Some(a), Some(e), Some(inc), Some(lan), Some(arg), Some(m0)) => {
-            let elements = OrbitalElements::new(
-                Length::new(a),
-                e,
-                Angle::new(inc),
-                Angle::new(lan),
-                Angle::new(arg),
-                Angle::new(m0),
-            )?;
-            Ok(Some(elements))
-        }
-        _ => Err(DbError::Domain(DomainError::InvalidInvariant {
-            field: "orbital_elements".to_string(),
-            reason: "partial orbital elements provided".to_string(),
-        })),
-    }
+    pub dust_availability_factor: Option<f64>,
 }
 
 impl TryFrom<PlanetRow> for Planet {
@@ -140,6 +83,8 @@ impl TryFrom<PlanetRow> for Planet {
             row.longitude_ascending_node_rad,
             row.argument_periapsis_rad,
             row.mean_anomaly_at_epoch_rad,
+            "orbital_elements",
+            "partial orbital elements provided",
         )?;
 
         let planet = Planet::builder(id, row.name, Mass::new(row.mass_kg), kind, orbital_parent)
@@ -160,6 +105,7 @@ impl TryFrom<PlanetRow> for Planet {
             .with_love_number_k2(row.love_number_k2)
             .with_tidal_dissipation_factor_q(row.tidal_dissipation_factor_q)
             .with_mantle_hydration_fraction(row.mantle_hydration_fraction)
+            .with_dust_availability_factor(row.dust_availability_factor)
             .build()?;
 
         Ok(planet)

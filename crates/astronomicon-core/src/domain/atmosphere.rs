@@ -2,17 +2,107 @@ use crate::chemistry::molar_mass::{
     mean_mass_attenuation_coefficient, mean_molar_mass, mean_specific_heat_capacity,
 };
 use crate::domain::gas_component::GasComponent;
-use crate::error::{DomainError, DomainResult};
-use crate::units::constants::{
-    ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT,
+use crate::domain::validation::{
+    validate_composition, validate_finite, validate_finite_and_non_negative, validate_unit_interval,
 };
+use crate::error::DomainResult;
+use crate::units::constants::{ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT};
 use crate::units::{
     Acceleration, Density, Length, MassAttenuationCoefficient, MolarMass, Pressure, Temperature,
     TemperatureGradient,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct AtmosphereBuilder {
+    id: Uuid,
+    planet_id: Uuid,
+    surface_pressure: Pressure,
+    greenhouse_effect: Temperature,
+    lapse_rate: TemperatureGradient,
+    composition: Vec<GasComponent>,
+    surface_humidity: Option<f64>,
+    cloud_coverage_fraction: Option<f64>,
+}
+
+impl AtmosphereBuilder {
+    pub fn new(
+        id: Uuid,
+        planet_id: Uuid,
+        surface_pressure: Pressure,
+        greenhouse_effect: Temperature,
+        lapse_rate: TemperatureGradient,
+    ) -> Self {
+        Self {
+            id,
+            planet_id,
+            surface_pressure,
+            greenhouse_effect,
+            lapse_rate,
+            composition: Vec::new(),
+            surface_humidity: None,
+            cloud_coverage_fraction: None,
+        }
+    }
+
+    pub fn with_composition(mut self, composition: Vec<GasComponent>) -> Self {
+        self.composition = composition;
+        self
+    }
+
+    pub fn with_gas_component(mut self, component: GasComponent) -> Self {
+        self.composition.push(component);
+        self
+    }
+
+    pub fn with_surface_humidity(mut self, surface_humidity: impl Into<Option<f64>>) -> Self {
+        self.surface_humidity = surface_humidity.into();
+        self
+    }
+
+    pub fn with_cloud_coverage_fraction(
+        mut self,
+        cloud_coverage_fraction: impl Into<Option<f64>>,
+    ) -> Self {
+        self.cloud_coverage_fraction = cloud_coverage_fraction.into();
+        self
+    }
+
+    pub fn build(self) -> DomainResult<Atmosphere> {
+        validate_finite_and_non_negative(self.surface_pressure.value(), "surface_pressure")?;
+        validate_finite(self.greenhouse_effect.value(), "greenhouse_effect")?;
+        validate_finite(self.lapse_rate.value(), "lapse_rate")?;
+
+        if let Some(sh) = self.surface_humidity {
+            validate_unit_interval(sh, "surface_humidity")?;
+        }
+
+        if let Some(cc) = self.cloud_coverage_fraction {
+            validate_unit_interval(cc, "cloud_coverage_fraction")?;
+        }
+
+        validate_composition(
+            &self.composition,
+            |c| c.percentage(),
+            |c| c.formula(),
+            "composition",
+            "formula",
+            ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE,
+        )?;
+
+        Ok(Atmosphere {
+            id: self.id,
+            planet_id: self.planet_id,
+            surface_pressure: self.surface_pressure,
+            greenhouse_effect: self.greenhouse_effect,
+            lapse_rate: self.lapse_rate,
+            composition: self.composition,
+            surface_humidity: self.surface_humidity,
+            cloud_coverage_fraction: self.cloud_coverage_fraction,
+        })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Atmosphere {
@@ -22,9 +112,27 @@ pub struct Atmosphere {
     greenhouse_effect: Temperature,
     lapse_rate: TemperatureGradient,
     composition: Vec<GasComponent>,
+    surface_humidity: Option<f64>,
+    cloud_coverage_fraction: Option<f64>,
 }
 
 impl Atmosphere {
+    pub fn builder(
+        id: Uuid,
+        planet_id: Uuid,
+        surface_pressure: Pressure,
+        greenhouse_effect: Temperature,
+        lapse_rate: TemperatureGradient,
+    ) -> AtmosphereBuilder {
+        AtmosphereBuilder::new(
+            id,
+            planet_id,
+            surface_pressure,
+            greenhouse_effect,
+            lapse_rate,
+        )
+    }
+
     pub fn new(
         id: Uuid,
         planet_id: Uuid,
@@ -32,56 +140,20 @@ impl Atmosphere {
         greenhouse_effect: Temperature,
         lapse_rate: TemperatureGradient,
         composition: Vec<GasComponent>,
+        surface_humidity: Option<f64>,
+        cloud_coverage_fraction: Option<f64>,
     ) -> DomainResult<Self> {
-        if !surface_pressure.value().is_finite() || surface_pressure.value() < 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "surface_pressure".to_string(),
-                reason: "must be finite and non-negative".to_string(),
-            });
-        }
-
-        if !greenhouse_effect.value().is_finite() {
-            return Err(DomainError::InvalidInvariant {
-                field: "greenhouse_effect".to_string(),
-                reason: "must be finite".to_string(),
-            });
-        }
-
-        if !lapse_rate.value().is_finite() {
-            return Err(DomainError::InvalidInvariant {
-                field: "lapse_rate".to_string(),
-                reason: "must be finite".to_string(),
-            });
-        }
-
-        let mut total_percentage = 0.0;
-        let mut formulas = HashSet::new();
-
-        for comp in &composition {
-            total_percentage += comp.percentage();
-            if !formulas.insert(comp.formula()) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "composition".to_string(),
-                    reason: format!("duplicate formula '{}'", comp.formula()),
-                });
-            }
-        }
-
-        if total_percentage > 100.0 + ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE {
-            return Err(DomainError::InvalidInvariant {
-                field: "composition".to_string(),
-                reason: "total percentage exceeds limit".to_string(),
-            });
-        }
-
-        Ok(Self {
+        Self::builder(
             id,
             planet_id,
             surface_pressure,
             greenhouse_effect,
             lapse_rate,
-            composition,
-        })
+        )
+        .with_composition(composition)
+        .with_surface_humidity(surface_humidity)
+        .with_cloud_coverage_fraction(cloud_coverage_fraction)
+        .build()
     }
 
     pub fn id(&self) -> Uuid {
@@ -106,6 +178,14 @@ impl Atmosphere {
 
     pub fn composition(&self) -> &[GasComponent] {
         &self.composition
+    }
+
+    pub fn surface_humidity(&self) -> Option<f64> {
+        self.surface_humidity
+    }
+
+    pub fn cloud_coverage_fraction(&self) -> Option<f64> {
+        self.cloud_coverage_fraction
     }
 
     pub fn mean_molar_mass(&self) -> DomainResult<MolarMass> {
@@ -142,7 +222,9 @@ impl Atmosphere {
     pub fn radiation_transmission(&self, gravity: Acceleration) -> DomainResult<f64> {
         let mu = self.mean_mass_attenuation_coefficient()?;
         let mass_col = self.mass_column(gravity);
-        Ok(crate::math::radiation::atmospheric_transmission(mass_col, mu))
+        Ok(crate::math::radiation::atmospheric_transmission(
+            mass_col, mu,
+        ))
     }
 
     pub fn column_heat_capacity(&self, gravity: Acceleration) -> DomainResult<f64> {

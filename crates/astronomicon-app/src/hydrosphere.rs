@@ -1,16 +1,16 @@
-use crate::climate::find_parent_star;
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
 use crate::geophysics::resolve_planetary_core;
+use crate::hierarchy::find_parent_star;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::radiometry::equilibrium_temperature;
 use astronomicon_core::math::thermodynamics::MatterState;
 use astronomicon_core::units::{Duration, HeatFlux, Length, Mass, Pressure, Temperature};
+use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     atmosphere_repository, hydrosphere_repository, planet_repository,
 };
-use astronomicon_db::SqlitePool;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -58,7 +58,7 @@ pub async fn resolve_hydrosphere_diagnostics(
         None => Pressure::new(0.0),
     };
 
-    let star = find_parent_star(pool, &planet).await?;
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
 
     let star_temp = star
         .effective_temperature()
@@ -67,12 +67,10 @@ pub async fn resolve_hydrosphere_diagnostics(
             reason: "star does not have effective temperature".to_string(),
         })?;
 
-    let star_radius = star
-        .radius()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "radius".to_string(),
-            reason: "star does not have radius".to_string(),
-        })?;
+    let star_radius = star.radius().ok_or_else(|| DomainError::InvalidInvariant {
+        field: "radius".to_string(),
+        reason: "star does not have radius".to_string(),
+    })?;
 
     let system_id = star
         .star_system_id()
@@ -84,21 +82,26 @@ pub async fn resolve_hydrosphere_diagnostics(
     let total_epoch = universe_epoch + at_epoch;
     let positions = resolve_system_positions(pool, system_id, total_epoch).await?;
 
-    let planet_pos = positions
-        .get(&planet.id())
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "planet_id".to_string(),
-            reason: format!("position for planet '{}' could not be resolved", planet.id()),
-        })?;
+    let planet_pos =
+        positions
+            .get(&planet.id())
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "planet_id".to_string(),
+                reason: format!(
+                    "position for planet '{}' could not be resolved",
+                    planet.id()
+                ),
+            })?;
 
-    let star_pos = positions
-        .get(&star.id())
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "star_id".to_string(),
-            reason: format!("position for star '{}' could not be resolved", star.id()),
-        })?;
+    let star_pos =
+        positions
+            .get(&star.id())
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "star_id".to_string(),
+                reason: format!("position for star '{}' could not be resolved", star.id()),
+            })?;
 
     let orbital_distance = (planet_pos - star_pos).magnitude();
     let base_albedo = planet.bond_albedo().unwrap_or(0.3);

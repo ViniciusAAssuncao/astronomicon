@@ -1,3 +1,6 @@
+use crate::chemistry::composition_mean::{
+    composition_weighted_mean_or_zero, normalize_composition_fractions,
+};
 use crate::chemistry::molecular_formula;
 use crate::chemistry::periodic_table::{atomic_number, atomic_weight};
 use crate::error::DomainResult;
@@ -18,19 +21,9 @@ pub fn molar_mass_of(formula: &str) -> DomainResult<MolarMass> {
 }
 
 pub fn mean_molar_mass(composition: &[(String, f64)]) -> DomainResult<MolarMass> {
-    let total_percentage: f64 = composition.iter().map(|(_, p)| p).sum();
-
-    if total_percentage <= 0.0 {
-        return Ok(MolarMass::new(0.0));
-    }
-
-    let mut mean_kg_per_mol = 0.0;
-
-    for (formula, percentage) in composition {
-        let mass = molar_mass_of(formula)?;
-        let fraction = percentage / total_percentage;
-        mean_kg_per_mol += mass.value() * fraction;
-    }
+    let mean_kg_per_mol = composition_weighted_mean_or_zero(composition, |formula| {
+        molar_mass_of(formula).map(|m| m.value())
+    })?;
 
     Ok(MolarMass::new(mean_kg_per_mol))
 }
@@ -66,19 +59,17 @@ pub fn specific_heat_capacity_of(formula: &str) -> DomainResult<f64> {
 }
 
 pub fn mean_specific_heat_capacity(composition: &[(String, f64)]) -> DomainResult<f64> {
-    let total_percentage: f64 = composition.iter().map(|(_, p)| p).sum();
-
-    if total_percentage <= 0.0 {
-        return Ok(0.0);
-    }
+    let fractions = match normalize_composition_fractions(composition) {
+        Some(f) => f,
+        None => return Ok(0.0),
+    };
 
     let mut mean_molar_cp = 0.0;
     let mut mean_molar_mass_val = 0.0;
 
-    for (formula, percentage) in composition {
+    for (formula, fraction) in fractions {
         let molar_cp = molar_heat_capacity_of(formula)?;
         let molar_mass = molar_mass_of(formula)?.value();
-        let fraction = percentage / total_percentage;
 
         mean_molar_cp += molar_cp * fraction;
         mean_molar_mass_val += molar_mass * fraction;
@@ -124,19 +115,9 @@ pub fn mass_attenuation_coefficient_of(formula: &str) -> DomainResult<MassAttenu
 pub fn mean_mass_attenuation_coefficient(
     composition: &[(String, f64)],
 ) -> DomainResult<MassAttenuationCoefficient> {
-    let total_percentage: f64 = composition.iter().map(|(_, p)| p).sum();
-
-    if total_percentage <= 0.0 {
-        return Ok(MassAttenuationCoefficient::new(0.0));
-    }
-
-    let mut mean_val = 0.0;
-
-    for (formula, percentage) in composition {
-        let coeff = mass_attenuation_coefficient_of(formula)?;
-        let fraction = percentage / total_percentage;
-        mean_val += coeff.value() * fraction;
-    }
+    let mean_val = composition_weighted_mean_or_zero(composition, |formula| {
+        mass_attenuation_coefficient_of(formula).map(|c| c.value())
+    })?;
 
     Ok(MassAttenuationCoefficient::new(mean_val))
 }

@@ -1,11 +1,11 @@
-use crate::climate::collect_stars_from_barycenter;
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
-use astronomicon_core::domain::{MinorPlanet, OrbitalParent, Planet, SpectralType, Star};
+use crate::hierarchy::find_parent_star;
+use astronomicon_core::domain::{MinorPlanet, SpectralType};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::cometary::{
-    coma_radius, cometary_gas_production_rate, cometary_tail_structure,
-    sublimation_equilibrium, thermal_gas_expansion_speed, CometaryVolatile,
+    CometaryVolatile, coma_radius, cometary_gas_production_rate, cometary_tail_structure,
+    sublimation_equilibrium, thermal_gas_expansion_speed,
 };
 use astronomicon_core::math::gravity::gravitational_parameter;
 use astronomicon_core::math::minor_planet::{
@@ -19,13 +19,9 @@ use astronomicon_core::math::stellar_wind::{
     reimers_mass_loss_rate, stellar_wind_density, stellar_wind_dynamic_pressure,
     terminal_wind_speed,
 };
-use astronomicon_core::units::{
-    Density, Duration, Irradiance, Length, MassRate,
-};
-use astronomicon_db::repositories::{
-    minor_planet_repository, planet_repository, star_repository,
-};
+use astronomicon_core::units::{Density, Duration, Irradiance, Length, MassRate};
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::minor_planet_repository;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use uuid::Uuid;
@@ -59,78 +55,6 @@ pub struct MinorPlanetDiagnostic {
     pub surface_area_m2: f64,
     pub rubble_pile: RubblePileDiagnostic,
     pub cometary_activity: Option<CometaryActivityDiagnostic>,
-}
-
-pub(crate) async fn find_minor_planet_parent_star(
-    pool: &SqlitePool,
-    minor_planet: &MinorPlanet,
-) -> AppResult<Star> {
-    let mut current_parent = minor_planet.orbital_parent();
-    let mut visited_barycenters = std::collections::HashSet::new();
-
-    loop {
-        match current_parent {
-            OrbitalParent::Star(star_id) => {
-                let row = star_repository::get_by_id(pool, &star_id)
-                    .await?
-                    .ok_or_else(|| DomainError::InvalidInvariant {
-                        field: "parent_star_id".to_string(),
-                        reason: format!("parent star '{}' not found", star_id),
-                    })?;
-                return Ok(Star::try_from(row)?);
-            }
-            OrbitalParent::Planet(planet_id) => {
-                let row = planet_repository::get_by_id(pool, &planet_id)
-                    .await?
-                    .ok_or_else(|| DomainError::InvalidInvariant {
-                        field: "parent_planet_id".to_string(),
-                        reason: format!("parent planet '{}' not found", planet_id),
-                    })?;
-                let parent_planet = Planet::try_from(row)?;
-                current_parent = parent_planet.orbital_parent();
-            }
-            OrbitalParent::MinorPlanet(mp_id) => {
-                let row = minor_planet_repository::get_by_id(pool, &mp_id)
-                    .await?
-                    .ok_or_else(|| DomainError::InvalidInvariant {
-                        field: "parent_minor_planet_id".to_string(),
-                        reason: format!("parent minor planet '{}' not found", mp_id),
-                    })?;
-                let parent_mp = MinorPlanet::try_from(row)?;
-                current_parent = parent_mp.orbital_parent();
-            }
-            OrbitalParent::Barycenter(barycenter_id) => {
-                let stars = collect_stars_from_barycenter(
-                    pool,
-                    &barycenter_id,
-                    &mut visited_barycenters,
-                )
-                .await?;
-                let most_massive = stars
-                    .into_iter()
-                    .max_by(|a, b| {
-                        a.mass()
-                            .partial_cmp(&b.mass())
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                    })
-                    .ok_or_else(|| DomainError::InvalidInvariant {
-                        field: "barycenter_stars".to_string(),
-                        reason: format!(
-                            "no stars found in barycenter '{}' hierarchy",
-                            barycenter_id
-                        ),
-                    })?;
-                return Ok(most_massive);
-            }
-            OrbitalParent::Fixed => {
-                return Err(DomainError::InvalidInvariant {
-                    field: "minor_planet_hierarchy".to_string(),
-                    reason: "minor planet has no parent star in hierarchy".to_string(),
-                }
-                .into());
-            }
-        }
-    }
 }
 
 pub async fn resolve_minor_planet_diagnostics(
@@ -187,7 +111,7 @@ pub async fn resolve_minor_planet_diagnostics(
     let surface_area_m2 = triaxial_ellipsoid_surface_area(axis_a, axis_b, axis_c);
     let equivalent_spherical_radius = equivalent_spherical_radius(axis_a, axis_b, axis_c);
 
-    let cometary_activity = match find_minor_planet_parent_star(pool, &minor_planet).await {
+    let cometary_activity = match find_parent_star(pool, minor_planet.orbital_parent()).await {
         Ok(star) => {
             let star_temp = star.effective_temperature();
             let star_radius = star.radius();
@@ -198,10 +122,9 @@ pub async fn resolve_minor_planet_diagnostics(
                     let total_epoch = universe_epoch + at_epoch;
                     let positions = resolve_system_positions(pool, sys_id, total_epoch).await?;
 
-                    if let (Some(&pos_mp), Some(&pos_star)) = (
-                        positions.get(&minor_planet.id()),
-                        positions.get(&star.id()),
-                    ) {
+                    if let (Some(&pos_mp), Some(&pos_star)) =
+                        (positions.get(&minor_planet.id()), positions.get(&star.id()))
+                    {
                         let orbital_dist = (pos_mp - pos_star).magnitude();
                         let star_lum = stellar_luminosity(r_star, t_star);
                         let top_irradiance = orbital_irradiance(star_lum, orbital_dist);

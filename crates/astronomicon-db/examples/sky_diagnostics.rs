@@ -1,4 +1,5 @@
-use astronomicon_app::{resolve_global_mean_temperature, resolve_sky_diagnostics};
+use astronomicon_app::climate::resolve_global_mean_temperature;
+use astronomicon_app::resolve_sky_diagnostics;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::units::{ColorRGB, Duration, Length};
@@ -8,13 +9,6 @@ use astronomicon_db::repositories::{
 use astronomicon_db::save::initialize_save;
 use uuid::Uuid;
 
-fn format_rgb_hex(color: ColorRGB) -> String {
-    let r = (color.r().clamp(0.0, 1.0) * 255.0).round() as u8;
-    let g = (color.g().clamp(0.0, 1.0) * 255.0).round() as u8;
-    let b = (color.b().clamp(0.0, 1.0) * 255.0).round() as u8;
-    format!("#{:02X}{:02X}{:02X}", r, g, b)
-}
-
 fn format_rgb_255(color: ColorRGB) -> (u8, u8, u8) {
     let r = (color.r().clamp(0.0, 1.0) * 255.0).round() as u8;
     let g = (color.g().clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -22,12 +16,13 @@ fn format_rgb_255(color: ColorRGB) -> (u8, u8, u8) {
     (r, g, b)
 }
 
+fn format_rgb_hex(color: ColorRGB) -> String {
+    let (r, g, b) = format_rgb_255(color);
+    format!("#{:02X}{:02X}{:02X}", r, g, b)
+}
+
 fn transmittance(tau: f64) -> f64 {
-    if tau > 700.0 {
-        0.0
-    } else {
-        (-tau).exp()
-    }
+    if tau > 700.0 { 0.0 } else { (-tau).exp() }
 }
 
 #[tokio::main]
@@ -54,17 +49,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap_or_else(|| Length::new(6371e3));
                 let mu = gravitational_parameter(planet.mass());
                 let g = surface_gravity(mu, radius);
-                let surf_temp = resolve_global_mean_temperature(
-                    &pool,
-                    planet_id,
-                    universe_epoch,
-                    at_epoch,
-                )
-                .await?;
+                let surf_temp =
+                    resolve_global_mean_temperature(&pool, planet_id, universe_epoch, at_epoch)
+                        .await?;
 
-                println!("================================================================================");
-                println!("RELATÓRIO DE ÓPTICA E DIAGNÓSTICO ATMOSFÉRICO: {}", planet.name());
-                println!("================================================================================");
+                println!(
+                    "================================================================================"
+                );
+                println!(
+                    "RELATÓRIO DE ÓPTICA E DIAGNÓSTICO ATMOSFÉRICO: {}",
+                    planet.name()
+                );
+                println!(
+                    "================================================================================"
+                );
                 println!("PROPRIEDADES FÍSICAS:");
                 println!("  Massa: {:.3e} kg", planet.mass().value());
                 if let Some(r_eq) = planet.equatorial_radius() {
@@ -83,10 +81,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 println!("  Efeito Estufa: {:.2} K", atm.greenhouse_effect().value());
                 if let Ok(molar_mass) = atm.mean_molar_mass() {
-                    println!("  Massa Molar Média: {:.3} g/mol", molar_mass.value() * 1000.0);
+                    println!(
+                        "  Massa Molar Média: {:.3} g/mol",
+                        molar_mass.value() * 1000.0
+                    );
                 }
                 if let Ok(scale_h) = atm.scale_height(g, surf_temp) {
-                    println!("  Altura de Escala Atmosférica: {:.2} km", scale_h.value() / 1000.0);
+                    println!(
+                        "  Altura de Escala Atmosférica: {:.2} km",
+                        scale_h.value() / 1000.0
+                    );
                 }
                 if let Ok(density) = atm.density_at_surface(surf_temp) {
                     println!("  Densidade Superficial: {:.4} kg/m³", density.value());
@@ -98,12 +102,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 println!("\nCOEFICIENTES DE ESPALHAMENTO (ao nível da superfície):");
-                println!("  Rayleigh (Vermelho 680nm): {:.3e} m⁻¹", sky.scattering.rayleigh_r);
-                println!("  Rayleigh (Verde 550nm):    {:.3e} m⁻¹", sky.scattering.rayleigh_g);
-                println!("  Rayleigh (Azul 440nm):     {:.3e} m⁻¹", sky.scattering.rayleigh_b);
-                println!("  Mie (Vermelho 680nm):      {:.3e} m⁻¹", sky.scattering.mie_r);
-                println!("  Mie (Verde 550nm):         {:.3e} m⁻¹", sky.scattering.mie_g);
-                println!("  Mie (Azul 440nm):          {:.3e} m⁻¹", sky.scattering.mie_b);
+                println!(
+                    "  Rayleigh (Vermelho 680nm): {:.3e} m⁻¹",
+                    sky.scattering.rayleigh_r
+                );
+                println!(
+                    "  Rayleigh (Verde 550nm):    {:.3e} m⁻¹",
+                    sky.scattering.rayleigh_g
+                );
+                println!(
+                    "  Rayleigh (Azul 440nm):     {:.3e} m⁻¹",
+                    sky.scattering.rayleigh_b
+                );
+                println!(
+                    "  Mie (Vermelho 680nm):      {:.3e} m⁻¹",
+                    sky.scattering.mie_r
+                );
+                println!(
+                    "  Mie (Verde 550nm):         {:.3e} m⁻¹",
+                    sky.scattering.mie_g
+                );
+                println!(
+                    "  Mie (Azul 440nm):          {:.3e} m⁻¹",
+                    sky.scattering.mie_b
+                );
 
                 println!("\nPROFUNDIDADE ÓPTICA VERTICAL E TRANSMITÂNCIA:");
                 println!(
@@ -167,7 +189,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 println!("\nDIAGNÓSTICO EM FORMATO JSON:");
                 println!("{}", serde_json::to_string_pretty(&sky)?);
-                println!("================================================================================\n");
+                println!(
+                    "================================================================================\n"
+                );
             }
         }
     }

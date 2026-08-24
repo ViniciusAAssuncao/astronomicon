@@ -1,5 +1,6 @@
 pub mod atmosphere_repository;
 pub mod barycenter_repository;
+mod fetch;
 pub mod hydrosphere_repository;
 pub mod lithosphere_repository;
 pub mod material_repository;

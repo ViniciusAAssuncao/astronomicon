@@ -2,21 +2,18 @@ use crate::climate::resolve_global_mean_temperature;
 use crate::error::AppResult;
 use crate::geophysics::resolve_planetary_core;
 use crate::hydrosphere::resolve_hydrosphere_diagnostics;
+use crate::tectonics::resolve_tectonic_setup;
 use crate::tidal::resolve_tidal_diagnostics;
 use astronomicon_core::domain::{Planet, PlanetRheology, TectonicRegime};
 use astronomicon_core::error::DomainError;
-use astronomicon_core::math::geology::{
-    brittle_ductile_transition_depth, determine_tectonic_regime, lithosphere_thickness,
-    lithosphere_yield_strength, plate_rms_velocity, tectonic_plate_count,
-};
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::hydrosphere::HydrosphereStructure;
 use astronomicon_core::math::seismology::{
-    seismic_efficiency, tectonic_seismic_energy_rate, tidal_seismic_energy_rate,
+    tectonic_seismic_energy_rate, tidal_seismic_energy_rate,
 };
 use astronomicon_core::units::{Duration, Length, Luminosity, Speed};
-use astronomicon_db::repositories::{lithosphere_repository, planet_repository};
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::{lithosphere_repository, planet_repository};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -61,25 +58,10 @@ pub async fn resolve_planetary_geology(
     let core_diag = resolve_planetary_core(pool, planet_id, universe_epoch, at_epoch).await?;
     let hydro_diag =
         resolve_hydrosphere_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
-    let tidal_diag =
-        resolve_tidal_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
+    let tidal_diag = resolve_tidal_diagnostics(pool, planet_id, universe_epoch, at_epoch).await?;
 
     let mu_planet = gravitational_parameter(planet.mass());
     let g = surface_gravity(mu_planet, radius);
-
-    let z_lith = lithosphere_thickness(
-        rheology.mean_solidus_temperature(),
-        surface_temp,
-        core_diag.total_surface_heat_flux,
-        rheology.mean_thermal_conductivity(),
-    );
-
-    let z_brittle = brittle_ductile_transition_depth(
-        z_lith,
-        surface_temp,
-        rheology.mean_solidus_temperature(),
-        rheology.mean_solidus_temperature(),
-    );
 
     let (has_surface_liquid, hydro_structure) = match hydro_diag {
         Some(h) => (
@@ -97,56 +79,46 @@ pub async fn resolve_planetary_geology(
         None => (false, None),
     };
 
-    let has_water_weakening = has_surface_liquid
-        || planet.mantle_hydration_fraction().unwrap_or(0.0) > 0.001;
+    let has_water_weakening =
+        has_surface_liquid || planet.mantle_hydration_fraction().unwrap_or(0.0) > 0.001;
 
-    let regime = determine_tectonic_regime(
-        planet.kind(),
+    let tectonic = resolve_tectonic_setup(
+        &planet,
+        &rheology,
         radius,
-        z_lith,
         g,
-        core_diag.total_surface_heat_flux,
-        core_diag.tidal_heat_flux,
+        surface_temp,
+        &core_diag,
         has_water_weakening,
         hydro_structure.as_ref(),
-        &rheology,
-    );
-
-    let plate_count = tectonic_plate_count(radius, z_lith, regime);
-    let plate_vel = plate_rms_velocity(core_diag.convective_heat_flux, regime);
-
-    let yield_strength = lithosphere_yield_strength(
-        rheology.mean_base_yield_stress(),
-        has_water_weakening,
     );
 
     let native_seismic_energy = tectonic_seismic_energy_rate(
-        regime,
-        plate_vel,
-        z_brittle,
+        tectonic.regime,
+        tectonic.plate_velocity,
+        tectonic.z_brittle,
         radius,
         planet.mass(),
         core_diag.total_surface_heat_flux,
-        yield_strength,
+        tectonic.yield_strength,
         rheology.mean_shear_modulus(),
-        plate_count,
+        tectonic.plate_count,
         rheology.mean_thermal_expansion(),
         rheology.mean_specific_heat_capacity(),
     );
 
-    let seismic_eff = seismic_efficiency(yield_strength, rheology.mean_shear_modulus());
     let tidal_seismic_energy = tidal_seismic_energy_rate(
         tidal_diag.tidal_heating_energy,
         radius,
-        z_brittle,
-        seismic_eff,
+        tectonic.z_brittle,
+        tectonic.seismic_efficiency,
     );
 
     Ok(GeologyDiagnostic {
-        tectonic_regime: regime,
-        lithosphere_thickness: z_lith,
-        plate_count,
-        plate_velocity: plate_vel,
+        tectonic_regime: tectonic.regime,
+        lithosphere_thickness: tectonic.z_lith,
+        plate_count: tectonic.plate_count,
+        plate_velocity: tectonic.plate_velocity,
         native_seismic_energy,
         tidal_seismic_energy,
     })

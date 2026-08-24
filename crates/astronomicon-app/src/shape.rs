@@ -5,8 +5,8 @@ use astronomicon_core::math::shape::{
     oblate_spheroid_mean_density, polar_radius_from_flattening, rotational_flattening,
 };
 use astronomicon_core::units::{Density, Length};
-use astronomicon_db::repositories::{planet_repository, star_repository};
 use astronomicon_db::SqlitePool;
+use astronomicon_db::repositories::{planet_repository, star_repository};
 use uuid::Uuid;
 
 pub fn effective_polar_radius_for_planet(planet: &Planet) -> Length {

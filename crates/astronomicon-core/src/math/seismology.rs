@@ -1,8 +1,6 @@
 use crate::domain::TectonicRegime;
 use crate::math::hydrosphere::spherical_shell_volume;
-use crate::units::{
-    Acceleration, Density, HeatFlux, Length, Luminosity, Mass, Pressure, Speed,
-};
+use crate::units::{Acceleration, Density, HeatFlux, Length, Luminosity, Mass, Pressure, Speed};
 use std::f64::consts::PI;
 
 pub fn equilibrium_tidal_bulge_height(

@@ -1,6 +1,4 @@
-use crate::units::constants::{
-    SECONDS_PER_YEAR, SOLAR_LUMINOSITY, SOLAR_MASS, SOLAR_RADIUS,
-};
+use crate::units::constants::{SECONDS_PER_YEAR, SOLAR_LUMINOSITY, SOLAR_MASS, SOLAR_RADIUS};
 use crate::units::{Density, Length, Luminosity, Mass, MassRate, Pressure, Speed};
 use std::f64::consts::PI;
 
@@ -14,7 +12,15 @@ pub fn reimers_mass_loss_rate(
     let r = radius.value();
     let m = mass.value();
 
-    if l <= 0.0 || r <= 0.0 || m <= 0.0 || eta <= 0.0 || !l.is_finite() || !r.is_finite() || !m.is_finite() || !eta.is_finite() {
+    if l <= 0.0
+        || r <= 0.0
+        || m <= 0.0
+        || eta <= 0.0
+        || !l.is_finite()
+        || !r.is_finite()
+        || !m.is_finite()
+        || !eta.is_finite()
+    {
         return MassRate::new(0.0);
     }
 
@@ -45,7 +51,13 @@ pub fn stellar_wind_density(
     let v_inf = terminal_speed.value();
     let r = distance.value();
 
-    if m_dot <= 0.0 || v_inf <= 0.0 || r <= 0.0 || !m_dot.is_finite() || !v_inf.is_finite() || !r.is_finite() {
+    if m_dot <= 0.0
+        || v_inf <= 0.0
+        || r <= 0.0
+        || !m_dot.is_finite()
+        || !v_inf.is_finite()
+        || !r.is_finite()
+    {
         return Density::new(0.0);
     }
 

@@ -1,5 +1,8 @@
 use crate::domain::orbital_elements::OrbitalElements;
 use crate::domain::orbital_parent::OrbitalParent;
+use crate::domain::validation::{
+    validate_finite, validate_not_empty, validate_positive_finite, validate_unit_interval,
+};
 use crate::error::{DomainError, DomainResult};
 use crate::units::{Angle, Duration, Length, Mass};
 use serde::{Deserialize, Serialize};
@@ -115,19 +118,8 @@ impl MinorPlanetBuilder {
     }
 
     pub fn build(self) -> DomainResult<MinorPlanet> {
-        if self.name.trim().is_empty() {
-            return Err(DomainError::InvalidInvariant {
-                field: "name".to_string(),
-                reason: "cannot be empty".to_string(),
-            });
-        }
-
-        if !self.mass.value().is_finite() || self.mass.value() <= 0.0 {
-            return Err(DomainError::InvalidInvariant {
-                field: "mass".to_string(),
-                reason: "must be positive and finite".to_string(),
-            });
-        }
+        validate_not_empty(&self.name, "name")?;
+        validate_positive_finite(self.mass.value(), "mass")?;
 
         if self.orbital_parent == OrbitalParent::Fixed && self.orbital_elements.is_some() {
             return Err(DomainError::InvalidInvariant {
@@ -144,30 +136,15 @@ impl MinorPlanetBuilder {
         }
 
         if let Some(a) = self.axis_a {
-            if !a.value().is_finite() || a.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "axis_a".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(a.value(), "axis_a")?;
         }
 
         if let Some(b) = self.axis_b {
-            if !b.value().is_finite() || b.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "axis_b".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(b.value(), "axis_b")?;
         }
 
         if let Some(c) = self.axis_c {
-            if !c.value().is_finite() || c.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "axis_c".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(c.value(), "axis_c")?;
         }
 
         if let (Some(a), Some(b)) = (self.axis_a, self.axis_b) {
@@ -198,48 +175,23 @@ impl MinorPlanetBuilder {
         }
 
         if let Some(rot) = self.rotation_period {
-            if !rot.value().is_finite() || rot.value() <= 0.0 {
-                return Err(DomainError::InvalidInvariant {
-                    field: "rotation_period".to_string(),
-                    reason: "must be positive and finite".to_string(),
-                });
-            }
+            validate_positive_finite(rot.value(), "rotation_period")?;
         }
 
         if let Some(ob) = self.obliquity {
-            if !ob.value().is_finite() {
-                return Err(DomainError::InvalidInvariant {
-                    field: "obliquity".to_string(),
-                    reason: "must be finite".to_string(),
-                });
-            }
+            validate_finite(ob.value(), "obliquity")?;
         }
 
         if let Some(mp) = self.macroporosity {
-            if !mp.is_finite() || !(0.0..=1.0).contains(&mp) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "macroporosity".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(mp, "macroporosity")?;
         }
 
         if let Some(geo) = self.geometric_albedo {
-            if !geo.is_finite() || !(0.0..=1.0).contains(&geo) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "geometric_albedo".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(geo, "geometric_albedo")?;
         }
 
         if let Some(bond) = self.bond_albedo {
-            if !bond.is_finite() || !(0.0..=1.0).contains(&bond) {
-                return Err(DomainError::InvalidInvariant {
-                    field: "bond_albedo".to_string(),
-                    reason: "must be between 0.0 and 1.0".to_string(),
-                });
-            }
+            validate_unit_interval(bond, "bond_albedo")?;
         }
 
         Ok(MinorPlanet {

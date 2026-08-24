@@ -175,9 +175,5 @@ pub fn mg_number(abundances: &[ElementalAbundance]) -> f64 {
     let n_fe = if a_fe > 0.0 { w_fe / a_fe } else { 0.0 };
     let total = n_mg + n_fe;
 
-    if total <= 0.0 {
-        0.0
-    } else {
-        n_mg / total
-    }
+    if total <= 0.0 { 0.0 } else { n_mg / total }
 }

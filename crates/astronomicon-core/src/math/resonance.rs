@@ -91,7 +91,8 @@ pub fn resonant_argument_first_order(
     lambda_outer: Angle,
     varpi: Angle,
 ) -> Angle {
-    let val = ((p + 1) as f64) * lambda_outer.value() - (p as f64) * lambda_inner.value() - varpi.value();
+    let val =
+        ((p + 1) as f64) * lambda_outer.value() - (p as f64) * lambda_inner.value() - varpi.value();
     Angle::new(val.rem_euclid(TAU))
 }
 
@@ -109,11 +110,7 @@ pub fn resonant_argument(
     Angle::new(val.rem_euclid(TAU))
 }
 
-pub fn laplace_resonant_argument(
-    lambda1: Angle,
-    lambda2: Angle,
-    lambda3: Angle,
-) -> Angle {
+pub fn laplace_resonant_argument(lambda1: Angle, lambda2: Angle, lambda3: Angle) -> Angle {
     let val = lambda1.value() - 3.0 * lambda2.value() + 2.0 * lambda3.value();
     Angle::new(val.rem_euclid(TAU))
 }

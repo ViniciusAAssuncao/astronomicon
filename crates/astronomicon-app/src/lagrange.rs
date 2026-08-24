@@ -4,13 +4,13 @@ use crate::gravity::resolve_entity_effective_mass;
 use astronomicon_core::domain::{Barycenter, MinorPlanet, Planet, Star};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::lagrange::{
-    lagrange_point_position, orbital_plane_normal, LagrangePoint,
+    LagrangePoint, lagrange_point_position, orbital_plane_normal,
 };
 use astronomicon_core::units::{Duration, Position, Vector3};
+use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     barycenter_repository, minor_planet_repository, planet_repository, star_repository,
 };
-use astronomicon_db::SqlitePool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -55,24 +55,29 @@ pub async fn resolve_lagrange_points(
 
     let positions = resolve_system_positions(pool, star_system_id, total_epoch).await?;
 
-    let pos_primary = positions
-        .get(&primary_id)
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "primary_id".to_string(),
-            reason: format!("position for primary '{}' could not be resolved", primary_id),
-        })?;
+    let pos_primary =
+        positions
+            .get(&primary_id)
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "primary_id".to_string(),
+                reason: format!(
+                    "position for primary '{}' could not be resolved",
+                    primary_id
+                ),
+            })?;
 
-    let pos_secondary = positions
-        .get(&secondary_id)
-        .copied()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "secondary_id".to_string(),
-            reason: format!(
-                "position for secondary '{}' could not be resolved",
-                secondary_id
-            ),
-        })?;
+    let pos_secondary =
+        positions
+            .get(&secondary_id)
+            .copied()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "secondary_id".to_string(),
+                reason: format!(
+                    "position for secondary '{}' could not be resolved",
+                    secondary_id
+                ),
+            })?;
 
     let normal = resolve_orbital_normal(pool, &secondary_id).await?;
 
