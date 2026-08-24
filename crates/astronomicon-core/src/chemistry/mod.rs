@@ -1,4 +1,5 @@
 pub mod abundance;
+pub mod acid_chemistry;
 pub mod composition_mean;
 pub mod condensation;
 pub mod geochemistry;
@@ -10,6 +11,7 @@ pub mod solvent;
 pub mod viscosity;
 
 pub use abundance::*;
+pub use acid_chemistry::*;
 pub use composition_mean::*;
 pub use condensation::*;
 pub use geochemistry::*;
