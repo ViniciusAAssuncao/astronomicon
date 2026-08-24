@@ -1,7 +1,7 @@
 use crate::chemistry::molar_mass::{
     mean_mass_attenuation_coefficient, mean_molar_mass, mean_specific_heat_capacity,
 };
-use crate::chemistry::viscosity::mean_dynamic_viscosity;
+use crate::chemistry::viscosity::{kinematic_viscosity, mean_dynamic_viscosity};
 use crate::domain::gas_component::GasComponent;
 use crate::domain::validation::{
     validate_composition, validate_finite, validate_finite_and_non_negative, validate_unit_interval,
@@ -248,6 +248,15 @@ impl Atmosphere {
             .map(|c| (c.formula().to_string(), c.percentage()))
             .collect();
         mean_dynamic_viscosity(&mapped, temperature)
+    }
+
+    pub fn mean_kinematic_viscosity(
+        &self,
+        temperature: Temperature,
+        density: Density,
+    ) -> DomainResult<f64> {
+        let dyn_visc = self.mean_dynamic_viscosity(temperature)?;
+        Ok(kinematic_viscosity(dyn_visc, density))
     }
 
     pub fn mass_column(&self, gravity: Acceleration) -> f64 {

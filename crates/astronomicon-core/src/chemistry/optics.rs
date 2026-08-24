@@ -239,6 +239,7 @@ pub fn gas_optical_properties(formula: &str) -> Option<GasOpticalProperties> {
             1.150,
             co2_absorption_bands(),
         )),
+        "CO" => Some(GasOpticalProperties::new(3.500e-4, 1.000, Vec::new())),
         "CH4" => Some(GasOpticalProperties::new(
             4.439e-4,
             1.000,

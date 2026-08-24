@@ -1,0 +1,1 @@
+ALTER TABLE planets ADD COLUMN surface_roughness_m REAL CHECK (surface_roughness_m IS NULL OR surface_roughness_m > 0.0);

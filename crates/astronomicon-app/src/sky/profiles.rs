@@ -5,14 +5,16 @@ use astronomicon_core::chemistry::optics::{GasOpticalProperties, mean_gas_optica
 use astronomicon_core::chemistry::solvent::SolventProperties;
 use astronomicon_core::domain::{Atmosphere, Planet};
 use astronomicon_core::math::aerosol::{
-    airborne_dust_density, derived_aerosol_scale_height, dust_threshold_surface_wind,
-    volcanic_aerosol_density,
+    airborne_dust_density_with_gustiness, dust_threshold_surface_wind_with_params,
+    dynamic_aerosol_scale_height, volcanic_aerosol_density,
 };
 use astronomicon_core::math::atmospheric_scattering::{
     CloudProfile, DustProfile, SphericalAtmosphere, VolcanicProfile,
 };
 use astronomicon_core::math::volcanism::VolcanicEruptionStyle;
-use astronomicon_core::units::{Acceleration, Density, Length, Speed, Temperature};
+use astronomicon_core::units::{
+    Acceleration, Density, DynamicViscosity, Length, Speed, Temperature,
+};
 
 pub fn build_sky_atmosphere(
     planet: &Planet,
@@ -36,12 +38,25 @@ pub fn build_sky_atmosphere(
 )> {
     let atm_dens = atm.density_at_surface(surf_temp)?;
     let scale_h = atm.scale_height(g, surf_temp)?;
+    let dyn_visc = atm
+        .mean_dynamic_viscosity(surf_temp)
+        .unwrap_or_else(|_| DynamicViscosity::new(1.81e-5));
 
-    let v_thresh = dust_threshold_surface_wind(g, atm_dens);
+    let z0 = planet
+        .surface_roughness()
+        .unwrap_or_else(|| Length::new(0.01));
+    let z0_val = z0.value().clamp(1e-6, 1.0);
+    let cd = (0.40 / (10.0 / z0_val).ln()).powi(2);
+
+    let grain_density = Density::new(2650.0);
+    let v_thresh =
+        dust_threshold_surface_wind_with_params(g, atm_dens, grain_density, dyn_visc, Some(cd));
+
     let dust_availability = planet.dust_availability_factor().unwrap_or(1.0);
     let humidity = atm.surface_humidity().unwrap_or(0.0);
+    let shape_parameter = 2.0;
 
-    let dust_dens = airborne_dust_density(
+    let dust_dens = airborne_dust_density_with_gustiness(
         wind_speed,
         v_thresh,
         atm_dens,
@@ -49,9 +64,22 @@ pub fn build_sky_atmosphere(
         dust_availability,
         ocean_cov,
         humidity,
+        shape_parameter,
     );
 
-    let derived_aero_h = derived_aerosol_scale_height(g, scale_h, atm_dens);
+    let dust_particle_radius = Length::new(1.0e-6);
+    let dust_particle_density = Density::new(2650.0);
+    let k_zz = 1.2;
+    let derived_aero_h = dynamic_aerosol_scale_height(
+        scale_h,
+        g,
+        k_zz,
+        dust_particle_density,
+        atm_dens,
+        dust_particle_radius,
+        dyn_visc,
+    );
+
     let dust_scale_h = if derived_aero_h.value() > 0.0 {
         derived_aero_h
     } else {
@@ -61,8 +89,8 @@ pub fn build_sky_atmosphere(
     let dust_profile = DustProfile::from_material(
         dust_dens,
         dust_scale_h,
-        Length::new(1.0e-6),
-        Density::new(2650.0),
+        dust_particle_radius,
+        dust_particle_density,
         1.55,
         0.005,
     );

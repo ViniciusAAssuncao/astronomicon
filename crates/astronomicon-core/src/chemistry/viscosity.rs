@@ -1,6 +1,6 @@
 use crate::chemistry::composition_mean::composition_weighted_mean_or_zero;
 use crate::error::DomainResult;
-use crate::units::{DynamicViscosity, Temperature};
+use crate::units::{Density, DynamicViscosity, Temperature};
 
 pub fn sutherland_viscosity(
     temperature: Temperature,
@@ -74,4 +74,32 @@ pub fn mean_dynamic_viscosity(
     })?;
 
     Ok(DynamicViscosity::new(mean_val))
+}
+
+pub fn kinematic_viscosity(dynamic_viscosity: DynamicViscosity, density: Density) -> f64 {
+    let eta = dynamic_viscosity.value();
+    let rho = density.value();
+
+    if eta <= 0.0 || rho <= 0.0 || !eta.is_finite() || !rho.is_finite() {
+        0.0
+    } else {
+        eta / rho
+    }
+}
+
+pub fn kinematic_viscosity_of(
+    formula: &str,
+    temperature: Temperature,
+    density: Density,
+) -> Option<f64> {
+    dynamic_viscosity_of(formula, temperature).map(|eta| kinematic_viscosity(eta, density))
+}
+
+pub fn mean_kinematic_viscosity(
+    composition: &[(String, f64)],
+    temperature: Temperature,
+    density: Density,
+) -> DomainResult<f64> {
+    let eta = mean_dynamic_viscosity(composition, temperature)?;
+    Ok(kinematic_viscosity(eta, density))
 }

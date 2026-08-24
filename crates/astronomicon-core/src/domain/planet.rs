@@ -57,6 +57,7 @@ pub struct PlanetBuilder {
     tidal_dissipation_factor_q: Option<f64>,
     mantle_hydration_fraction: Option<f64>,
     dust_availability_factor: Option<f64>,
+    surface_roughness: Option<Length>,
     rheology: Option<PlanetRheology>,
 }
 
@@ -92,6 +93,7 @@ impl PlanetBuilder {
             tidal_dissipation_factor_q: None,
             mantle_hydration_fraction: None,
             dust_availability_factor: None,
+            surface_roughness: None,
             rheology: None,
         }
     }
@@ -207,6 +209,14 @@ impl PlanetBuilder {
         self
     }
 
+    pub fn with_surface_roughness(
+        mut self,
+        surface_roughness: impl Into<Option<Length>>,
+    ) -> Self {
+        self.surface_roughness = surface_roughness.into();
+        self
+    }
+
     pub fn with_rheology(mut self, rheology: impl Into<Option<PlanetRheology>>) -> Self {
         self.rheology = rheology.into();
         self
@@ -294,6 +304,10 @@ impl PlanetBuilder {
             validate_unit_interval(daf, "dust_availability_factor")?;
         }
 
+        if let Some(sr) = self.surface_roughness {
+            validate_positive_finite(sr.value(), "surface_roughness")?;
+        }
+
         let solstice_true_anomaly = self
             .solstice_true_anomaly
             .map(|angle| Angle::new(angle.value().rem_euclid(TAU)));
@@ -322,6 +336,7 @@ impl PlanetBuilder {
             tidal_dissipation_factor_q: self.tidal_dissipation_factor_q,
             mantle_hydration_fraction: self.mantle_hydration_fraction,
             dust_availability_factor: self.dust_availability_factor,
+            surface_roughness: self.surface_roughness,
             rheology: self.rheology,
         })
     }
@@ -352,6 +367,7 @@ pub struct Planet {
     tidal_dissipation_factor_q: Option<f64>,
     mantle_hydration_fraction: Option<f64>,
     dust_availability_factor: Option<f64>,
+    surface_roughness: Option<Length>,
     rheology: Option<PlanetRheology>,
 }
 
@@ -390,6 +406,7 @@ impl Planet {
         tidal_dissipation_factor_q: Option<f64>,
         mantle_hydration_fraction: Option<f64>,
         dust_availability_factor: Option<f64>,
+        surface_roughness: Option<Length>,
         rheology: Option<PlanetRheology>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
@@ -411,6 +428,7 @@ impl Planet {
             .with_tidal_dissipation_factor_q(tidal_dissipation_factor_q)
             .with_mantle_hydration_fraction(mantle_hydration_fraction)
             .with_dust_availability_factor(dust_availability_factor)
+            .with_surface_roughness(surface_roughness)
             .with_rheology(rheology)
             .build()
     }
@@ -505,6 +523,10 @@ impl Planet {
 
     pub fn dust_availability_factor(&self) -> Option<f64> {
         self.dust_availability_factor
+    }
+
+    pub fn surface_roughness(&self) -> Option<Length> {
+        self.surface_roughness
     }
 
     pub fn rheology(&self) -> Option<&PlanetRheology> {
