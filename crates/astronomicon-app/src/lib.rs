@@ -16,6 +16,7 @@ pub mod resonance;
 pub mod seismology;
 pub mod shape;
 pub mod sky;
+pub mod tectonics;
 pub mod tidal;
 pub mod volcanism;
 
@@ -37,6 +38,7 @@ pub use resonance::*;
 pub use seismology::*;
 pub use shape::*;
 pub use sky::*;
+pub use tectonics::*;
 pub use tidal::*;
 pub use volcanism::*;
 

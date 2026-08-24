@@ -5,17 +5,14 @@ use crate::gravity::resolve_entity_effective_mass;
 use crate::hierarchy::resolve_parent_mass;
 use crate::hydrosphere::resolve_hydrosphere_diagnostics;
 use crate::shape::planet_mean_density;
+use crate::tectonics::resolve_tectonic_setup;
 use crate::tidal::resolve_tidal_diagnostics;
 use astronomicon_core::domain::{OrbitalParent, Planet, PlanetRheology, TectonicRegime};
 use astronomicon_core::error::DomainError;
-use astronomicon_core::math::geology::{
-    brittle_ductile_transition_depth, determine_tectonic_regime, lithosphere_thickness,
-    lithosphere_yield_strength, plate_rms_velocity, tectonic_plate_count,
-};
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::hydrosphere::HydrosphereStructure;
 use astronomicon_core::math::seismology::{
-    equilibrium_tidal_bulge_height, radial_tidal_stress_amplitude, seismic_efficiency,
+    equilibrium_tidal_bulge_height, radial_tidal_stress_amplitude,
     tectonic_seismic_energy_rate, tidal_seismic_energy_rate,
 };
 use astronomicon_core::math::tidal::fallback_love_number_k2;
@@ -73,20 +70,6 @@ pub async fn resolve_seismic_diagnostics(
     let surf_temp =
         resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
 
-    let z_lith = lithosphere_thickness(
-        rheology.mean_solidus_temperature(),
-        surf_temp,
-        core_diag.total_surface_heat_flux,
-        rheology.mean_thermal_conductivity(),
-    );
-
-    let z_brittle = brittle_ductile_transition_depth(
-        z_lith,
-        surf_temp,
-        rheology.mean_solidus_temperature(),
-        rheology.mean_solidus_temperature(),
-    );
-
     let has_water = hydrosphere_repository::get_by_planet_id(pool, &planet_id)
         .await?
         .is_some();
@@ -104,33 +87,27 @@ pub async fn resolve_seismic_diagnostics(
         is_completely_liquid: h.is_completely_liquid,
     });
 
-    let regime = determine_tectonic_regime(
-        planet.kind(),
+    let tectonic = resolve_tectonic_setup(
+        &planet,
+        &rheology,
         radius,
-        z_lith,
         g,
-        core_diag.total_surface_heat_flux,
-        core_diag.tidal_heat_flux,
+        surf_temp,
+        &core_diag,
         has_water,
         hydro_structure.as_ref(),
-        &rheology,
     );
 
-    let v_plate = plate_rms_velocity(core_diag.convective_heat_flux, regime);
-    let plate_count = tectonic_plate_count(radius, z_lith, regime);
-
-    let yield_strength = lithosphere_yield_strength(rheology.mean_base_yield_stress(), has_water);
-
     let tectonic_energy = tectonic_seismic_energy_rate(
-        regime,
-        v_plate,
-        z_brittle,
+        tectonic.regime,
+        tectonic.plate_velocity,
+        tectonic.z_brittle,
         radius,
         planet.mass(),
         core_diag.total_surface_heat_flux,
-        yield_strength,
+        tectonic.yield_strength,
         rheology.mean_shear_modulus(),
-        plate_count,
+        tectonic.plate_count,
         rheology.mean_thermal_expansion(),
         rheology.mean_specific_heat_capacity(),
     );
@@ -187,21 +164,20 @@ pub async fn resolve_seismic_diagnostics(
             (Length::new(0.0), Pressure::new(0.0))
         };
 
-    let seismic_eff = seismic_efficiency(yield_strength, rheology.mean_shear_modulus());
     let tidal_energy = tidal_seismic_energy_rate(
         tidal_diag.tidal_heating_energy,
         radius,
-        z_brittle,
-        seismic_eff,
+        tectonic.z_brittle,
+        tectonic.seismic_efficiency,
     );
 
     let total_energy = tectonic_energy + tidal_energy;
 
     Ok(SeismicDiagnostic {
-        tectonic_regime: regime,
-        lithosphere_thickness: z_lith,
-        plate_rms_velocity: v_plate,
-        tectonic_plate_count: plate_count,
+        tectonic_regime: tectonic.regime,
+        lithosphere_thickness: tectonic.z_lith,
+        plate_rms_velocity: tectonic.plate_velocity,
+        tectonic_plate_count: tectonic.plate_count,
         tectonic_seismic_energy: tectonic_energy,
         tidal_stress_amplitude: delta_sigma,
         tidal_bulge_height: h_tide,
