@@ -64,6 +64,43 @@ pub fn saturation_vapor_pressure(
     }
 }
 
+pub fn saturation_vapor_pressure_over_solid(
+    temperature: Temperature,
+    solvent_properties: &SolventProperties,
+) -> Pressure {
+    let t = temperature.value();
+    let delta_h =
+        solvent_properties.enthalpy_of_vaporization + solvent_properties.enthalpy_of_fusion;
+    let t0 = solvent_properties.triple_point_temperature.value();
+    let p0 = solvent_properties.triple_point_pressure.value();
+
+    if t <= 0.0
+        || !t.is_finite()
+        || delta_h <= 0.0
+        || !delta_h.is_finite()
+        || t0 <= 0.0
+        || !t0.is_finite()
+        || p0 <= 0.0
+        || !p0.is_finite()
+    {
+        return Pressure::new(0.0);
+    }
+
+    let exponent = -(delta_h / UNIVERSAL_GAS_CONSTANT) * (1.0 / t - 1.0 / t0);
+    if exponent < -100.0 {
+        Pressure::new(0.0)
+    } else if exponent > 100.0 {
+        Pressure::new(p0 * (100.0_f64).exp())
+    } else {
+        let p_sat = p0 * exponent.exp();
+        if !p_sat.is_finite() || p_sat < 0.0 {
+            Pressure::new(0.0)
+        } else {
+            Pressure::new(p_sat)
+        }
+    }
+}
+
 pub fn saturation_mixing_ratio(
     saturation_vapor_pressure: Pressure,
     ambient_pressure: Pressure,

@@ -1,5 +1,7 @@
 use crate::climate::condensable_species::resolve_condensable_species;
-use crate::climate::temperature::resolve_global_mean_temperature;
+use crate::climate::temperature::{
+    resolve_advective_surface_temperature, resolve_global_mean_temperature,
+};
 use crate::error::AppResult;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
@@ -12,7 +14,7 @@ use astronomicon_core::math::thermodynamics::{
     tropopause_altitude,
 };
 use astronomicon_core::units::{
-    Density, Duration, Length, Pressure, Temperature, TemperatureGradient,
+    Angle, Density, Duration, Length, Pressure, Temperature, TemperatureGradient,
 };
 use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{atmosphere_repository, planet_repository};
@@ -97,6 +99,95 @@ pub async fn resolve_atmospheric_stratification(
 
     let surf_temp =
         resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
+    let surf_press = atmosphere.surface_pressure();
+    let scale_h = atmosphere.scale_height(g, surf_temp)?;
+    let atm_molar_mass = atmosphere.mean_molar_mass()?;
+    let atm_cp = atmosphere.mean_specific_heat_capacity()?;
+    let env_lapse_rate = atmosphere.lapse_rate();
+
+    let (solvent_props, solvent_molar_mass, humidity) =
+        resolve_condensable_species(pool, planet_id).await?;
+
+    let dew_point =
+        dew_point_temperature(surf_temp, humidity, solvent_props.enthalpy_of_vaporization);
+    let moist_gamma = moist_adiabatic_lapse_rate(
+        g,
+        atm_cp,
+        surf_temp,
+        surf_press,
+        &solvent_props,
+        solvent_molar_mass,
+        atm_molar_mass,
+    );
+
+    let dry_gamma = dry_adiabatic_lapse_rate(g, atm_cp);
+
+    let lcl = lifting_condensation_level(
+        surf_temp,
+        dew_point,
+        dry_gamma,
+        scale_h,
+        solvent_props.enthalpy_of_vaporization,
+    );
+
+    let t_skin = grey_atmosphere_skin_temperature(surf_temp);
+    let z_tropo = tropopause_altitude(surf_temp, t_skin, env_lapse_rate);
+
+    let cloud_top = cloud_top_altitude(
+        lcl,
+        surf_temp,
+        surf_press,
+        dew_point,
+        env_lapse_rate,
+        scale_h,
+        g,
+        atm_cp,
+        z_tropo,
+        t_skin,
+        &solvent_props,
+        solvent_molar_mass,
+        atm_molar_mass,
+    );
+
+    Ok(AtmosphericStratificationDiagnostic {
+        surface_dew_point: dew_point,
+        lcl_altitude: lcl,
+        cloud_top_altitude: cloud_top,
+        moist_adiabatic_lapse_rate: moist_gamma,
+    })
+}
+
+pub async fn resolve_atmospheric_stratification_at_latitude(
+    pool: &SqlitePool,
+    planet_id: Uuid,
+    latitude: Angle,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> AppResult<AtmosphericStratificationDiagnostic> {
+    let atmosphere = atmosphere_repository::get_by_planet_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "atmosphere".to_string(),
+            reason: format!("planet '{}' has no atmosphere", planet_id),
+        })?;
+
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "planet_id".to_string(),
+            reason: format!("planet '{}' not found", planet_id),
+        })?;
+    let planet = Planet::try_from(planet_row)?;
+
+    let eq_radius = planet
+        .equatorial_radius()
+        .unwrap_or_else(|| Length::new(6371e3));
+    let mu = gravitational_parameter(planet.mass());
+    let g = surface_gravity(mu, eq_radius);
+
+    let surf_temp =
+        resolve_advective_surface_temperature(pool, planet_id, latitude, universe_epoch, at_epoch)
+            .await?;
     let surf_press = atmosphere.surface_pressure();
     let scale_h = atmosphere.scale_height(g, surf_temp)?;
     let atm_molar_mass = atmosphere.mean_molar_mass()?;

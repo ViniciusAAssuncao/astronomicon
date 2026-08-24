@@ -1,7 +1,10 @@
-use crate::climate::atmosphere::resolve_atmospheric_stratification;
+use crate::climate::atmosphere::{
+    resolve_atmospheric_stratification, resolve_atmospheric_stratification_at_latitude,
+};
 use crate::climate::circulation::{resolve_planetary_circulation, resolve_wind_profile_at_latitude};
 use crate::climate::condensable_species::resolve_condensable_species;
 use crate::climate::emission::resolve_star_emission_profile;
+use crate::climate::temperature::resolve_advective_surface_temperature;
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
 use crate::hierarchy::find_parent_star;
@@ -20,7 +23,7 @@ use astronomicon_core::math::clouds::{
     evaluate_lightning_potential, freezing_level_altitude, glaciation_state_from_ice_fraction,
     ice_condensate_density, ice_fraction_at_altitude, is_cyclogenesis_favorable,
     is_deep_convective_cloud, layer_critical_relative_humidity, liquid_condensate_density,
-    mixing_ratio_at_altitude, relative_humidity_at_altitude, sundqvist_cloud_fraction,
+    mixing_ratio_at_altitude, relative_humidity_at_altitude, sundqvist_cloud_fraction_with_ccn,
     tropical_cyclone_potential_intensity,
 };
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
@@ -223,6 +226,61 @@ pub async fn resolve_tropopause(
     })
 }
 
+pub async fn resolve_tropopause_at_latitude(
+    pool: &SqlitePool,
+    planet_id: Uuid,
+    latitude: Angle,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> AppResult<TropopauseDiagnostic> {
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "planet_id".to_string(),
+            reason: format!("planet '{}' not found", planet_id),
+        })?;
+    let planet = Planet::try_from(planet_row)?;
+
+    let atmosphere = atmosphere_repository::get_by_planet_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "atmosphere".to_string(),
+            reason: format!("planet '{}' has no atmosphere", planet_id),
+        })?;
+
+    let surf_temp =
+        resolve_advective_surface_temperature(pool, planet_id, latitude, universe_epoch, at_epoch)
+            .await?;
+    let greenhouse = atmosphere.greenhouse_effect();
+    let t_eq = Temperature::new((surf_temp.value() - greenhouse.value()).max(0.0));
+    let t_skin = grey_atmosphere_skin_temperature(t_eq);
+
+    let eq_radius = planet
+        .equatorial_radius()
+        .unwrap_or_else(|| Length::new(6371e3));
+    let mu = gravitational_parameter(planet.mass());
+    let g = surface_gravity(mu, eq_radius);
+    let atm_cp = atmosphere.mean_specific_heat_capacity()?;
+    let env_lapse_rate = atmosphere.lapse_rate();
+
+    let dry_gamma = if env_lapse_rate.value() > 0.0 {
+        env_lapse_rate
+    } else {
+        TemperatureGradient::new(g.value() / atm_cp.max(100.0))
+    };
+
+    let z_tropo = tropopause_altitude(surf_temp, t_skin, dry_gamma);
+
+    Ok(TropopauseDiagnostic {
+        radiative_equilibrium_temperature: t_eq,
+        skin_temperature: t_skin,
+        surface_temperature: surf_temp,
+        tropopause_altitude: z_tropo,
+        tropopause_temperature: t_skin,
+        lapse_rate: dry_gamma,
+    })
+}
+
 pub async fn resolve_convective_instability(
     pool: &SqlitePool,
     planet_id: Uuid,
@@ -247,6 +305,122 @@ pub async fn resolve_convective_instability(
     let tropo = resolve_tropopause(pool, planet_id, universe_epoch, at_epoch).await?;
     let stratification =
         resolve_atmospheric_stratification(pool, planet_id, universe_epoch, at_epoch).await?;
+    let (solvent_props, solvent_molar_mass, _) =
+        resolve_condensable_species(pool, planet_id).await?;
+
+    let eq_radius = planet
+        .equatorial_radius()
+        .unwrap_or_else(|| Length::new(6371e3));
+    let mu = gravitational_parameter(planet.mass());
+    let g = surface_gravity(mu, eq_radius);
+
+    let surf_temp = tropo.surface_temperature;
+    let surf_press = atmosphere.surface_pressure();
+    let scale_h = atmosphere.scale_height(g, surf_temp)?;
+    let atm_molar_mass = atmosphere.mean_molar_mass()?;
+    let atm_cp = atmosphere.mean_specific_heat_capacity()?;
+    let dew_point = stratification.surface_dew_point;
+
+    let dry_gamma = dry_adiabatic_lapse_rate(g, atm_cp);
+    let moist_gamma = moist_adiabatic_lapse_rate(
+        g,
+        atm_cp,
+        surf_temp,
+        surf_press,
+        &solvent_props,
+        solvent_molar_mass,
+        atm_molar_mass,
+    );
+
+    let profile = integrate_parcel_buoyancy_profile(
+        surf_temp,
+        surf_press,
+        dew_point,
+        atmosphere.lapse_rate(),
+        scale_h,
+        g,
+        atm_cp,
+        tropo.tropopause_altitude,
+        tropo.skin_temperature,
+        &solvent_props,
+        solvent_molar_mass,
+        atm_molar_mass,
+    );
+
+    let lfc = level_of_free_convection(&profile, stratification.lcl_altitude);
+    let el = match lfc {
+        Some(z_lfc) => equilibrium_level(&profile, z_lfc),
+        None => None,
+    };
+
+    let cape = match (lfc, el) {
+        (Some(z_lfc), Some(z_el)) => {
+            convective_available_potential_energy(&profile, z_lfc, z_el)
+        }
+        _ => SpecificEnergy::new(0.0),
+    };
+
+    let cin = match lfc {
+        Some(z_lfc) => convective_inhibition(&profile, z_lfc),
+        None => SpecificEnergy::new(0.0),
+    };
+
+    let stability = classify_atmospheric_stability(atmosphere.lapse_rate(), dry_gamma, moist_gamma);
+    let morphology = classify_cloud_morphology(stability, cape);
+    let is_deep = is_deep_convective_cloud(
+        morphology,
+        stratification.cloud_top_altitude,
+        tropo.tropopause_altitude,
+        cape,
+    );
+
+    Ok(ConvectiveInstabilityDiagnostic {
+        surface_dew_point: dew_point,
+        lcl_altitude: stratification.lcl_altitude,
+        lfc_altitude: lfc,
+        equilibrium_level: el,
+        cape,
+        cin,
+        stability,
+        morphology,
+        is_deep_convection: is_deep,
+        dry_adiabatic_lapse_rate: dry_gamma,
+        moist_adiabatic_lapse_rate: moist_gamma,
+    })
+}
+
+pub async fn resolve_convective_instability_at_latitude(
+    pool: &SqlitePool,
+    planet_id: Uuid,
+    latitude: Angle,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> AppResult<ConvectiveInstabilityDiagnostic> {
+    let atmosphere = atmosphere_repository::get_by_planet_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "atmosphere".to_string(),
+            reason: format!("planet '{}' has no atmosphere", planet_id),
+        })?;
+
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "planet_id".to_string(),
+            reason: format!("planet '{}' not found", planet_id),
+        })?;
+    let planet = Planet::try_from(planet_row)?;
+
+    let tropo =
+        resolve_tropopause_at_latitude(pool, planet_id, latitude, universe_epoch, at_epoch).await?;
+    let stratification = resolve_atmospheric_stratification_at_latitude(
+        pool,
+        planet_id,
+        latitude,
+        universe_epoch,
+        at_epoch,
+    )
+    .await?;
     let (solvent_props, solvent_molar_mass, _) =
         resolve_condensable_species(pool, planet_id).await?;
 
@@ -403,7 +577,163 @@ pub async fn resolve_cloud_cover(
         };
 
         let rh_crit = layer_critical_relative_humidity(sigma);
-        let c_layer = sundqvist_cloud_fraction(rh, rh_crit);
+        let c_layer = sundqvist_cloud_fraction_with_ccn(
+            rh,
+            rh_crit,
+            atmosphere.cloud_condensation_nuclei_factor(),
+        );
+
+        let rho_air = ideal_gas_density(press_z, atm_molar_mass, temp_z_clamped);
+        let r_surf = mixing_ratio_at_altitude(
+            surface_humidity,
+            surf_temp,
+            surf_press,
+            &solvent_props,
+            solvent_molar_mass,
+            atm_molar_mass,
+        );
+        let p_sat_z = saturation_vapor_pressure(temp_z_clamped, &solvent_props);
+        let r_sat_z =
+            saturation_mixing_ratio(p_sat_z, press_z, solvent_molar_mass, atm_molar_mass);
+        let rho_condensate = adiabatic_condensate_density(rho_air, r_surf, r_sat_z);
+
+        let ice_frac = ice_fraction_at_altitude(z_mid, freezing_level);
+        let rho_liquid = liquid_condensate_density(rho_condensate, ice_frac);
+        let rho_ice = ice_condensate_density(rho_condensate, ice_frac);
+        let glaciation = glaciation_state_from_ice_fraction(ice_frac);
+
+        CloudLayerDiagnostic {
+            base_altitude: z_base,
+            top_altitude: z_top,
+            representative_altitude: z_mid,
+            cloud_fraction: c_layer,
+            relative_humidity: rh,
+            critical_relative_humidity: rh_crit,
+            liquid_water_content: rho_liquid,
+            ice_water_content: rho_ice,
+            ice_fraction: ice_frac,
+            glaciation_state: glaciation,
+        }
+    };
+
+    let low_diag = evaluate_layer(z0, z_low_top, z_low_mid);
+    let mid_diag = evaluate_layer(z_low_top, z_mid_top, z_mid_mid);
+    let high_diag = evaluate_layer(z_mid_top, z_high_top, z_high_mid);
+
+    let c_combined = combine_layer_cloud_fractions_max_random_overlap(
+        low_diag.cloud_fraction,
+        mid_diag.cloud_fraction,
+        high_diag.cloud_fraction,
+    );
+
+    let total_cloud_fraction = atmosphere.cloud_coverage_fraction().unwrap_or(c_combined);
+
+    let classification = classify_cloud_system(
+        env_lapse_rate,
+        instability.dry_adiabatic_lapse_rate,
+        instability.moist_adiabatic_lapse_rate,
+        instability.cape,
+        stratification.cloud_top_altitude,
+        tropo.tropopause_altitude,
+        freezing_level,
+    );
+
+    Ok(CloudCoverDiagnostic {
+        total_cloud_fraction,
+        low_cloud: low_diag,
+        mid_cloud: mid_diag,
+        high_cloud: high_diag,
+        freezing_level,
+        classification,
+    })
+}
+
+pub async fn resolve_cloud_cover_at_latitude(
+    pool: &SqlitePool,
+    planet_id: Uuid,
+    latitude: Angle,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> AppResult<CloudCoverDiagnostic> {
+    let atmosphere = atmosphere_repository::get_by_planet_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "atmosphere".to_string(),
+            reason: format!("planet '{}' has no atmosphere", planet_id),
+        })?;
+
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "planet_id".to_string(),
+            reason: format!("planet '{}' not found", planet_id),
+        })?;
+    let planet = Planet::try_from(planet_row)?;
+
+    let (solvent_props, solvent_molar_mass, surface_humidity) =
+        resolve_condensable_species(pool, planet_id).await?;
+    let tropo =
+        resolve_tropopause_at_latitude(pool, planet_id, latitude, universe_epoch, at_epoch).await?;
+    let instability =
+        resolve_convective_instability_at_latitude(pool, planet_id, latitude, universe_epoch, at_epoch)
+            .await?;
+    let stratification = resolve_atmospheric_stratification_at_latitude(
+        pool,
+        planet_id,
+        latitude,
+        universe_epoch,
+        at_epoch,
+    )
+    .await?;
+
+    let eq_radius = planet
+        .equatorial_radius()
+        .unwrap_or_else(|| Length::new(6371e3));
+    let mu = gravitational_parameter(planet.mass());
+    let g = surface_gravity(mu, eq_radius);
+
+    let surf_temp = tropo.surface_temperature;
+    let surf_press = atmosphere.surface_pressure();
+    let scale_h = atmosphere.scale_height(g, surf_temp)?;
+    let atm_molar_mass = atmosphere.mean_molar_mass()?;
+    let env_lapse_rate = atmosphere.lapse_rate();
+
+    let hydro_opt = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?;
+    let freezing_point = match &hydro_opt {
+        Some(h) => h.freezing_point()?,
+        None => solvent_props.normal_melting_point,
+    };
+    let freezing_level =
+        freezing_level_altitude(surf_temp, freezing_point, env_lapse_rate).unwrap_or(Length::new(0.0));
+
+    let (z0, z_low_top, z_mid_top, z_high_top) =
+        cloud_band_altitudes(tropo.tropopause_altitude);
+    let z_low_mid = Length::new(0.5 * (z0.value() + z_low_top.value()));
+    let z_mid_mid = Length::new(0.5 * (z_low_top.value() + z_mid_top.value()));
+    let z_high_mid = Length::new(0.5 * (z_mid_top.value() + z_high_top.value()));
+
+    let evaluate_layer = |z_base: Length, z_top: Length, z_mid: Length| -> CloudLayerDiagnostic {
+        let rh = relative_humidity_at_altitude(surface_humidity, z_mid, tropo.tropopause_altitude);
+        let press_z = atmosphere.pressure_at_altitude(z_mid, scale_h);
+        let temp_z = temperature_at_altitude(surf_temp, z_mid, env_lapse_rate);
+        let temp_z_clamped = if temp_z.value() < tropo.skin_temperature.value() {
+            tropo.skin_temperature
+        } else {
+            temp_z
+        };
+
+        let sigma = if surf_press.value() > 0.0 {
+            (press_z.value() / surf_press.value()).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+
+        let rh_crit = layer_critical_relative_humidity(sigma);
+        let c_layer = sundqvist_cloud_fraction_with_ccn(
+            rh,
+            rh_crit,
+            atmosphere.cloud_condensation_nuclei_factor(),
+        );
 
         let rho_air = ideal_gas_density(press_z, atm_molar_mass, temp_z_clamped);
         let r_surf = mixing_ratio_at_altitude(
