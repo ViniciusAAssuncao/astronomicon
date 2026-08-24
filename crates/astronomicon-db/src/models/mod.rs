@@ -4,6 +4,7 @@ pub mod hydrosphere_row;
 pub mod lithosphere_row;
 pub mod material_properties_row;
 pub mod minor_planet_row;
+pub mod orbital_parsing;
 pub mod planet_row;
 pub mod star_row;
 pub mod system_row;
