@@ -26,6 +26,7 @@ pub fn build_sky_atmosphere(
     cloud_diag: &CloudCoverDiagnostic,
     strat_diag: &AtmosphericStratificationDiagnostic,
     solvent_props: &SolventProperties,
+    cloud_particle_radius: Length,
 ) -> AppResult<(
     SphericalAtmosphere,
     DustProfile,
@@ -150,7 +151,6 @@ pub fn build_sky_atmosphere(
         (1.0 - avg_ice_frac) * solvent_props.liquid_density.value()
             + avg_ice_frac * solvent_props.solid_density.value(),
     );
-    let cloud_particle_radius = Length::new(10.0e-6);
 
     let cloud_profile = CloudProfile::from_material(
         cloud_base_density,

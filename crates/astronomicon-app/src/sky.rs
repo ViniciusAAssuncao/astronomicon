@@ -10,7 +10,8 @@ pub use spectral_integration::*;
 
 use crate::climate::{
     CloudCoverDiagnostic, resolve_atmospheric_stratification, resolve_cloud_cover,
-    resolve_condensable_species, resolve_global_mean_temperature, resolve_star_emission_profile,
+    resolve_condensable_species, resolve_convective_instability,
+    resolve_global_mean_temperature, resolve_star_emission_profile, resolve_tropopause,
     resolve_wind_profile_at_latitude,
 };
 use crate::ephemeris::resolve_system_positions;
@@ -19,10 +20,17 @@ use crate::hierarchy::find_parent_star;
 use crate::volcanism::resolve_planetary_volcanism;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
+use astronomicon_core::math::atmosphere::ideal_gas_density;
+use astronomicon_core::math::climate::temperature_at_altitude;
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
+use astronomicon_core::math::precipitation::{
+    layer_vertical_velocity_scale, resolve_sedimentation_balance,
+};
 use astronomicon_core::math::radiometry::{stellar_angular_radius, stellar_solid_angle};
 use astronomicon_core::math::scattering::MultipleScatteringConfig;
-use astronomicon_core::units::{Angle, ColorRGB, Duration, Length, Vector3};
+use astronomicon_core::units::{
+    Angle, ColorRGB, Density, Duration, DynamicViscosity, Length, Vector3,
+};
 use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     atmosphere_repository, hydrosphere_repository, planet_repository,
@@ -121,6 +129,9 @@ pub async fn resolve_sky_diagnostics(
     let cloud_diag = resolve_cloud_cover(pool, planet_id, universe_epoch, at_epoch).await?;
     let strat_diag =
         resolve_atmospheric_stratification(pool, planet_id, universe_epoch, at_epoch).await?;
+    let tropo = resolve_tropopause(pool, planet_id, universe_epoch, at_epoch).await?;
+    let instability =
+        resolve_convective_instability(pool, planet_id, universe_epoch, at_epoch).await?;
     let (solvent_props, _, _) = resolve_condensable_species(pool, planet_id).await?;
 
     let eq_radius = planet
@@ -131,6 +142,85 @@ pub async fn resolve_sky_diagnostics(
         .as_ref()
         .map(|h| h.surface_coverage_fraction())
         .unwrap_or(0.0);
+
+    let bulk_shear = (wind_diag.jet_stream_speed.value() - wind_diag.surface_wind_speed.value()).abs();
+    let vertical_wind_shear = bulk_shear / tropo.tropopause_altitude.value().max(1.0);
+    let scale_h = atm.scale_height(g, surf_temp)?;
+    let atm_molar_mass = atm.mean_molar_mass()?;
+
+    let compute_layer_droplet_radius =
+        |layer: &crate::climate::clouds::layer::CloudLayerDiagnostic| -> Length {
+            let dz =
+                Length::new((layer.top_altitude.value() - layer.base_altitude.value()).max(0.0));
+            let rho_cond = Density::new(
+                layer.liquid_water_content.value() + layer.ice_water_content.value(),
+            );
+            let ice_frac = layer.ice_fraction.clamp(0.0, 1.0);
+            let rho_p_val = ((1.0 - ice_frac) * solvent_props.liquid_density.value()
+                + ice_frac * solvent_props.solid_density.value())
+            .max(1.0);
+            let particle_density = Density::new(rho_p_val);
+
+            let temp_z = temperature_at_altitude(
+                surf_temp,
+                layer.representative_altitude,
+                atm.lapse_rate(),
+            );
+            let press_z = atm.pressure_at_altitude(layer.representative_altitude, scale_h);
+            let fluid_density = ideal_gas_density(press_z, atm_molar_mass, temp_z);
+            let dynamic_viscosity = atm
+                .mean_dynamic_viscosity(temp_z)
+                .unwrap_or_else(|_| DynamicViscosity::new(1.81e-5));
+
+            let w_scale = layer_vertical_velocity_scale(
+                instability.morphology,
+                instability.cape,
+                dz,
+                vertical_wind_shear,
+            );
+
+            let sed_res = resolve_sedimentation_balance(
+                rho_cond,
+                particle_density,
+                fluid_density,
+                dynamic_viscosity,
+                g,
+                w_scale,
+                atm.cloud_condensation_nuclei_factor(),
+            );
+
+            if sed_res.sedimentable_fraction > 0.05 {
+                Length::new(
+                    sed_res
+                        .critical_radius
+                        .value()
+                        .max(sed_res.mean_droplet_radius.value()),
+                )
+            } else if sed_res.mean_droplet_radius.value() > 0.0 {
+                sed_res.mean_droplet_radius
+            } else {
+                Length::new(10.0e-6)
+            }
+        };
+
+    let r_low = compute_layer_droplet_radius(&cloud_diag.low_cloud);
+    let r_mid = compute_layer_droplet_radius(&cloud_diag.mid_cloud);
+    let r_high = compute_layer_droplet_radius(&cloud_diag.high_cloud);
+
+    let mut effective_radius = r_low;
+    let mut max_weight = -1.0;
+    for (layer, r_l) in [
+        (&cloud_diag.low_cloud, r_low),
+        (&cloud_diag.mid_cloud, r_mid),
+        (&cloud_diag.high_cloud, r_high),
+    ] {
+        let weight = (layer.liquid_water_content.value() + layer.ice_water_content.value())
+            * layer.cloud_fraction;
+        if weight > max_weight {
+            max_weight = weight;
+            effective_radius = r_l;
+        }
+    }
 
     let (atmosphere, dust_profile, volcanic_profile, opt_props, scale_h) = build_sky_atmosphere(
         &planet,
@@ -144,6 +234,7 @@ pub async fn resolve_sky_diagnostics(
         &cloud_diag,
         &strat_diag,
         &solvent_props,
+        effective_radius,
     )?;
 
     let ground_albedo = planet.bond_albedo().unwrap_or(0.15);
