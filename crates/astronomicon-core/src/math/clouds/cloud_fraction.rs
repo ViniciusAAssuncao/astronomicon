@@ -1,5 +1,7 @@
+use crate::units::constants::{
+    HIGH_CLOUD_TROPOPAUSE_FRACTION, LOW_CLOUD_TROPOPAUSE_FRACTION, MID_CLOUD_TROPOPAUSE_FRACTION,
+};
 use crate::units::Length;
-use crate::units::constants::{LOW_CLOUD_TROPOPAUSE_FRACTION, MID_CLOUD_TROPOPAUSE_FRACTION, HIGH_CLOUD_TROPOPAUSE_FRACTION};
 
 pub fn cloud_band_altitudes(tropopause_altitude: Length) -> (Length, Length, Length, Length) {
     let z_t = tropopause_altitude.value().max(0.0);
@@ -43,6 +45,26 @@ pub fn sundqvist_cloud_fraction(
     let ratio = ((1.0 - rh) / (1.0 - rh_crit)).clamp(0.0, 1.0);
     let c = 1.0 - ratio.sqrt();
     c.clamp(0.0, 1.0)
+}
+
+pub fn effective_cloud_fraction(
+    derived_cloud_fraction: f64,
+    cloud_condensation_nuclei_factor: Option<f64>,
+) -> f64 {
+    let raw = derived_cloud_fraction.clamp(0.0, 1.0);
+    let ccn = cloud_condensation_nuclei_factor
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0);
+    (raw * ccn).clamp(0.0, 1.0)
+}
+
+pub fn sundqvist_cloud_fraction_with_ccn(
+    relative_humidity: f64,
+    critical_relative_humidity: f64,
+    cloud_condensation_nuclei_factor: Option<f64>,
+) -> f64 {
+    let raw = sundqvist_cloud_fraction(relative_humidity, critical_relative_humidity);
+    effective_cloud_fraction(raw, cloud_condensation_nuclei_factor)
 }
 
 pub fn combine_layer_cloud_fractions_max_random_overlap(

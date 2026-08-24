@@ -1,0 +1,1 @@
+ALTER TABLE atmospheres ADD COLUMN cloud_condensation_nuclei_factor REAL CHECK (cloud_condensation_nuclei_factor IS NULL OR (cloud_condensation_nuclei_factor >= 0.0 AND cloud_condensation_nuclei_factor <= 1.0));

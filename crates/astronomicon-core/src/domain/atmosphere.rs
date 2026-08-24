@@ -24,6 +24,7 @@ pub struct AtmosphereBuilder {
     composition: Vec<GasComponent>,
     surface_humidity: Option<f64>,
     cloud_coverage_fraction: Option<f64>,
+    cloud_condensation_nuclei_factor: Option<f64>,
 }
 
 impl AtmosphereBuilder {
@@ -43,6 +44,7 @@ impl AtmosphereBuilder {
             composition: Vec::new(),
             surface_humidity: None,
             cloud_coverage_fraction: None,
+            cloud_condensation_nuclei_factor: None,
         }
     }
 
@@ -69,6 +71,14 @@ impl AtmosphereBuilder {
         self
     }
 
+    pub fn with_cloud_condensation_nuclei_factor(
+        mut self,
+        cloud_condensation_nuclei_factor: impl Into<Option<f64>>,
+    ) -> Self {
+        self.cloud_condensation_nuclei_factor = cloud_condensation_nuclei_factor.into();
+        self
+    }
+
     pub fn build(self) -> DomainResult<Atmosphere> {
         validate_finite_and_non_negative(self.surface_pressure.value(), "surface_pressure")?;
         validate_finite(self.greenhouse_effect.value(), "greenhouse_effect")?;
@@ -80,6 +90,10 @@ impl AtmosphereBuilder {
 
         if let Some(cc) = self.cloud_coverage_fraction {
             validate_unit_interval(cc, "cloud_coverage_fraction")?;
+        }
+
+        if let Some(ccn) = self.cloud_condensation_nuclei_factor {
+            validate_unit_interval(ccn, "cloud_condensation_nuclei_factor")?;
         }
 
         validate_composition(
@@ -100,6 +114,7 @@ impl AtmosphereBuilder {
             composition: self.composition,
             surface_humidity: self.surface_humidity,
             cloud_coverage_fraction: self.cloud_coverage_fraction,
+            cloud_condensation_nuclei_factor: self.cloud_condensation_nuclei_factor,
         })
     }
 }
@@ -114,6 +129,7 @@ pub struct Atmosphere {
     composition: Vec<GasComponent>,
     surface_humidity: Option<f64>,
     cloud_coverage_fraction: Option<f64>,
+    cloud_condensation_nuclei_factor: Option<f64>,
 }
 
 impl Atmosphere {
@@ -142,6 +158,7 @@ impl Atmosphere {
         composition: Vec<GasComponent>,
         surface_humidity: Option<f64>,
         cloud_coverage_fraction: Option<f64>,
+        cloud_condensation_nuclei_factor: Option<f64>,
     ) -> DomainResult<Self> {
         Self::builder(
             id,
@@ -153,6 +170,7 @@ impl Atmosphere {
         .with_composition(composition)
         .with_surface_humidity(surface_humidity)
         .with_cloud_coverage_fraction(cloud_coverage_fraction)
+        .with_cloud_condensation_nuclei_factor(cloud_condensation_nuclei_factor)
         .build()
     }
 
@@ -186,6 +204,10 @@ impl Atmosphere {
 
     pub fn cloud_coverage_fraction(&self) -> Option<f64> {
         self.cloud_coverage_fraction
+    }
+
+    pub fn cloud_condensation_nuclei_factor(&self) -> Option<f64> {
+        self.cloud_condensation_nuclei_factor
     }
 
     pub fn mean_molar_mass(&self) -> DomainResult<MolarMass> {
