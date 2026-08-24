@@ -1,23 +1,8 @@
 use crate::error::DbResult;
+use crate::models::{HydrosphereComponentRow, HydrosphereRow};
 use astronomicon_core::domain::{Hydrosphere, HydrosphereComponent};
-use astronomicon_core::units::Length;
-use sqlx::{FromRow, SqlitePool};
+use sqlx::SqlitePool;
 use uuid::Uuid;
-
-#[derive(FromRow)]
-struct HydrosphereRow {
-    id: String,
-    planet_id: String,
-    average_depth_m: f64,
-    surface_coverage_fraction: f64,
-    salinity_or_solute_mass_fraction: f64,
-}
-
-#[derive(FromRow)]
-struct HydrosphereComponentRow {
-    formula: String,
-    percentage: f64,
-}
 
 pub async fn get_by_planet_id(
     pool: &SqlitePool,
@@ -49,17 +34,7 @@ pub async fn get_by_planet_id(
         components.push(HydrosphereComponent::new(comp.formula, comp.percentage)?);
     }
 
-    let id = Uuid::parse_str(&row.id)?;
-    let planet_uuid = Uuid::parse_str(&row.planet_id)?;
-
-    let hydrosphere = Hydrosphere::new(
-        id,
-        planet_uuid,
-        Length::new(row.average_depth_m),
-        row.surface_coverage_fraction,
-        row.salinity_or_solute_mass_fraction,
-        components,
-    )?;
+    let hydrosphere = row.to_domain(components)?;
 
     Ok(Some(hydrosphere))
 }

@@ -1,5 +1,7 @@
 pub mod atmosphere_row;
 pub mod barycenter_row;
+pub mod hydrosphere_row;
+pub mod lithosphere_row;
 pub mod material_properties_row;
 pub mod minor_planet_row;
 pub mod planet_row;
@@ -9,6 +11,8 @@ pub mod universe_state_row;
 
 pub use atmosphere_row::{AtmosphereGasComponentRow, AtmosphereRow};
 pub use barycenter_row::BarycenterRow;
+pub use hydrosphere_row::{HydrosphereComponentRow, HydrosphereRow};
+pub use lithosphere_row::LithosphereJoinRow;
 pub use material_properties_row::MaterialPropertiesRow;
 pub use minor_planet_row::MinorPlanetRow;
 pub use planet_row::PlanetRow;

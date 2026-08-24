@@ -1,25 +1,8 @@
 use crate::error::DbResult;
-use astronomicon_core::domain::{LithosphereComponent, MaterialProperties, PlanetRheology};
-use astronomicon_core::units::{Density, Pressure, Temperature};
-use sqlx::{FromRow, SqlitePool};
+use crate::models::LithosphereJoinRow;
+use astronomicon_core::domain::PlanetRheology;
+use sqlx::SqlitePool;
 use uuid::Uuid;
-
-#[derive(FromRow)]
-struct LithosphereJoinRow {
-    material_id: String,
-    percentage: f64,
-    name: String,
-    density_kg_per_m3: f64,
-    shear_modulus_pa: f64,
-    base_yield_stress_pa: f64,
-    thermal_conductivity_w_per_m_k: f64,
-    specific_heat_capacity_j_per_kg_k: f64,
-    thermal_expansion_per_k: f64,
-    solidus_temperature_k: f64,
-    liquidus_temperature_k: f64,
-    refractive_index_real: f64,
-    refractive_index_imag: f64,
-}
 
 pub async fn get_by_planet_id(
     pool: &SqlitePool,
@@ -45,22 +28,7 @@ pub async fn get_by_planet_id(
 
     let mut components = Vec::with_capacity(rows.len());
     for row in rows {
-        let mat_id = Uuid::parse_str(&row.material_id)?;
-        let material = MaterialProperties::new(
-            mat_id,
-            row.name,
-            Density::new(row.density_kg_per_m3),
-            Pressure::new(row.shear_modulus_pa),
-            Pressure::new(row.base_yield_stress_pa),
-            row.thermal_conductivity_w_per_m_k,
-            row.specific_heat_capacity_j_per_kg_k,
-            row.thermal_expansion_per_k,
-            Temperature::new(row.solidus_temperature_k),
-            Temperature::new(row.liquidus_temperature_k),
-            row.refractive_index_real,
-            row.refractive_index_imag,
-        )?;
-        components.push(LithosphereComponent::new(material, row.percentage)?);
+        components.push(row.to_component()?);
     }
 
     let rheology = PlanetRheology::new(components)?;
