@@ -21,14 +21,12 @@ pub mod tidal;
 pub mod volcanism;
 
 pub use black_hole::*;
-pub use climate::*;
 pub use context::{build_context, AppContext};
 pub use ephemeris::*;
 pub use error::{AppError, AppResult};
 pub use geology::*;
 pub use geophysics::*;
 pub use gravity::*;
-pub use hierarchy::*;
 pub use hydrosphere::*;
 pub use lagrange::*;
 pub use mineralogy::*;

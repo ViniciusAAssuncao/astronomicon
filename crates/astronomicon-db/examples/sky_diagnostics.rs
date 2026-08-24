@@ -1,4 +1,5 @@
-use astronomicon_app::{resolve_global_mean_temperature, resolve_sky_diagnostics};
+use astronomicon_app::resolve_sky_diagnostics;
+use astronomicon_app::climate::resolve_global_mean_temperature;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::units::{ColorRGB, Duration, Length};
