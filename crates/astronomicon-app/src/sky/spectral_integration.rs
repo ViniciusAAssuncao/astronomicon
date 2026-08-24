@@ -1,4 +1,4 @@
-use astronomicon_core::math::aerosol::refractivity_at_temperature_pressure;
+use astronomicon_core::chemistry::optics::refractivity_at_temperature_pressure;
 use astronomicon_core::math::atmospheric_scattering::SphericalAtmosphere;
 use astronomicon_core::math::colorimetry::{ColorXYZ, cie_color_matching_functions};
 use astronomicon_core::math::optics::refracted_sun_direction;

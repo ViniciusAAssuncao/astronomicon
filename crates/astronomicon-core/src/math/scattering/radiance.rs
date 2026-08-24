@@ -1,4 +1,4 @@
-use crate::math::aerosol::refractivity_at_temperature_pressure;
+use crate::chemistry::optics::refractivity_at_temperature_pressure;
 use crate::math::atmospheric_scattering::{
     ray_atmosphere_segment, sun_path_optical_depth, SphericalAtmosphere,
 };

@@ -2,7 +2,8 @@ use crate::chemistry::composition_mean::{
     composition_weighted_mean_strictly_positive, validate_and_normalize_composition,
 };
 use crate::error::{DomainError, DomainResult};
-use crate::units::Wavelength;
+use crate::units::constants::{STANDARD_ATMOSPHERE_PRESSURE, STP_TEMPERATURE};
+use crate::units::{Pressure, Temperature, Wavelength};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -309,6 +310,30 @@ pub fn mean_refractivity_gladstone_dale(composition: &[(String, f64)]) -> Domain
             })
         },
     )
+}
+
+pub fn atmospheric_refractivity_lorentz_lorenz(composition: &[(String, f64)]) -> DomainResult<f64> {
+    mean_refractivity_lorentz_lorenz(composition)
+}
+
+pub fn atmospheric_refractivity_gladstone_dale(composition: &[(String, f64)]) -> DomainResult<f64> {
+    mean_refractivity_gladstone_dale(composition)
+}
+
+pub fn refractivity_at_temperature_pressure(
+    refractivity_stp: f64,
+    temperature: Temperature,
+    pressure: Pressure,
+) -> f64 {
+    let t = temperature.value();
+    let p = pressure.value();
+
+    if t <= 0.0 || p <= 0.0 || !t.is_finite() || !p.is_finite() || !refractivity_stp.is_finite() {
+        return 0.0;
+    }
+
+    let density_ratio = (p / STANDARD_ATMOSPHERE_PRESSURE) * (STP_TEMPERATURE / t);
+    refractivity_stp * density_ratio
 }
 
 pub fn mean_gas_optical_properties(
