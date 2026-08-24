@@ -5,39 +5,27 @@ use crate::geophysics::resolve_planetary_core;
 use crate::hydrosphere::resolve_hydrosphere_diagnostics;
 use crate::mineralogy::resolve_planetary_mineralogy;
 use astronomicon_core::chemistry::element_mass_fraction;
-use astronomicon_core::domain::{ Planet, PlanetKind, PlanetRheology };
+use astronomicon_core::domain::{Planet, PlanetKind, PlanetRheology};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::geology::lithosphere_yield_strength;
-use astronomicon_core::math::gravity::{ gravitational_parameter, surface_gravity };
+use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::volcanism::{
-    classify_eruption_style,
-    cryovolcanic_melt_fraction,
-    decompression_melting_temperature,
-    depressed_solidus_temperature,
-    exsolved_volatile_fraction,
-    global_magma_extrusion_rate,
-    henry_solubility_h2o,
-    magma_density,
-    magma_dynamic_viscosity,
-    magma_temperature,
-    mantle_potential_temperature,
-    partial_melt_fraction,
-    volcanic_outgassing_fluxes,
+    classify_eruption_style, cryovolcanic_melt_fraction, decompression_melting_temperature,
+    depressed_solidus_temperature, exsolved_volatile_fraction, global_magma_extrusion_rate,
+    henry_solubility_h2o, magma_density, magma_dynamic_viscosity, magma_temperature,
+    mantle_potential_temperature, partial_melt_fraction, volcanic_outgassing_fluxes,
     VolcanicEruptionStyle,
 };
 use astronomicon_core::units::constants::{
-    SILICATE_LATENT_HEAT_OF_FUSION,
-    SILICATE_MELT_SPECIFIC_HEAT,
+    SILICATE_LATENT_HEAT_OF_FUSION, SILICATE_MELT_SPECIFIC_HEAT,
     WATER_ICE_LATENT_HEAT_OF_FUSION,
 };
-use astronomicon_core::units::{ Duration, DynamicViscosity, MassRate, Pressure, Temperature };
+use astronomicon_core::units::{Duration, DynamicViscosity, MassRate, Pressure, Temperature};
 use astronomicon_db::repositories::{
-    atmosphere_repository,
-    lithosphere_repository,
-    planet_repository,
+    atmosphere_repository, lithosphere_repository, planet_repository,
 };
 use astronomicon_db::SqlitePool;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -58,20 +46,22 @@ pub async fn resolve_planetary_volcanism(
     pool: &SqlitePool,
     planet_id: Uuid,
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<VolcanicDiagnostic> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let radius = planet.equatorial_radius().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "equatorial_radius".to_string(),
-        reason: format!("planet '{}' has no equatorial radius", planet_id),
-    })?;
+    let radius = planet
+        .equatorial_radius()
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "equatorial_radius".to_string(),
+            reason: format!("planet '{}' has no equatorial radius", planet_id),
+        })?;
 
     let mu_planet = gravitational_parameter(planet.mass());
     let g = surface_gravity(mu_planet, radius);
@@ -85,22 +75,25 @@ pub async fn resolve_planetary_volcanism(
         pool,
         planet_id,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
     let core_diag = resolve_planetary_core(pool, planet_id, universe_epoch, at_epoch).await?;
     let geology_diag = resolve_planetary_geology(pool, planet_id, universe_epoch, at_epoch).await?;
     let hydro_diag = resolve_hydrosphere_diagnostics(
         pool,
         planet_id,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
     let mineralogy_diag = resolve_planetary_mineralogy(
         pool,
         planet_id,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
 
     let atm_opt = atmosphere_repository::get_by_planet_id(pool, &planet_id).await?;
     let surface_pressure = atm_opt
@@ -140,7 +133,7 @@ pub async fn resolve_planetary_volcanism(
             core_diag.total_surface_heat_flux,
             solute_fraction,
             ice_thickness,
-            rheology.mean_thermal_conductivity()
+            rheology.mean_thermal_conductivity(),
         );
 
         let visc = 1.0e-3 * (1.0 + 10.0 * (1.0 - frac));
@@ -159,7 +152,7 @@ pub async fn resolve_planetary_volcanism(
             g,
             geology_diag.lithosphere_thickness,
             rheology.mean_specific_heat_capacity(),
-            rheology.mean_thermal_expansion()
+            rheology.mean_thermal_expansion(),
         );
         let frac = partial_melt_fraction(t_ext, wet_solidus, wet_liquidus);
         let t_magma = magma_temperature(t_ext, wet_solidus, wet_liquidus, frac);
@@ -177,7 +170,7 @@ pub async fn resolve_planetary_volcanism(
         melt_fraction,
         magma_temp,
         wet_solidus,
-        rheology.mean_thermal_expansion()
+        rheology.mean_thermal_expansion(),
     );
 
     let has_water_weakening =
@@ -186,7 +179,7 @@ pub async fn resolve_planetary_volcanism(
 
     let yield_strength = lithosphere_yield_strength(
         rheology.mean_base_yield_stress(),
-        has_water_weakening
+        has_water_weakening,
     );
 
     let magma_production_rate = global_magma_extrusion_rate(
@@ -209,7 +202,7 @@ pub async fn resolve_planetary_volcanism(
         latent_heat,
         specific_heat,
         magma_temp,
-        surf_temp
+        surf_temp,
     );
 
     let is_magma_ocean =
@@ -220,7 +213,7 @@ pub async fn resolve_planetary_volcanism(
     let c_o_ratio = mineralogy_diag.abundance.c_o_ratio;
     let sulfur_mass_fraction = element_mass_fraction(
         &mineralogy_diag.abundance.crustal_abundances,
-        "S"
+        "S",
     );
 
     let outgassing_rates = volcanic_outgassing_fluxes(
@@ -228,7 +221,7 @@ pub async fn resolve_planetary_volcanism(
         mantle_hydration,
         c_o_ratio,
         sulfur_mass_fraction,
-        surface_pressure
+        surface_pressure,
     );
 
     let outgassing_rate_sulfur = outgassing_rates.so2 + outgassing_rates.h2s;
@@ -247,7 +240,7 @@ pub async fn resolve_planetary_volcanism(
         exsolved_gas,
         is_subaqueous,
         planet.kind(),
-        magma_production_rate
+        magma_production_rate,
     );
 
     let (effusive_fraction, explosive_fraction) = match eruption_style {
