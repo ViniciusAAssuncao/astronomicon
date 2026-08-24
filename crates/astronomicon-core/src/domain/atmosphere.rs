@@ -14,50 +14,105 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Atmosphere {
+#[derive(Debug, Clone)]
+pub struct AtmosphereBuilder {
     id: Uuid,
     planet_id: Uuid,
     surface_pressure: Pressure,
     greenhouse_effect: Temperature,
     lapse_rate: TemperatureGradient,
     composition: Vec<GasComponent>,
+    surface_humidity: Option<f64>,
+    cloud_coverage_fraction: Option<f64>,
 }
 
-impl Atmosphere {
+impl AtmosphereBuilder {
     pub fn new(
         id: Uuid,
         planet_id: Uuid,
         surface_pressure: Pressure,
         greenhouse_effect: Temperature,
         lapse_rate: TemperatureGradient,
-        composition: Vec<GasComponent>,
-    ) -> DomainResult<Self> {
-        if !surface_pressure.value().is_finite() || surface_pressure.value() < 0.0 {
+    ) -> Self {
+        Self {
+            id,
+            planet_id,
+            surface_pressure,
+            greenhouse_effect,
+            lapse_rate,
+            composition: Vec::new(),
+            surface_humidity: None,
+            cloud_coverage_fraction: None,
+        }
+    }
+
+    pub fn with_composition(mut self, composition: Vec<GasComponent>) -> Self {
+        self.composition = composition;
+        self
+    }
+
+    pub fn with_gas_component(mut self, component: GasComponent) -> Self {
+        self.composition.push(component);
+        self
+    }
+
+    pub fn with_surface_humidity(mut self, surface_humidity: impl Into<Option<f64>>) -> Self {
+        self.surface_humidity = surface_humidity.into();
+        self
+    }
+
+    pub fn with_cloud_coverage_fraction(
+        mut self,
+        cloud_coverage_fraction: impl Into<Option<f64>>,
+    ) -> Self {
+        self.cloud_coverage_fraction = cloud_coverage_fraction.into();
+        self
+    }
+
+    pub fn build(self) -> DomainResult<Atmosphere> {
+        if !self.surface_pressure.value().is_finite() || self.surface_pressure.value() < 0.0 {
             return Err(DomainError::InvalidInvariant {
                 field: "surface_pressure".to_string(),
                 reason: "must be finite and non-negative".to_string(),
             });
         }
 
-        if !greenhouse_effect.value().is_finite() {
+        if !self.greenhouse_effect.value().is_finite() {
             return Err(DomainError::InvalidInvariant {
                 field: "greenhouse_effect".to_string(),
                 reason: "must be finite".to_string(),
             });
         }
 
-        if !lapse_rate.value().is_finite() {
+        if !self.lapse_rate.value().is_finite() {
             return Err(DomainError::InvalidInvariant {
                 field: "lapse_rate".to_string(),
                 reason: "must be finite".to_string(),
             });
         }
 
+        if let Some(sh) = self.surface_humidity {
+            if !sh.is_finite() || !(0.0..=1.0).contains(&sh) {
+                return Err(DomainError::InvalidInvariant {
+                    field: "surface_humidity".to_string(),
+                    reason: "must be between 0.0 and 1.0".to_string(),
+                });
+            }
+        }
+
+        if let Some(cc) = self.cloud_coverage_fraction {
+            if !cc.is_finite() || !(0.0..=1.0).contains(&cc) {
+                return Err(DomainError::InvalidInvariant {
+                    field: "cloud_coverage_fraction".to_string(),
+                    reason: "must be between 0.0 and 1.0".to_string(),
+                });
+            }
+        }
+
         let mut total_percentage = 0.0;
         let mut formulas = HashSet::new();
 
-        for comp in &composition {
+        for comp in &self.composition {
             total_percentage += comp.percentage();
             if !formulas.insert(comp.formula()) {
                 return Err(DomainError::InvalidInvariant {
@@ -74,14 +129,57 @@ impl Atmosphere {
             });
         }
 
-        Ok(Self {
-            id,
-            planet_id,
-            surface_pressure,
-            greenhouse_effect,
-            lapse_rate,
-            composition,
+        Ok(Atmosphere {
+            id: self.id,
+            planet_id: self.planet_id,
+            surface_pressure: self.surface_pressure,
+            greenhouse_effect: self.greenhouse_effect,
+            lapse_rate: self.lapse_rate,
+            composition: self.composition,
+            surface_humidity: self.surface_humidity,
+            cloud_coverage_fraction: self.cloud_coverage_fraction,
         })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Atmosphere {
+    id: Uuid,
+    planet_id: Uuid,
+    surface_pressure: Pressure,
+    greenhouse_effect: Temperature,
+    lapse_rate: TemperatureGradient,
+    composition: Vec<GasComponent>,
+    surface_humidity: Option<f64>,
+    cloud_coverage_fraction: Option<f64>,
+}
+
+impl Atmosphere {
+    pub fn builder(
+        id: Uuid,
+        planet_id: Uuid,
+        surface_pressure: Pressure,
+        greenhouse_effect: Temperature,
+        lapse_rate: TemperatureGradient,
+    ) -> AtmosphereBuilder {
+        AtmosphereBuilder::new(id, planet_id, surface_pressure, greenhouse_effect, lapse_rate)
+    }
+
+    pub fn new(
+        id: Uuid,
+        planet_id: Uuid,
+        surface_pressure: Pressure,
+        greenhouse_effect: Temperature,
+        lapse_rate: TemperatureGradient,
+        composition: Vec<GasComponent>,
+        surface_humidity: Option<f64>,
+        cloud_coverage_fraction: Option<f64>,
+    ) -> DomainResult<Self> {
+        Self::builder(id, planet_id, surface_pressure, greenhouse_effect, lapse_rate)
+            .with_composition(composition)
+            .with_surface_humidity(surface_humidity)
+            .with_cloud_coverage_fraction(cloud_coverage_fraction)
+            .build()
     }
 
     pub fn id(&self) -> Uuid {
@@ -106,6 +204,14 @@ impl Atmosphere {
 
     pub fn composition(&self) -> &[GasComponent] {
         &self.composition
+    }
+
+    pub fn surface_humidity(&self) -> Option<f64> {
+        self.surface_humidity
+    }
+
+    pub fn cloud_coverage_fraction(&self) -> Option<f64> {
+        self.cloud_coverage_fraction
     }
 
     pub fn mean_molar_mass(&self) -> DomainResult<MolarMass> {

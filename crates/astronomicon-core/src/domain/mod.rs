@@ -12,7 +12,7 @@ pub mod rheology;
 pub mod star;
 pub mod star_system;
 
-pub use atmosphere::Atmosphere;
+pub use atmosphere::{Atmosphere, AtmosphereBuilder};
 pub use barycenter::{Barycenter, BarycenterMember};
 pub use epoch::UniverseState;
 pub use gas_component::GasComponent;

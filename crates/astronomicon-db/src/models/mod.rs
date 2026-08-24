@@ -1,3 +1,4 @@
+pub mod atmosphere_row;
 pub mod barycenter_row;
 pub mod material_properties_row;
 pub mod minor_planet_row;
@@ -6,6 +7,7 @@ pub mod star_row;
 pub mod system_row;
 pub mod universe_state_row;
 
+pub use atmosphere_row::{AtmosphereGasComponentRow, AtmosphereRow};
 pub use barycenter_row::BarycenterRow;
 pub use material_properties_row::MaterialPropertiesRow;
 pub use minor_planet_row::MinorPlanetRow;

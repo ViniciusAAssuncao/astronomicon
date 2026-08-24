@@ -11,7 +11,7 @@ pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> DbResult<Option<PlanetRo
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
          mean_anomaly_at_epoch_rad, oblateness_j2, core_mass_fraction, \
          radioactive_heating_rate, magnetic_field_locked, love_number_k2, tidal_dissipation_factor_q, \
-         mantle_hydration_fraction \
+         mantle_hydration_fraction, dust_availability_factor \
          FROM planets WHERE id = ?",
     )
     .bind(id.to_string())
@@ -29,7 +29,7 @@ pub async fn list_all(pool: &SqlitePool) -> DbResult<Vec<PlanetRow>> {
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
          mean_anomaly_at_epoch_rad, oblateness_j2, core_mass_fraction, \
          radioactive_heating_rate, magnetic_field_locked, love_number_k2, tidal_dissipation_factor_q, \
-         mantle_hydration_fraction \
+         mantle_hydration_fraction, dust_availability_factor \
          FROM planets ORDER BY name ASC",
     )
     .fetch_all(pool)
@@ -49,7 +49,7 @@ pub async fn list_children_of_planet(
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
          mean_anomaly_at_epoch_rad, oblateness_j2, core_mass_fraction, \
          radioactive_heating_rate, magnetic_field_locked, love_number_k2, tidal_dissipation_factor_q, \
-         mantle_hydration_fraction \
+         mantle_hydration_fraction, dust_availability_factor \
          FROM planets WHERE parent_planet_id = ? ORDER BY name ASC",
     )
     .bind(parent_planet_id.to_string())
@@ -67,7 +67,7 @@ pub async fn list_by_star(pool: &SqlitePool, parent_star_id: &Uuid) -> DbResult<
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
          mean_anomaly_at_epoch_rad, oblateness_j2, core_mass_fraction, \
          radioactive_heating_rate, magnetic_field_locked, love_number_k2, tidal_dissipation_factor_q, \
-         mantle_hydration_fraction \
+         mantle_hydration_fraction, dust_availability_factor \
          FROM planets WHERE parent_star_id = ? ORDER BY name ASC",
     )
     .bind(parent_star_id.to_string())
@@ -85,7 +85,7 @@ pub async fn list_by_system(pool: &SqlitePool, system_id: &Uuid) -> DbResult<Vec
          eccentricity, inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
          mean_anomaly_at_epoch_rad, oblateness_j2, core_mass_fraction, \
          radioactive_heating_rate, magnetic_field_locked, love_number_k2, tidal_dissipation_factor_q, \
-         mantle_hydration_fraction \
+         mantle_hydration_fraction, dust_availability_factor \
          FROM planets WHERE star_system_id = ? ORDER BY name ASC",
     )
     .bind(system_id.to_string())

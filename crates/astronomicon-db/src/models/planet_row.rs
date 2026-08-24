@@ -37,6 +37,7 @@ pub struct PlanetRow {
     pub love_number_k2: Option<f64>,
     pub tidal_dissipation_factor_q: Option<f64>,
     pub mantle_hydration_fraction: Option<f64>,
+    pub dust_availability_factor: Option<f64>,
 }
 
 fn parse_orbital_parent(
@@ -160,6 +161,7 @@ impl TryFrom<PlanetRow> for Planet {
             .with_love_number_k2(row.love_number_k2)
             .with_tidal_dissipation_factor_q(row.tidal_dissipation_factor_q)
             .with_mantle_hydration_fraction(row.mantle_hydration_fraction)
+            .with_dust_availability_factor(row.dust_availability_factor)
             .build()?;
 
         Ok(planet)

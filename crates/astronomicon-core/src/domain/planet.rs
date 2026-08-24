@@ -52,6 +52,7 @@ pub struct PlanetBuilder {
     love_number_k2: Option<f64>,
     tidal_dissipation_factor_q: Option<f64>,
     mantle_hydration_fraction: Option<f64>,
+    dust_availability_factor: Option<f64>,
     rheology: Option<PlanetRheology>,
 }
 
@@ -86,6 +87,7 @@ impl PlanetBuilder {
             love_number_k2: None,
             tidal_dissipation_factor_q: None,
             mantle_hydration_fraction: None,
+            dust_availability_factor: None,
             rheology: None,
         }
     }
@@ -190,6 +192,14 @@ impl PlanetBuilder {
         mantle_hydration_fraction: impl Into<Option<f64>>,
     ) -> Self {
         self.mantle_hydration_fraction = mantle_hydration_fraction.into();
+        self
+    }
+
+    pub fn with_dust_availability_factor(
+        mut self,
+        dust_availability_factor: impl Into<Option<f64>>,
+    ) -> Self {
+        self.dust_availability_factor = dust_availability_factor.into();
         self
     }
 
@@ -362,6 +372,15 @@ impl PlanetBuilder {
             }
         }
 
+        if let Some(daf) = self.dust_availability_factor {
+            if !daf.is_finite() || !(0.0..=1.0).contains(&daf) {
+                return Err(DomainError::InvalidInvariant {
+                    field: "dust_availability_factor".to_string(),
+                    reason: "must be between 0.0 and 1.0".to_string(),
+                });
+            }
+        }
+
         let solstice_true_anomaly = self
             .solstice_true_anomaly
             .map(|angle| Angle::new(angle.value().rem_euclid(TAU)));
@@ -389,6 +408,7 @@ impl PlanetBuilder {
             love_number_k2: self.love_number_k2,
             tidal_dissipation_factor_q: self.tidal_dissipation_factor_q,
             mantle_hydration_fraction: self.mantle_hydration_fraction,
+            dust_availability_factor: self.dust_availability_factor,
             rheology: self.rheology,
         })
     }
@@ -418,6 +438,7 @@ pub struct Planet {
     love_number_k2: Option<f64>,
     tidal_dissipation_factor_q: Option<f64>,
     mantle_hydration_fraction: Option<f64>,
+    dust_availability_factor: Option<f64>,
     rheology: Option<PlanetRheology>,
 }
 
@@ -455,6 +476,7 @@ impl Planet {
         love_number_k2: Option<f64>,
         tidal_dissipation_factor_q: Option<f64>,
         mantle_hydration_fraction: Option<f64>,
+        dust_availability_factor: Option<f64>,
         rheology: Option<PlanetRheology>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
@@ -475,6 +497,7 @@ impl Planet {
             .with_love_number_k2(love_number_k2)
             .with_tidal_dissipation_factor_q(tidal_dissipation_factor_q)
             .with_mantle_hydration_fraction(mantle_hydration_fraction)
+            .with_dust_availability_factor(dust_availability_factor)
             .with_rheology(rheology)
             .build()
     }
@@ -565,6 +588,10 @@ impl Planet {
 
     pub fn mantle_hydration_fraction(&self) -> Option<f64> {
         self.mantle_hydration_fraction
+    }
+
+    pub fn dust_availability_factor(&self) -> Option<f64> {
+        self.dust_availability_factor
     }
 
     pub fn rheology(&self) -> Option<&PlanetRheology> {
