@@ -1,6 +1,7 @@
 use crate::chemistry::molar_mass::{
     mean_mass_attenuation_coefficient, mean_molar_mass, mean_specific_heat_capacity,
 };
+use crate::chemistry::viscosity::mean_dynamic_viscosity;
 use crate::domain::gas_component::GasComponent;
 use crate::domain::validation::{
     validate_composition, validate_finite, validate_finite_and_non_negative, validate_unit_interval,
@@ -8,8 +9,8 @@ use crate::domain::validation::{
 use crate::error::DomainResult;
 use crate::units::constants::{ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT};
 use crate::units::{
-    Acceleration, Density, Length, MassAttenuationCoefficient, MolarMass, Pressure, Temperature,
-    TemperatureGradient,
+    Acceleration, Density, DynamicViscosity, Length, MassAttenuationCoefficient, MolarMass,
+    Pressure, Temperature, TemperatureGradient,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -235,6 +236,18 @@ impl Atmosphere {
             .map(|c| (c.formula().to_string(), c.percentage()))
             .collect();
         mean_mass_attenuation_coefficient(&mapped)
+    }
+
+    pub fn mean_dynamic_viscosity(
+        &self,
+        temperature: Temperature,
+    ) -> DomainResult<DynamicViscosity> {
+        let mapped: Vec<(String, f64)> = self
+            .composition
+            .iter()
+            .map(|c| (c.formula().to_string(), c.percentage()))
+            .collect();
+        mean_dynamic_viscosity(&mapped, temperature)
     }
 
     pub fn mass_column(&self, gravity: Acceleration) -> f64 {

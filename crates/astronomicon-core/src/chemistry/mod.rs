@@ -7,6 +7,7 @@ pub mod molecular_formula;
 pub mod optics;
 pub mod periodic_table;
 pub mod solvent;
+pub mod viscosity;
 
 pub use abundance::*;
 pub use composition_mean::*;
@@ -17,3 +18,4 @@ pub use molecular_formula::*;
 pub use optics::*;
 pub use periodic_table::*;
 pub use solvent::*;
+pub use viscosity::*;

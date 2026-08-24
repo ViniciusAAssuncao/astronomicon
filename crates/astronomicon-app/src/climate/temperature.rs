@@ -201,10 +201,16 @@ pub async fn resolve_latitudinal_surface_temperature(
     let top_irradiance = Irradiance::new(base_irradiance.value() / (z_factor * z_factor));
     let local_insolation = top_irradiance * insolation_factor;
 
+    let greenhouse = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
+        Some(atmosphere) => atmosphere.greenhouse_effect(),
+        None => Temperature::new(0.0),
+    };
+
     let local_eq = local_radiative_equilibrium_temperature(local_insolation, bond_albedo);
+    let local_surface_temp = local_eq + greenhouse;
     let global_mean =
         resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
-    let blended = blended_local_temperature(global_mean, local_eq, thermal_inertia);
+    let blended = blended_local_temperature(global_mean, local_surface_temp, thermal_inertia);
 
     Ok(blended)
 }
@@ -297,7 +303,13 @@ pub async fn resolve_advective_surface_temperature(
     let top_irradiance = Irradiance::new(base_irradiance.value() / (z_factor * z_factor));
     let local_insolation = top_irradiance * insolation_factor;
 
+    let greenhouse = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
+        Some(atmosphere) => atmosphere.greenhouse_effect(),
+        None => Temperature::new(0.0),
+    };
+
     let local_eq = local_radiative_equilibrium_temperature(local_insolation, bond_albedo);
+    let local_surface_temp = local_eq + greenhouse;
     let global_mean =
         resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
 
@@ -305,7 +317,7 @@ pub async fn resolve_advective_surface_temperature(
         resolve_planetary_circulation(pool, planet_id, universe_epoch, at_epoch).await?;
     let advective = advective_local_temperature(
         global_mean,
-        local_eq,
+        local_surface_temp,
         circulation.thermal_redistribution_efficiency,
     );
 
