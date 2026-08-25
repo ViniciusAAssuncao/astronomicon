@@ -1,49 +1,75 @@
 use crate::climate::circulation::resolve_wind_profile_at_latitude;
 use crate::climate::clouds::cover::{
-    CloudCoverDiagnostic, resolve_cloud_cover, resolve_cloud_cover_at_latitude,
+    CloudCoverDiagnostic,
+    resolve_cloud_cover,
+    resolve_cloud_cover_at_latitude,
 };
 use crate::climate::clouds::instability::{
-    ConvectiveInstabilityDiagnostic, resolve_convective_instability,
+    ConvectiveInstabilityDiagnostic,
+    resolve_convective_instability,
     resolve_convective_instability_at_latitude,
 };
 use crate::climate::clouds::layer::CloudLayerDiagnostic;
-use crate::climate::clouds::tropopause::{
-    resolve_tropopause, resolve_tropopause_at_latitude,
-};
+use crate::climate::clouds::tropopause::{ resolve_tropopause, resolve_tropopause_at_latitude };
 use crate::climate::condensable_species::resolve_condensable_species;
 use crate::climate::temperature::{
-    resolve_advective_surface_temperature, resolve_global_mean_temperature,
+    resolve_advective_surface_temperature,
+    resolve_global_mean_temperature,
 };
 use crate::error::AppResult;
-use crate::volcanism::{VolcanicDiagnostic, resolve_planetary_volcanism};
+use crate::mineralogy::resolve_planetary_mineralogy;
+use crate::volcanism::{ VolcanicDiagnostic, resolve_planetary_volcanism };
+use astronomicon_core::chemistry::element_mass_fraction;
 use astronomicon_core::chemistry::optics::mean_gas_optical_properties;
 use astronomicon_core::chemistry::solvent::SolventProperties;
-use astronomicon_core::domain::{Atmosphere, Planet};
+use astronomicon_core::domain::{ Atmosphere, Planet };
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::aerosol::{
-    airborne_dust_density_with_gustiness, dust_threshold_surface_wind_with_params,
-    dynamic_aerosol_scale_height, volcanic_aerosol_density,
+    airborne_dust_density_with_gustiness,
+    dust_threshold_surface_wind_with_params,
+    dynamic_aerosol_scale_height,
+    volcanic_aerosol_density,
 };
 use astronomicon_core::math::atmosphere::ideal_gas_density;
 use astronomicon_core::math::climate::temperature_at_altitude;
 use astronomicon_core::math::clouds::CloudMorphology;
-use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
+use astronomicon_core::math::gravity::{ gravitational_parameter, surface_gravity };
 use astronomicon_core::math::optics::{
-    absorption_coefficient, particulate_optical_properties, rayleigh_scattering_coefficient,
+    absorption_coefficient,
+    particulate_optical_properties,
+    rayleigh_scattering_coefficient,
 };
 use astronomicon_core::math::precipitation::{
-    layer_vertical_velocity_scale, resolve_sedimentation_balance,
+    layer_vertical_velocity_scale,
+    resolve_sedimentation_balance,
 };
 use astronomicon_core::math::volcanism::VolcanicEruptionStyle;
+use astronomicon_core::units::constants::{
+    DEFAULT_DUST_PARTICLE_RADIUS_M,
+    DEFAULT_VOLCANIC_ASH_PARTICLE_RADIUS_M,
+};
 use astronomicon_core::units::{
-    Acceleration, Angle, Density, Duration, DynamicViscosity, Length, MolarMass, Pressure,
-    SpecificEnergy, Speed, Temperature, TemperatureGradient, Wavelength,
+    Acceleration,
+    Angle,
+    Density,
+    Duration,
+    DynamicViscosity,
+    Length,
+    MolarMass,
+    Pressure,
+    SpecificEnergy,
+    Speed,
+    Temperature,
+    TemperatureGradient,
+    Wavelength,
 };
 use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
-    atmosphere_repository, hydrosphere_repository, planet_repository,
+    atmosphere_repository,
+    hydrosphere_repository,
+    planet_repository,
 };
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 use uuid::Uuid;
 
 pub const WAVELENGTH_RED_METERS: f64 = 680.0e-9;
@@ -99,11 +125,7 @@ impl SpectralOpticalDepth {
     }
 
     pub fn gas_absorption(&self) -> (f64, f64, f64) {
-        (
-            self.gas_absorption_r,
-            self.gas_absorption_g,
-            self.gas_absorption_b,
-        )
+        (self.gas_absorption_r, self.gas_absorption_g, self.gas_absorption_b)
     }
 
     pub fn dust(&self) -> (f64, f64, f64) {
@@ -135,11 +157,7 @@ impl SpectralOpticalDepth {
     }
 
     pub fn asymmetry_factor(&self) -> (f64, f64, f64) {
-        (
-            self.asymmetry_factor_r,
-            self.asymmetry_factor_g,
-            self.asymmetry_factor_b,
-        )
+        (self.asymmetry_factor_r, self.asymmetry_factor_g, self.asymmetry_factor_b)
     }
 }
 
@@ -157,15 +175,17 @@ pub fn compute_cloud_layer_droplet_radius(
     cape: SpecificEnergy,
     vertical_wind_shear: f64,
     gravity: Acceleration,
-    ccn_factor: Option<f64>,
+    ccn_factor: Option<f64>
 ) -> Length {
     let dz = Length::new((layer.top_altitude.value() - layer.base_altitude.value()).max(0.0));
-    let rho_cond =
-        Density::new(layer.liquid_water_content.value() + layer.ice_water_content.value());
+    let rho_cond = Density::new(
+        layer.liquid_water_content.value() + layer.ice_water_content.value()
+    );
     let ice_frac = layer.ice_fraction.clamp(0.0, 1.0);
-    let rho_p_val = ((1.0 - ice_frac) * solvent_liquid_density.value()
-        + ice_frac * solvent_solid_density.value())
-    .max(1.0);
+    let rho_p_val = (
+        (1.0 - ice_frac) * solvent_liquid_density.value() +
+        ice_frac * solvent_solid_density.value()
+    ).max(1.0);
     let particle_density = Density::new(rho_p_val);
 
     let temp_z = temperature_at_altitude(surf_temp, layer.representative_altitude, lapse_rate);
@@ -173,12 +193,7 @@ pub fn compute_cloud_layer_droplet_radius(
     let press_z = Pressure::new(surface_pressure.value() * exponent.exp());
     let fluid_density = ideal_gas_density(press_z, atm_molar_mass, temp_z);
 
-    let w_scale = layer_vertical_velocity_scale(
-        morphology,
-        cape,
-        dz,
-        vertical_wind_shear,
-    );
+    let w_scale = layer_vertical_velocity_scale(morphology, cape, dz, vertical_wind_shear);
 
     let sed_res = resolve_sedimentation_balance(
         rho_cond,
@@ -187,16 +202,11 @@ pub fn compute_cloud_layer_droplet_radius(
         mean_viscosity,
         gravity,
         w_scale,
-        ccn_factor,
+        ccn_factor
     );
 
     if sed_res.sedimentable_fraction > 0.05 {
-        Length::new(
-            sed_res
-                .critical_radius
-                .value()
-                .max(sed_res.mean_droplet_radius.value()),
-        )
+        Length::new(sed_res.critical_radius.value().max(sed_res.mean_droplet_radius.value()))
     } else if sed_res.mean_droplet_radius.value() > 0.0 {
         sed_res.mean_droplet_radius
     } else {
@@ -218,7 +228,7 @@ pub fn calculate_spectral_optical_depth(
     instability: &ConvectiveInstabilityDiagnostic,
     vertical_wind_shear: f64,
     solvent_props: &SolventProperties,
-    crustal_iron_fraction: Option<f64>,
+    crustal_iron_fraction: Option<f64>
 ) -> AppResult<SpectralOpticalDepth> {
     let atm_composition: Vec<(String, f64)> = atmosphere
         .composition()
@@ -246,23 +256,29 @@ pub fn calculate_spectral_optical_depth(
             gas_opt_props.refractivity_stp(),
             gas_opt_props.king_factor(),
             surf_press,
-            surface_temperature,
+            surface_temperature
         );
         tau_rayleigh[i] = (beta_r * scale_h_val).max(0.0);
 
-        let beta_abs =
-            absorption_coefficient(&gas_opt_props, lambda, surf_press, surface_temperature);
+        let beta_abs = absorption_coefficient(
+            &gas_opt_props,
+            lambda,
+            surf_press,
+            surface_temperature
+        );
         tau_gas_abs[i] = (beta_abs * scale_h_val).max(0.0);
     }
 
     let grain_density = Density::new(2650.0);
-    let dust_avail = 1.0;
+    let dust_avail = planet
+        .dust_availability_factor()
+        .unwrap_or((1.0 - ocean_coverage).clamp(0.0, 1.0));
     let v_thresh = dust_threshold_surface_wind_with_params(
         gravity,
         rho_air_surf,
         grain_density,
         dyn_visc,
-        Some(0.003),
+        Some(0.003)
     );
     let rho_dust_surf = airborne_dust_density_with_gustiness(
         surface_wind_speed,
@@ -272,9 +288,11 @@ pub fn calculate_spectral_optical_depth(
         dust_avail,
         ocean_coverage,
         surface_humidity,
-        2.0,
+        2.0
     );
-    let r_dust = Length::new(1.5e-6);
+    let r_dust = planet
+        .dust_particle_radius()
+        .unwrap_or_else(|| Length::new(DEFAULT_DUST_PARTICLE_RADIUS_M));
     let h_dust = dynamic_aerosol_scale_height(
         scale_height,
         gravity,
@@ -282,35 +300,35 @@ pub fn calculate_spectral_optical_depth(
         grain_density,
         rho_air_surf,
         r_dust,
-        dyn_visc,
+        dyn_visc
     );
-    let h_dust_val = if h_dust.value() > 0.0 {
-        h_dust.value()
-    } else {
-        0.2 * scale_h_val
-    };
+    let h_dust_val = if h_dust.value() > 0.0 { h_dust.value() } else { 0.2 * scale_h_val };
     let m_col_dust = rho_dust_surf.value() * h_dust_val;
 
     let n_r_dust = 1.53;
     let fe_frac = crustal_iron_fraction.unwrap_or(0.05).clamp(0.0, 1.0);
-    let n_i_dust = (0.001 + 0.04 * fe_frac).max(1e-5);
 
     let mut tau_ext_dust = [0.0; 3];
     let mut tau_sca_dust = [0.0; 3];
     let mut g_dust = [0.0; 3];
 
     for (i, &lambda) in wavelengths.iter().enumerate() {
-        let opt_dust =
-            particulate_optical_properties(r_dust, grain_density, n_r_dust, n_i_dust, lambda);
+        let spectral_scale = (550.0e-9 / lambda.value()).powi(3);
+        let n_i_dust = (0.001 + 0.04 * fe_frac * spectral_scale).max(1e-5);
+        let opt_dust = particulate_optical_properties(
+            r_dust,
+            grain_density,
+            n_r_dust,
+            n_i_dust,
+            lambda
+        );
         let ext = (m_col_dust * opt_dust.mass_extinction_coefficient()).max(0.0);
         tau_ext_dust[i] = ext;
         tau_sca_dust[i] = (ext * opt_dust.single_scattering_albedo()).max(0.0);
         g_dust[i] = opt_dust.asymmetry_factor();
     }
 
-    let planet_radius = planet
-        .equatorial_radius()
-        .unwrap_or_else(|| Length::new(6371e3));
+    let planet_radius = planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3));
     let eruption_style = if volc_diag.is_cryovolcanic {
         VolcanicEruptionStyle::Cryovolcanic
     } else if volc_diag.explosive_fraction > 0.3 {
@@ -325,9 +343,11 @@ pub fn calculate_spectral_optical_depth(
         eruption_style,
         volc_diag.global_magma_production_rate,
         planet_radius,
-        scale_height,
+        scale_height
     );
-    let r_volc = Length::new(1.0e-6);
+    let r_volc = planet
+        .volcanic_ash_particle_radius()
+        .unwrap_or_else(|| Length::new(DEFAULT_VOLCANIC_ASH_PARTICLE_RADIUS_M));
     let rho_p_volc = Density::new(2300.0);
     let h_volc = dynamic_aerosol_scale_height(
         scale_height,
@@ -336,16 +356,12 @@ pub fn calculate_spectral_optical_depth(
         rho_p_volc,
         rho_air_surf,
         r_volc,
-        dyn_visc,
+        dyn_visc
     );
-    let h_volc_val = if h_volc.value() > 0.0 {
-        h_volc.value()
-    } else {
-        0.2 * scale_h_val
-    };
+    let h_volc_val = if h_volc.value() > 0.0 { h_volc.value() } else { 0.2 * scale_h_val };
     let m_col_volc = rho_volc_surf.value() * h_volc_val;
 
-    let n_r_volc = 1.50;
+    let n_r_volc = 1.5;
     let n_i_volc = 0.0015;
 
     let mut tau_ext_volc = [0.0; 3];
@@ -353,8 +369,13 @@ pub fn calculate_spectral_optical_depth(
     let mut g_volc = [0.0; 3];
 
     for (i, &lambda) in wavelengths.iter().enumerate() {
-        let opt_volc =
-            particulate_optical_properties(r_volc, rho_p_volc, n_r_volc, n_i_volc, lambda);
+        let opt_volc = particulate_optical_properties(
+            r_volc,
+            rho_p_volc,
+            n_r_volc,
+            n_i_volc,
+            lambda
+        );
         let ext = (m_col_volc * opt_volc.mass_extinction_coefficient()).max(0.0);
         tau_ext_volc[i] = ext;
         tau_sca_volc[i] = (ext * opt_volc.single_scattering_albedo()).max(0.0);
@@ -362,11 +383,7 @@ pub fn calculate_spectral_optical_depth(
     }
 
     let ccn_factor = atmosphere.cloud_condensation_nuclei_factor();
-    let cloud_layers = [
-        &cloud_diag.low_cloud,
-        &cloud_diag.mid_cloud,
-        &cloud_diag.high_cloud,
-    ];
+    let cloud_layers = [&cloud_diag.low_cloud, &cloud_diag.mid_cloud, &cloud_diag.high_cloud];
 
     let mut tau_ext_cloud = [0.0; 3];
     let mut tau_sca_cloud = [0.0; 3];
@@ -374,8 +391,7 @@ pub fn calculate_spectral_optical_depth(
 
     for layer in cloud_layers {
         let dz = (layer.top_altitude.value() - layer.base_altitude.value()).max(0.0);
-        let rho_cond =
-            layer.liquid_water_content.value() + layer.ice_water_content.value();
+        let rho_cond = layer.liquid_water_content.value() + layer.ice_water_content.value();
         let col_mass = (rho_cond * dz * layer.cloud_fraction).max(0.0);
 
         if col_mass <= 0.0 {
@@ -396,19 +412,22 @@ pub fn calculate_spectral_optical_depth(
             instability.cape,
             vertical_wind_shear,
             gravity,
-            ccn_factor,
+            ccn_factor
         );
 
         let ice_f = layer.ice_fraction.clamp(0.0, 1.0);
         let rho_p_layer = Density::new(
-            ((1.0 - ice_f) * solvent_props.liquid_density.value()
-                + ice_f * solvent_props.solid_density.value())
-            .max(1.0),
+            (
+                (1.0 - ice_f) * solvent_props.liquid_density.value() +
+                ice_f * solvent_props.solid_density.value()
+            ).max(1.0)
         );
-        let n_r_layer = (1.0 - ice_f) * solvent_props.liquid_refractive_index_real
-            + ice_f * solvent_props.solid_refractive_index_real;
-        let n_i_layer = (1.0 - ice_f) * solvent_props.liquid_refractive_index_imag
-            + ice_f * solvent_props.solid_refractive_index_imag;
+        let n_r_layer =
+            (1.0 - ice_f) * solvent_props.liquid_refractive_index_real +
+            ice_f * solvent_props.solid_refractive_index_real;
+        let n_i_layer =
+            (1.0 - ice_f) * solvent_props.liquid_refractive_index_imag +
+            ice_f * solvent_props.solid_refractive_index_imag;
 
         for (i, &lambda) in wavelengths.iter().enumerate() {
             let opt_layer = particulate_optical_properties(
@@ -416,7 +435,7 @@ pub fn calculate_spectral_optical_depth(
                 rho_p_layer,
                 n_r_layer,
                 n_i_layer,
-                lambda,
+                lambda
             );
             let ext_layer = col_mass * opt_layer.mass_extinction_coefficient();
             let sca_layer = ext_layer * opt_layer.single_scattering_albedo();
@@ -442,8 +461,7 @@ pub fn calculate_spectral_optical_depth(
     for i in 0..3 {
         tau_aerosol[i] = tau_ext_dust[i] + tau_ext_volc[i] + tau_ext_cloud[i];
         tau_total[i] = tau_rayleigh[i] + tau_gas_abs[i] + tau_aerosol[i];
-        tau_sca_total[i] =
-            tau_rayleigh[i] + tau_sca_dust[i] + tau_sca_volc[i] + tau_sca_cloud[i];
+        tau_sca_total[i] = tau_rayleigh[i] + tau_sca_dust[i] + tau_sca_volc[i] + tau_sca_cloud[i];
 
         if tau_total[i] > 1e-12 {
             ssa_total[i] = (tau_sca_total[i] / tau_total[i]).clamp(0.0, 1.0);
@@ -452,9 +470,10 @@ pub fn calculate_spectral_optical_depth(
         }
 
         if tau_sca_total[i] > 1e-12 {
-            let num = tau_sca_dust[i] * g_dust[i]
-                + tau_sca_volc[i] * g_volc[i]
-                + tau_sca_cloud[i] * g_cloud[i];
+            let num =
+                tau_sca_dust[i] * g_dust[i] +
+                tau_sca_volc[i] * g_volc[i] +
+                tau_sca_cloud[i] * g_cloud[i];
             g_total[i] = (num / tau_sca_total[i]).clamp(-0.999, 0.999);
         } else {
             g_total[i] = 0.0;
@@ -496,46 +515,58 @@ pub async fn resolve_optical_column(
     pool: &SqlitePool,
     planet_id: Uuid,
     universe_epoch: Duration,
-    at_epoch: Duration,
+    at_epoch: Duration
 ) -> AppResult<SpectralOpticalDepth> {
-    let atmosphere = atmosphere_repository::get_by_planet_id(pool, &planet_id)
-        .await?
+    let atmosphere = atmosphere_repository
+        ::get_by_planet_id(pool, &planet_id).await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "atmosphere".to_string(),
             reason: format!("planet '{}' has no atmosphere", planet_id),
         })?;
 
-    let planet_row = planet_repository::get_by_id(pool, &planet_id)
-        .await?
+    let planet_row = planet_repository
+        ::get_by_id(pool, &planet_id).await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let surf_temp =
-        resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
+    let surf_temp = resolve_global_mean_temperature(
+        pool,
+        planet_id,
+        universe_epoch,
+        at_epoch
+    ).await?;
     let wind_diag = resolve_wind_profile_at_latitude(
         pool,
         planet_id,
         Angle::new(0.0),
         universe_epoch,
-        at_epoch,
-    )
-    .await?;
+        at_epoch
+    ).await?;
     let volc_diag = resolve_planetary_volcanism(pool, planet_id, universe_epoch, at_epoch).await?;
     let hydro_opt = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?;
 
     let cloud_diag = resolve_cloud_cover(pool, planet_id, universe_epoch, at_epoch).await?;
     let tropo = resolve_tropopause(pool, planet_id, universe_epoch, at_epoch).await?;
-    let instability =
-        resolve_convective_instability(pool, planet_id, universe_epoch, at_epoch).await?;
-    let (solvent_props, _, surface_humidity) =
-        resolve_condensable_species(pool, planet_id).await?;
+    let instability = resolve_convective_instability(
+        pool,
+        planet_id,
+        universe_epoch,
+        at_epoch
+    ).await?;
+    let (solvent_props, _, surface_humidity) = resolve_condensable_species(pool, planet_id).await?;
 
-    let eq_radius = planet
-        .equatorial_radius()
-        .unwrap_or_else(|| Length::new(6371e3));
+    let mineralogy_diag = resolve_planetary_mineralogy(
+        pool,
+        planet_id,
+        universe_epoch,
+        at_epoch
+    ).await?;
+    let fe_fraction = element_mass_fraction(&mineralogy_diag.abundance.crustal_abundances, "Fe");
+
+    let eq_radius = planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3));
     let g = surface_gravity(gravitational_parameter(planet.mass()), eq_radius);
     let scale_h = atmosphere.scale_height(g, surf_temp)?;
     let ocean_cov = hydro_opt
@@ -543,8 +574,9 @@ pub async fn resolve_optical_column(
         .map(|h| h.surface_coverage_fraction())
         .unwrap_or(0.0);
 
-    let bulk_shear =
-        (wind_diag.jet_stream_speed.value() - wind_diag.surface_wind_speed.value()).abs();
+    let bulk_shear = (
+        wind_diag.jet_stream_speed.value() - wind_diag.surface_wind_speed.value()
+    ).abs();
     let vertical_wind_shear = bulk_shear / tropo.tropopause_altitude.value().max(1.0);
 
     calculate_spectral_optical_depth(
@@ -561,7 +593,7 @@ pub async fn resolve_optical_column(
         &instability,
         vertical_wind_shear,
         &solvent_props,
-        None,
+        Some(fe_fraction)
     )
 }
 
@@ -570,17 +602,17 @@ pub async fn resolve_optical_column_at_latitude(
     planet_id: Uuid,
     latitude: Angle,
     universe_epoch: Duration,
-    at_epoch: Duration,
+    at_epoch: Duration
 ) -> AppResult<SpectralOpticalDepth> {
-    let atmosphere = atmosphere_repository::get_by_planet_id(pool, &planet_id)
-        .await?
+    let atmosphere = atmosphere_repository
+        ::get_by_planet_id(pool, &planet_id).await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "atmosphere".to_string(),
             reason: format!("planet '{}' has no atmosphere", planet_id),
         })?;
 
-    let planet_row = planet_repository::get_by_id(pool, &planet_id)
-        .await?
+    let planet_row = planet_repository
+        ::get_by_id(pool, &planet_id).await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
@@ -592,38 +624,50 @@ pub async fn resolve_optical_column_at_latitude(
         planet_id,
         latitude,
         universe_epoch,
-        at_epoch,
-    )
-    .await?;
+        at_epoch
+    ).await?;
     let wind_diag = resolve_wind_profile_at_latitude(
         pool,
         planet_id,
         latitude,
         universe_epoch,
-        at_epoch,
-    )
-    .await?;
+        at_epoch
+    ).await?;
     let volc_diag = resolve_planetary_volcanism(pool, planet_id, universe_epoch, at_epoch).await?;
     let hydro_opt = hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?;
 
-    let cloud_diag =
-        resolve_cloud_cover_at_latitude(pool, planet_id, latitude, universe_epoch, at_epoch).await?;
-    let tropo =
-        resolve_tropopause_at_latitude(pool, planet_id, latitude, universe_epoch, at_epoch).await?;
+    let cloud_diag = resolve_cloud_cover_at_latitude(
+        pool,
+        planet_id,
+        latitude,
+        universe_epoch,
+        at_epoch
+    ).await?;
+    let tropo = resolve_tropopause_at_latitude(
+        pool,
+        planet_id,
+        latitude,
+        universe_epoch,
+        at_epoch
+    ).await?;
     let instability = resolve_convective_instability_at_latitude(
         pool,
         planet_id,
         latitude,
         universe_epoch,
-        at_epoch,
-    )
-    .await?;
-    let (solvent_props, _, surface_humidity) =
-        resolve_condensable_species(pool, planet_id).await?;
+        at_epoch
+    ).await?;
+    let (solvent_props, _, surface_humidity) = resolve_condensable_species(pool, planet_id).await?;
 
-    let eq_radius = planet
-        .equatorial_radius()
-        .unwrap_or_else(|| Length::new(6371e3));
+    let mineralogy_diag = resolve_planetary_mineralogy(
+        pool,
+        planet_id,
+        universe_epoch,
+        at_epoch
+    ).await?;
+    let fe_fraction = element_mass_fraction(&mineralogy_diag.abundance.crustal_abundances, "Fe");
+
+    let eq_radius = planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3));
     let g = surface_gravity(gravitational_parameter(planet.mass()), eq_radius);
     let scale_h = atmosphere.scale_height(g, surf_temp)?;
     let ocean_cov = hydro_opt
@@ -631,8 +675,9 @@ pub async fn resolve_optical_column_at_latitude(
         .map(|h| h.surface_coverage_fraction())
         .unwrap_or(0.0);
 
-    let bulk_shear =
-        (wind_diag.jet_stream_speed.value() - wind_diag.surface_wind_speed.value()).abs();
+    let bulk_shear = (
+        wind_diag.jet_stream_speed.value() - wind_diag.surface_wind_speed.value()
+    ).abs();
     let vertical_wind_shear = bulk_shear / tropo.tropopause_altitude.value().max(1.0);
 
     calculate_spectral_optical_depth(
@@ -649,6 +694,6 @@ pub async fn resolve_optical_column_at_latitude(
         &instability,
         vertical_wind_shear,
         &solvent_props,
-        None,
+        Some(fe_fraction)
     )
 }
