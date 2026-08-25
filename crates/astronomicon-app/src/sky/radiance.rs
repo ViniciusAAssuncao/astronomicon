@@ -106,11 +106,10 @@ pub fn resolve_spectral_solar_irradiance(
     let b_sum = b_r + b_g + b_b;
 
     if b_sum <= 0.0 || !b_sum.is_finite() {
-        return SpectralRadiance::new(f_total, f_total, f_total);
+        return SpectralRadiance::new(f_total / 3.0, f_total / 3.0, f_total / 3.0);
     }
 
-    let b_mean = b_sum / 3.0;
-    let scale = f_total / b_mean;
+    let scale = f_total / b_sum;
     SpectralRadiance::new(b_r * scale, b_g * scale, b_b * scale)
 }
 
