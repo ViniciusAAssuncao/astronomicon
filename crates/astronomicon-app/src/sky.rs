@@ -40,6 +40,7 @@ pub struct ScatteringCoefficients {
 pub struct SkyDiagnostic {
     pub scattering: ScatteringCoefficients,
     pub colors: SkyColorDiagnostic,
+    pub human_eye_colors: SkyColorDiagnostic,
     pub total_optical_depth_r: f64,
     pub total_optical_depth_g: f64,
     pub total_optical_depth_b: f64,
@@ -50,7 +51,9 @@ pub struct SkyDiagnostic {
     pub zenith_luminance: Luminance,
     pub horizon_luminance: Luminance,
     pub sunset_luminance: Luminance,
+    pub sunset_halo_luminance: Luminance,
     pub exposure_value: f64,
+    pub human_eye_exposure_value: f64,
     pub clouds: CloudCoverDiagnostic,
 }
 
@@ -91,6 +94,7 @@ pub async fn resolve_sky_diagnostics(
     let solar_irradiance = resolve_spectral_solar_irradiance(toa_irradiance, star_temp);
     let radiances = calculate_sky_radiances(&optical_depth, solar_irradiance, surface_albedo);
     let colors = process_sky_colors_from_radiances(&radiances);
+    let human_eye_colors = process_locally_adapted_sky_colors(&radiances);
 
     let cloud_diag = resolve_cloud_cover(pool, planet_id, universe_epoch, at_epoch).await?;
 
@@ -139,12 +143,19 @@ pub async fn resolve_sky_diagnostics(
         radiances.sunset_radiance.g,
         radiances.sunset_radiance.b,
     );
+    let sh_lum = photopic_luminance(
+        radiances.sunset_halo_radiance.r,
+        radiances.sunset_halo_radiance.g,
+        radiances.sunset_halo_radiance.b,
+    );
 
     let ev = ev100_from_illuminance(phot_illum);
+    let human_ev = ev100_from_luminance(z_lum);
 
     Ok(Some(SkyDiagnostic {
         scattering,
         colors,
+        human_eye_colors,
         total_optical_depth_r: optical_depth.total_r,
         total_optical_depth_g: optical_depth.total_g,
         total_optical_depth_b: optical_depth.total_b,
@@ -155,7 +166,9 @@ pub async fn resolve_sky_diagnostics(
         zenith_luminance: z_lum,
         horizon_luminance: h_lum,
         sunset_luminance: s_lum,
+        sunset_halo_luminance: sh_lum,
         exposure_value: ev,
+        human_eye_exposure_value: human_ev,
         clouds: cloud_diag,
     }))
 }

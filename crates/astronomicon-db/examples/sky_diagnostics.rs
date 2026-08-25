@@ -15,6 +15,7 @@ use astronomicon_app::sky::{
     ev100_from_illuminance,
     ev100_from_luminance,
     expose_and_tone_map_radiance,
+    human_eye_adapt_and_tone_map_radiance,
     linear_to_srgb,
     resolve_optical_column,
     resolve_optical_column_at_latitude,
@@ -24,7 +25,7 @@ use astronomicon_app::sky::{
 use astronomicon_core::domain::Planet;
 use astronomicon_core::math::gravity::{ gravitational_parameter, surface_gravity };
 use astronomicon_core::math::radiometry::{ photopic_illuminance, photopic_luminance };
-use astronomicon_core::units::{ Angle, Duration, Length, MolarMass };
+use astronomicon_core::units::{ Angle, Duration, Length, Luminance, MolarMass };
 use astronomicon_db::repositories::{
     atmosphere_repository,
     planet_repository,
@@ -67,12 +68,15 @@ pub struct ComprehensiveSkyReport {
     pub global_zenith_luminance_cd_m2: f64,
     pub global_horizon_luminance_cd_m2: f64,
     pub global_sunset_luminance_cd_m2: f64,
+    pub global_sunset_halo_luminance_cd_m2: f64,
     pub global_ev100_incident: f64,
     pub global_ev100_zenith: f64,
     pub global_ev100_horizon: f64,
     pub global_ev100_sunset: f64,
+    pub global_ev100_sunset_halo: f64,
     pub sunny_16_ev: f64,
     pub global_sky_colors: SkyColorSummary,
+    pub human_eye_sky_colors: SkyColorSummary,
     pub scattering_coefficients: ScatteringCoefficientsSummary,
     pub cloud_summary: CloudSummary,
     pub latitudinal_transect: Vec<LatitudinalSkyDiagnostic>,
@@ -121,12 +125,15 @@ pub struct SkyRadianceSummary {
     pub zenith: SpectralRadianceSummary,
     pub horizon: SpectralRadianceSummary,
     pub sunset: SpectralRadianceSummary,
+    pub sunset_halo: SpectralRadianceSummary,
     pub zenith_diffuse: SpectralRadianceSummary,
     pub zenith_single: SpectralRadianceSummary,
     pub horizon_diffuse: SpectralRadianceSummary,
     pub horizon_single: SpectralRadianceSummary,
     pub sunset_diffuse: SpectralRadianceSummary,
     pub sunset_single: SpectralRadianceSummary,
+    pub sunset_halo_diffuse: SpectralRadianceSummary,
+    pub sunset_halo_single: SpectralRadianceSummary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +152,7 @@ pub struct SkyColorSummary {
     pub zenith: ColorSummary,
     pub horizon: ColorSummary,
     pub sunset: ColorSummary,
+    pub sunset_halo: ColorSummary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,9 +190,11 @@ pub struct LatitudinalSkyDiagnostic {
     pub zenith_luminance_cd_m2: f64,
     pub horizon_luminance_cd_m2: f64,
     pub sunset_luminance_cd_m2: f64,
+    pub sunset_halo_luminance_cd_m2: f64,
     pub ev100_incident: f64,
     pub ev100_zenith: f64,
     pub sky_colors: SkyColorSummary,
+    pub human_eye_sky_colors: SkyColorSummary,
     pub cloud_fraction: f64,
 }
 
@@ -222,6 +232,27 @@ fn opt_depth_to_summary(od: &SpectralOpticalDepth) -> SpectralOpticalDepthSummar
 
 fn color_to_summary(radiance: SpectralRadiance) -> ColorSummary {
     let (r_mapped, g_mapped, b_mapped) = expose_and_tone_map_radiance(radiance);
+    let r_srgb = linear_to_srgb(r_mapped);
+    let g_srgb = linear_to_srgb(g_mapped);
+    let b_srgb = linear_to_srgb(b_mapped);
+    let r_byte = (r_srgb * 255.0).round().clamp(0.0, 255.0) as u8;
+    let g_byte = (g_srgb * 255.0).round().clamp(0.0, 255.0) as u8;
+    let b_byte = (b_srgb * 255.0).round().clamp(0.0, 255.0) as u8;
+    let hex = format!("#{:02X}{:02X}{:02X}", r_byte, g_byte, b_byte);
+    ColorSummary {
+        r_srgb,
+        g_srgb,
+        b_srgb,
+        r_byte,
+        g_byte,
+        b_byte,
+        hex,
+    }
+}
+
+fn color_to_human_eye_summary(radiance: SpectralRadiance, adapt_lum: Luminance) -> ColorSummary {
+    let (r_mapped, g_mapped, b_mapped) =
+        human_eye_adapt_and_tone_map_radiance(radiance, adapt_lum);
     let r_srgb = linear_to_srgb(r_mapped);
     let g_srgb = linear_to_srgb(g_mapped);
     let b_srgb = linear_to_srgb(b_mapped);
@@ -362,17 +393,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 global_radiances.sunset_radiance.g,
                 global_radiances.sunset_radiance.b
             );
+            let global_sunset_halo_lum = photopic_luminance(
+                global_radiances.sunset_halo_radiance.r,
+                global_radiances.sunset_halo_radiance.g,
+                global_radiances.sunset_halo_radiance.b
+            );
 
             let global_ev_incident = ev100_from_illuminance(global_phot_illum);
             let global_ev_zenith = ev100_from_luminance(global_zenith_lum);
             let global_ev_horizon = ev100_from_luminance(global_horizon_lum);
             let global_ev_sunset = ev100_from_luminance(global_sunset_lum);
+            let global_ev_sunset_halo = ev100_from_luminance(global_sunset_halo_lum);
             let sunny16 = sunny_16_exposure_value();
 
             let global_colors = SkyColorSummary {
                 zenith: color_to_summary(global_radiances.zenith_radiance),
                 horizon: color_to_summary(global_radiances.horizon_radiance),
                 sunset: color_to_summary(global_radiances.sunset_radiance),
+                sunset_halo: color_to_summary(global_radiances.sunset_halo_radiance),
+            };
+
+            let human_eye_colors = SkyColorSummary {
+                zenith: color_to_human_eye_summary(global_radiances.zenith_radiance, global_zenith_lum),
+                horizon: color_to_human_eye_summary(global_radiances.horizon_radiance, global_horizon_lum),
+                sunset: color_to_human_eye_summary(global_radiances.sunset_radiance, global_sunset_lum),
+                sunset_halo: color_to_human_eye_summary(global_radiances.sunset_halo_radiance, global_sunset_halo_lum),
             };
 
             let sampled_latitudes_deg = [0.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0];
@@ -440,6 +485,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     lat_rads.sunset_radiance.g,
                     lat_rads.sunset_radiance.b
                 );
+                let lat_sh_lum = photopic_luminance(
+                    lat_rads.sunset_halo_radiance.r,
+                    lat_rads.sunset_halo_radiance.g,
+                    lat_rads.sunset_halo_radiance.b
+                );
 
                 let lat_ev_incident = ev100_from_illuminance(lat_phot_illum);
                 let lat_ev_zenith = ev100_from_luminance(lat_z_lum);
@@ -448,6 +498,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     zenith: color_to_summary(lat_rads.zenith_radiance),
                     horizon: color_to_summary(lat_rads.horizon_radiance),
                     sunset: color_to_summary(lat_rads.sunset_radiance),
+                    sunset_halo: color_to_summary(lat_rads.sunset_halo_radiance),
+                };
+
+                let lat_human_eye_colors = SkyColorSummary {
+                    zenith: color_to_human_eye_summary(lat_rads.zenith_radiance, lat_z_lum),
+                    horizon: color_to_human_eye_summary(lat_rads.horizon_radiance, lat_h_lum),
+                    sunset: color_to_human_eye_summary(lat_rads.sunset_radiance, lat_s_lum),
+                    sunset_halo: color_to_human_eye_summary(lat_rads.sunset_halo_radiance, lat_sh_lum),
                 };
 
                 latitudinal_transect.push(LatitudinalSkyDiagnostic {
@@ -471,6 +529,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             r: lat_rads.sunset_radiance.r,
                             g: lat_rads.sunset_radiance.g,
                             b: lat_rads.sunset_radiance.b,
+                        },
+                        sunset_halo: SpectralRadianceSummary {
+                            r: lat_rads.sunset_halo_radiance.r,
+                            g: lat_rads.sunset_halo_radiance.g,
+                            b: lat_rads.sunset_halo_radiance.b,
                         },
                         zenith_diffuse: SpectralRadianceSummary {
                             r: lat_rads.zenith_diffuse.r,
@@ -502,6 +565,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             g: lat_rads.sunset_single.g,
                             b: lat_rads.sunset_single.b,
                         },
+                        sunset_halo_diffuse: SpectralRadianceSummary {
+                            r: lat_rads.sunset_halo_diffuse.r,
+                            g: lat_rads.sunset_halo_diffuse.g,
+                            b: lat_rads.sunset_halo_diffuse.b,
+                        },
+                        sunset_halo_single: SpectralRadianceSummary {
+                            r: lat_rads.sunset_halo_single.r,
+                            g: lat_rads.sunset_halo_single.g,
+                            b: lat_rads.sunset_halo_single.b,
+                        },
                     },
                     diffuse_radiance: SpectralRadianceSummary {
                         r: lat_rads.zenith_diffuse.r,
@@ -519,9 +592,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     zenith_luminance_cd_m2: lat_z_lum.value(),
                     horizon_luminance_cd_m2: lat_h_lum.value(),
                     sunset_luminance_cd_m2: lat_s_lum.value(),
+                    sunset_halo_luminance_cd_m2: lat_sh_lum.value(),
                     ev100_incident: lat_ev_incident,
                     ev100_zenith: lat_ev_zenith,
                     sky_colors: lat_colors,
+                    human_eye_sky_colors: lat_human_eye_colors,
                     cloud_fraction: lat_cloud.total_cloud_fraction,
                 });
             }
@@ -568,6 +643,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         g: global_radiances.sunset_radiance.g,
                         b: global_radiances.sunset_radiance.b,
                     },
+                    sunset_halo: SpectralRadianceSummary {
+                        r: global_radiances.sunset_halo_radiance.r,
+                        g: global_radiances.sunset_halo_radiance.g,
+                        b: global_radiances.sunset_halo_radiance.b,
+                    },
                     zenith_diffuse: SpectralRadianceSummary {
                         r: global_radiances.zenith_diffuse.r,
                         g: global_radiances.zenith_diffuse.g,
@@ -598,6 +678,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         g: global_radiances.sunset_single.g,
                         b: global_radiances.sunset_single.b,
                     },
+                    sunset_halo_diffuse: SpectralRadianceSummary {
+                        r: global_radiances.sunset_halo_diffuse.r,
+                        g: global_radiances.sunset_halo_diffuse.g,
+                        b: global_radiances.sunset_halo_diffuse.b,
+                    },
+                    sunset_halo_single: SpectralRadianceSummary {
+                        r: global_radiances.sunset_halo_single.r,
+                        g: global_radiances.sunset_halo_single.g,
+                        b: global_radiances.sunset_halo_single.b,
+                    },
                 },
                 global_diffuse_radiance: SpectralRadianceSummary {
                     r: global_radiances.zenith_diffuse.r,
@@ -615,12 +705,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 global_zenith_luminance_cd_m2: global_zenith_lum.value(),
                 global_horizon_luminance_cd_m2: global_horizon_lum.value(),
                 global_sunset_luminance_cd_m2: global_sunset_lum.value(),
+                global_sunset_halo_luminance_cd_m2: global_sunset_halo_lum.value(),
                 global_ev100_incident: global_ev_incident,
                 global_ev100_zenith: global_ev_zenith,
                 global_ev100_horizon: global_ev_horizon,
                 global_ev100_sunset: global_ev_sunset,
+                global_ev100_sunset_halo: global_ev_sunset_halo,
                 sunny_16_ev: sunny16,
                 global_sky_colors: global_colors,
+                human_eye_sky_colors: human_eye_colors,
                 scattering_coefficients: scattering_summary,
                 cloud_summary: CloudSummary {
                     total_cloud_fraction: clouds.total_cloud_fraction,
@@ -799,7 +892,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.global_sky_radiance.horizon_diffuse.b
             );
             println!(
-                "  Pôr-do-Sol Total (L_sunset):   {:.4e} / {:.4e} / {:.4e}",
+                "  Pôr-do-Sol Céu (L_sunset):     {:.4e} / {:.4e} / {:.4e}",
                 report.global_sky_radiance.sunset.r,
                 report.global_sky_radiance.sunset.g,
                 report.global_sky_radiance.sunset.b
@@ -815,6 +908,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.global_sky_radiance.sunset_diffuse.r,
                 report.global_sky_radiance.sunset_diffuse.g,
                 report.global_sky_radiance.sunset_diffuse.b
+            );
+            println!(
+                "  Pôr-do-Sol Halo Solar:         {:.4e} / {:.4e} / {:.4e}",
+                report.global_sky_radiance.sunset_halo.r,
+                report.global_sky_radiance.sunset_halo.g,
+                report.global_sky_radiance.sunset_halo.b
+            );
+            println!(
+                "    - Componente Single Scatter: {:.4e} / {:.4e} / {:.4e}",
+                report.global_sky_radiance.sunset_halo_single.r,
+                report.global_sky_radiance.sunset_halo_single.g,
+                report.global_sky_radiance.sunset_halo_single.b
+            );
+            println!(
+                "    - Componente Difuso (2-Str): {:.4e} / {:.4e} / {:.4e}",
+                report.global_sky_radiance.sunset_halo_diffuse.r,
+                report.global_sky_radiance.sunset_halo_diffuse.g,
+                report.global_sky_radiance.sunset_halo_diffuse.b
             );
 
             println!("\n5. FOTOMETRIA, ILUMINÂNCIA SUPERFICIAL E LUMINÂNCIAS (CIE 1931):");
@@ -844,9 +955,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.global_horizon_luminance_cd_m2 / 1000.0
             );
             println!(
-                "  Luminância no Pôr-do-Sol:      {:.2} cd/m² ({:.2} kcd/m²)",
+                "  Luminância no Pôr-do-Sol Céu:  {:.2} cd/m² ({:.2} kcd/m²)",
                 report.global_sunset_luminance_cd_m2,
                 report.global_sunset_luminance_cd_m2 / 1000.0
+            );
+            println!(
+                "  Luminância Halo do Pôr-do-Sol: {:.2} cd/m² ({:.2} kcd/m²)",
+                report.global_sunset_halo_luminance_cd_m2,
+                report.global_sunset_halo_luminance_cd_m2 / 1000.0
             );
 
             println!("\n6. VALORES DE EXPOSIÇÃO FOTOGRÁFICA (EV100 / ISO 2720 / Sunny 16):");
@@ -854,11 +970,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  EV100 Refletido no Zênite:     {:.2} EV", report.global_ev100_zenith);
             println!("  EV100 Refletido no Horizonte:  {:.2} EV", report.global_ev100_horizon);
             println!("  EV100 Refletido no Pôr-do-Sol: {:.2} EV", report.global_ev100_sunset);
+            println!("  EV100 Refletido Halo Solar:    {:.2} EV", report.global_ev100_sunset_halo);
             println!("  Referência Sunny 16 Terrestre: {:.2} EV", report.sunny_16_ev);
 
-            println!("\n7. CORES PERCEBIDAS DO CÉU (ESPAÇO DE COR sRGB):");
+            println!("\n7. CORES PERCEBIDAS: CÂMERA FIXA (SUNNY 16) vs OLHO HUMANO (AUTO-EXPOSE):");
+            println!("  [ CÂMERA FIXA (ISO 100 / f16 / 1/100s) ]:");
             println!(
-                "  Zênite:     {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
+                "    Zênite:         {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
                 report.global_sky_colors.zenith.hex,
                 report.global_sky_colors.zenith.r_byte,
                 report.global_sky_colors.zenith.g_byte,
@@ -868,7 +986,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.global_sky_colors.zenith.b_srgb
             );
             println!(
-                "  Horizonte:  {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
+                "    Horizonte:      {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
                 report.global_sky_colors.horizon.hex,
                 report.global_sky_colors.horizon.r_byte,
                 report.global_sky_colors.horizon.g_byte,
@@ -878,7 +996,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.global_sky_colors.horizon.b_srgb
             );
             println!(
-                "  Pôr-do-Sol: {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
+                "    Pôr-Sol Céu:    {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
                 report.global_sky_colors.sunset.hex,
                 report.global_sky_colors.sunset.r_byte,
                 report.global_sky_colors.sunset.g_byte,
@@ -886,6 +1004,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.global_sky_colors.sunset.r_srgb,
                 report.global_sky_colors.sunset.g_srgb,
                 report.global_sky_colors.sunset.b_srgb
+            );
+            println!(
+                "    Pôr-Sol Halo:   {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
+                report.global_sky_colors.sunset_halo.hex,
+                report.global_sky_colors.sunset_halo.r_byte,
+                report.global_sky_colors.sunset_halo.g_byte,
+                report.global_sky_colors.sunset_halo.b_byte,
+                report.global_sky_colors.sunset_halo.r_srgb,
+                report.global_sky_colors.sunset_halo.g_srgb,
+                report.global_sky_colors.sunset_halo.b_srgb
+            );
+
+            println!("  [ OLHO HUMANO / ADAPTAÇÃO VISUAL (AUTO-EXPOSED) ]:");
+            println!(
+                "    Zênite:         {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
+                report.human_eye_sky_colors.zenith.hex,
+                report.human_eye_sky_colors.zenith.r_byte,
+                report.human_eye_sky_colors.zenith.g_byte,
+                report.human_eye_sky_colors.zenith.b_byte,
+                report.human_eye_sky_colors.zenith.r_srgb,
+                report.human_eye_sky_colors.zenith.g_srgb,
+                report.human_eye_sky_colors.zenith.b_srgb
+            );
+            println!(
+                "    Horizonte:      {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
+                report.human_eye_sky_colors.horizon.hex,
+                report.human_eye_sky_colors.horizon.r_byte,
+                report.human_eye_sky_colors.horizon.g_byte,
+                report.human_eye_sky_colors.horizon.b_byte,
+                report.human_eye_sky_colors.horizon.r_srgb,
+                report.human_eye_sky_colors.horizon.g_srgb,
+                report.human_eye_sky_colors.horizon.b_srgb
+            );
+            println!(
+                "    Pôr-Sol Céu:    {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
+                report.human_eye_sky_colors.sunset.hex,
+                report.human_eye_sky_colors.sunset.r_byte,
+                report.human_eye_sky_colors.sunset.g_byte,
+                report.human_eye_sky_colors.sunset.b_byte,
+                report.human_eye_sky_colors.sunset.r_srgb,
+                report.human_eye_sky_colors.sunset.g_srgb,
+                report.human_eye_sky_colors.sunset.b_srgb
+            );
+            println!(
+                "    Pôr-Sol Halo:   {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
+                report.human_eye_sky_colors.sunset_halo.hex,
+                report.human_eye_sky_colors.sunset_halo.r_byte,
+                report.human_eye_sky_colors.sunset_halo.g_byte,
+                report.human_eye_sky_colors.sunset_halo.b_byte,
+                report.human_eye_sky_colors.sunset_halo.r_srgb,
+                report.human_eye_sky_colors.sunset_halo.g_srgb,
+                report.human_eye_sky_colors.sunset_halo.b_srgb
             );
 
             println!("\n8. COBERTURA DE NUVENS E MACROFÍSICA:");
@@ -911,26 +1081,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             println!(
-                "\n9. TABELA DE TRANSECTO LATITUDINAL COMPLETO (Óptica -> Radiância -> Fotometria -> EV -> Cor):"
+                "\n9. TABELA DE TRANSECTO LATITUDINAL COMPLETO (Óptica -> Radiância -> Fotometria -> EV -> Olho Humano):"
             );
             println!(
-                "------------------------------------------------------------------------------------------------------------------------------------------------------"
+                "----------------------------------------------------------------------------------------------------------------------------------------------------------------------"
             );
             println!(
-                "{:<6} | {:<7} | {:<16} | {:<16} | {:<12} | {:<10} | {:<8} | {:<8} | {:<8} | {:<8}",
+                "{:<6} | {:<7} | {:<16} | {:<12} | {:<10} | {:<8} | {:<12} | {:<12} | {:<12} | {:<8}",
                 "Lat",
                 "T_surf",
                 "τ_Total(R/G/B)",
-                "L_Difusa(R/G/B)",
                 "Ilum (lux)",
                 "L_Zen(cd/m²)",
                 "EV100",
-                "Zênite",
-                "Pôr-Sol",
+                "Olho Zênite",
+                "Olho Pôr-Céu",
+                "Olho HaloSol",
                 "Nuvens"
             );
             println!(
-                "------------------------------------------------------------------------------------------------------------------------------------------------------"
+                "----------------------------------------------------------------------------------------------------------------------------------------------------------------------"
             );
             for lat in &report.latitudinal_transect {
                 let tau_str = format!(
@@ -939,30 +1109,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     lat.optical_depth.total_g,
                     lat.optical_depth.total_b
                 );
-                let diff_str = format!(
-                    "{:.2e}/{:.2e}",
-                    lat.diffuse_radiance.r,
-                    lat.diffuse_radiance.b
-                );
                 println!(
-                    "{:>4.0}° | {:>5.1} K | {:<16} | {:<16} | {:>12.1} | {:>10.1} | {:>8.2} | {:<8} | {:<8} | {:>6.1}%",
+                    "{:>4.0}° | {:>5.1} K | {:<16} | {:>12.1} | {:>10.1} | {:>8.2} | {:<12} | {:<12} | {:<12} | {:>6.1}%",
                     lat.latitude_deg,
                     lat.surface_temperature_k,
                     tau_str,
-                    diff_str,
                     lat.photopic_illuminance_lux,
                     lat.zenith_luminance_cd_m2,
                     lat.ev100_incident,
-                    lat.sky_colors.zenith.hex,
-                    lat.sky_colors.sunset.hex,
+                    lat.human_eye_sky_colors.zenith.hex,
+                    lat.human_eye_sky_colors.sunset.hex,
+                    lat.human_eye_sky_colors.sunset_halo.hex,
                     lat.cloud_fraction * 100.0
                 );
             }
             println!(
-                "------------------------------------------------------------------------------------------------------------------------------------------------------"
+                "----------------------------------------------------------------------------------------------------------------------------------------------------------------------"
             );
 
-            println!("\n10. DETALHAMENTO DA CADEIA FÍSICA POR LATITUDE:");
+            println!("\n10. DETALHAMENTO DA CADEIA FÍSICA E ADAPTAÇÃO VISUAL POR LATITUDE:");
             for lat in &report.latitudinal_transect {
                 println!(
                     "\n  === LATITUDE {:>4.1}° (T_surf: {:.2} K / {:.2} °C | Nuvens: {:.1}% | Albedo: {:.1}%) ===",
@@ -985,34 +1150,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     lat.optical_depth.aerosol_b
                 );
                 println!(
-                    "    Radiâncias no Zênite:  Total=[{:.3e}, {:.3e}, {:.3e}] | Single=[{:.3e}, {:.3e}, {:.3e}] | Difusa=[{:.3e}, {:.3e}, {:.3e}] W/(m²·sr)",
+                    "    Radiâncias Espectrais: Zênite=[{:.3e}, {:.3e}, {:.3e}] | Pôr-Sol=[{:.3e}, {:.3e}, {:.3e}] | Halo=[{:.3e}, {:.3e}, {:.3e}] W/(m²·sr)",
                     lat.sky_radiance.zenith.r,
                     lat.sky_radiance.zenith.g,
                     lat.sky_radiance.zenith.b,
-                    lat.single_radiance.r,
-                    lat.single_radiance.g,
-                    lat.single_radiance.b,
-                    lat.diffuse_radiance.r,
-                    lat.diffuse_radiance.g,
-                    lat.diffuse_radiance.b
+                    lat.sky_radiance.sunset.r,
+                    lat.sky_radiance.sunset.g,
+                    lat.sky_radiance.sunset.b,
+                    lat.sky_radiance.sunset_halo.r,
+                    lat.sky_radiance.sunset_halo.g,
+                    lat.sky_radiance.sunset_halo.b
                 );
                 println!(
-                    "    Fotometria & Exposição: Ilum.Total={:.1} lux (Direta={:.1}, Difusa={:.1}) | L_Zenith={:.1} cd/m² | EV100_Incidente={:.2} | EV100_Zenith={:.2}",
+                    "    Fotometria & Exposição: Ilum.Total={:.1} lux (Direta={:.1}, Difusa={:.1}) | L_Zenith={:.1} cd/m² | L_Halo={:.1} cd/m² | EV100={:.2}",
                     lat.photopic_illuminance_lux,
                     lat.direct_illuminance_lux,
                     lat.diffuse_illuminance_lux,
                     lat.zenith_luminance_cd_m2,
-                    lat.ev100_incident,
-                    lat.ev100_zenith
+                    lat.sunset_halo_luminance_cd_m2,
+                    lat.ev100_incident
                 );
                 println!(
-                    "    Cores Finais:          Zênite={} (RGB: {:>3}, {:>3}, {:>3}) | Horizonte={} | Pôr-do-Sol={}",
+                    "    Cores Câmera Fixa:     Zênite={} | Horizonte={} | Pôr-Sol Céu={} | Halo Sol={}",
                     lat.sky_colors.zenith.hex,
-                    lat.sky_colors.zenith.r_byte,
-                    lat.sky_colors.zenith.g_byte,
-                    lat.sky_colors.zenith.b_byte,
                     lat.sky_colors.horizon.hex,
-                    lat.sky_colors.sunset.hex
+                    lat.sky_colors.sunset.hex,
+                    lat.sky_colors.sunset_halo.hex
+                );
+                println!(
+                    "    Cores Olho Humano:     Zênite={} (RGB: {:>3}, {:>3}, {:>3}) | Horizonte={} | Pôr-Sol Céu={} | Halo Sol={}",
+                    lat.human_eye_sky_colors.zenith.hex,
+                    lat.human_eye_sky_colors.zenith.r_byte,
+                    lat.human_eye_sky_colors.zenith.g_byte,
+                    lat.human_eye_sky_colors.zenith.b_byte,
+                    lat.human_eye_sky_colors.horizon.hex,
+                    lat.human_eye_sky_colors.sunset.hex,
+                    lat.human_eye_sky_colors.sunset_halo.hex
                 );
             }
 

@@ -57,6 +57,21 @@ impl CanonicalGeometry {
             scattering_angle: scattering,
         }
     }
+
+    pub fn sunset_halo() -> Self {
+        let sun_zenith = Angle::new((88.0 * PI) / 180.0);
+        let view_zenith = Angle::new((88.0 * PI) / 180.0);
+        let az_diff = (2.0 * PI) / 180.0;
+        let cos_theta =
+            ((88.0 * PI) / 180.0).cos() * ((88.0 * PI) / 180.0).cos() +
+            ((88.0 * PI) / 180.0).sin() * ((88.0 * PI) / 180.0).sin() * az_diff.cos();
+        let scattering = Angle::new(cos_theta.clamp(-1.0, 1.0).acos());
+        Self {
+            sun_zenith_angle: sun_zenith,
+            view_zenith_angle: view_zenith,
+            scattering_angle: scattering,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -89,12 +104,15 @@ pub struct SkyRadianceDiagnostic {
     pub zenith_radiance: SpectralRadiance,
     pub horizon_radiance: SpectralRadiance,
     pub sunset_radiance: SpectralRadiance,
+    pub sunset_halo_radiance: SpectralRadiance,
     pub zenith_diffuse: SpectralRadiance,
     pub zenith_single: SpectralRadiance,
     pub horizon_diffuse: SpectralRadiance,
     pub horizon_single: SpectralRadiance,
     pub sunset_diffuse: SpectralRadiance,
     pub sunset_single: SpectralRadiance,
+    pub sunset_halo_diffuse: SpectralRadiance,
+    pub sunset_halo_single: SpectralRadiance,
 }
 
 pub fn resolve_spectral_solar_irradiance(
@@ -265,17 +283,26 @@ pub fn calculate_sky_radiances(
         CanonicalGeometry::sunset(),
         surface_albedo
     );
+    let sunset_halo = calculate_radiance_breakdown_at_geometry(
+        optical_column,
+        solar_irradiance,
+        CanonicalGeometry::sunset_halo(),
+        surface_albedo
+    );
 
     SkyRadianceDiagnostic {
         solar_irradiance,
         zenith_radiance: zenith.total,
         horizon_radiance: horizon.total,
         sunset_radiance: sunset.total,
+        sunset_halo_radiance: sunset_halo.total,
         zenith_diffuse: zenith.diffuse,
         zenith_single: zenith.single_scattering,
         horizon_diffuse: horizon.diffuse,
         horizon_single: horizon.single_scattering,
         sunset_diffuse: sunset.diffuse,
         sunset_single: sunset.single_scattering,
+        sunset_halo_diffuse: sunset_halo.diffuse,
+        sunset_halo_single: sunset_halo.single_scattering,
     }
 }
