@@ -71,11 +71,24 @@ impl SpectralRadiance {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GeometryRadianceBreakdown {
+    pub single_scattering: SpectralRadiance,
+    pub diffuse: SpectralRadiance,
+    pub total: SpectralRadiance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SkyRadianceDiagnostic {
     pub solar_irradiance: SpectralRadiance,
     pub zenith_radiance: SpectralRadiance,
     pub horizon_radiance: SpectralRadiance,
     pub sunset_radiance: SpectralRadiance,
+    pub zenith_diffuse: SpectralRadiance,
+    pub zenith_single: SpectralRadiance,
+    pub horizon_diffuse: SpectralRadiance,
+    pub horizon_single: SpectralRadiance,
+    pub sunset_diffuse: SpectralRadiance,
+    pub sunset_single: SpectralRadiance,
 }
 
 pub fn resolve_spectral_solar_irradiance(
@@ -101,20 +114,12 @@ pub fn resolve_spectral_solar_irradiance(
     SpectralRadiance::new(b_r * scale, b_g * scale, b_b * scale)
 }
 
-pub fn calculate_single_scattering_radiance(
-    optical_column: &SpectralOpticalDepth,
-    solar_irradiance: SpectralRadiance,
-    geometry: CanonicalGeometry,
-) -> SpectralRadiance {
-    calculate_radiance_at_geometry(optical_column, solar_irradiance, geometry, 0.0)
-}
-
-pub fn calculate_radiance_at_geometry(
+pub fn calculate_radiance_breakdown_at_geometry(
     optical_column: &SpectralOpticalDepth,
     solar_irradiance: SpectralRadiance,
     geometry: CanonicalGeometry,
     surface_albedo: f64,
-) -> SpectralRadiance {
+) -> GeometryRadianceBreakdown {
     let m_s = relative_airmass(geometry.sun_zenith_angle);
     let m_v = relative_airmass(geometry.view_zenith_angle);
     let theta = geometry.scattering_angle;
@@ -153,7 +158,9 @@ pub fn calculate_radiance_at_geometry(
         solar_irradiance.b,
     ];
 
-    let mut radiances = [0.0; 3];
+    let mut single_rad = [0.0; 3];
+    let mut diffuse_rad = [0.0; 3];
+    let mut total_rad = [0.0; 3];
 
     for i in 0..3 {
         let tau = taus_ext[i].max(0.0);
@@ -164,7 +171,9 @@ pub fn calculate_radiance_at_geometry(
         let f_0 = f_sols[i].max(0.0);
 
         if f_0 <= 0.0 || tau <= 0.0 || omega <= 0.0 {
-            radiances[i] = 0.0;
+            single_rad[i] = 0.0;
+            diffuse_rad[i] = 0.0;
+            total_rad[i] = 0.0;
             continue;
         }
 
@@ -182,20 +191,73 @@ pub fn calculate_radiance_at_geometry(
             (m_v / (m_s - m_v)) * ((-m_v * tau).exp() - (-m_s * tau).exp())
         };
 
-        let rad_single = f_0 * omega * phase * t_geom.max(0.0);
+        let rad_s = f_0 * omega * phase * t_geom.max(0.0);
+        single_rad[i] = if rad_s.is_finite() && rad_s > 0.0 {
+            rad_s
+        } else {
+            0.0
+        };
 
         let two_stream = delta_eddington_two_stream(tau, omega, g, mu0, surface_albedo);
-        let rad_diffuse = (two_stream.transmittance * mu0 * f_0) / PI;
+        let rad_d = (two_stream.transmittance * mu0 * f_0) / PI;
+        diffuse_rad[i] = if rad_d.is_finite() && rad_d > 0.0 {
+            rad_d
+        } else {
+            0.0
+        };
 
-        let total_rad = rad_single + rad_diffuse;
-        radiances[i] = if total_rad.is_finite() && total_rad > 0.0 {
-            total_rad
+        let tot = single_rad[i] + diffuse_rad[i];
+        total_rad[i] = if tot.is_finite() && tot > 0.0 {
+            tot
         } else {
             0.0
         };
     }
 
-    SpectralRadiance::new(radiances[0], radiances[1], radiances[2])
+    GeometryRadianceBreakdown {
+        single_scattering: SpectralRadiance::new(single_rad[0], single_rad[1], single_rad[2]),
+        diffuse: SpectralRadiance::new(diffuse_rad[0], diffuse_rad[1], diffuse_rad[2]),
+        total: SpectralRadiance::new(total_rad[0], total_rad[1], total_rad[2]),
+    }
+}
+
+pub fn calculate_single_scattering_radiance(
+    optical_column: &SpectralOpticalDepth,
+    solar_irradiance: SpectralRadiance,
+    geometry: CanonicalGeometry,
+) -> SpectralRadiance {
+    calculate_radiance_breakdown_at_geometry(optical_column, solar_irradiance, geometry, 0.0)
+        .single_scattering
+}
+
+pub fn calculate_diffuse_radiance_at_geometry(
+    optical_column: &SpectralOpticalDepth,
+    solar_irradiance: SpectralRadiance,
+    geometry: CanonicalGeometry,
+    surface_albedo: f64,
+) -> SpectralRadiance {
+    calculate_radiance_breakdown_at_geometry(
+        optical_column,
+        solar_irradiance,
+        geometry,
+        surface_albedo,
+    )
+    .diffuse
+}
+
+pub fn calculate_radiance_at_geometry(
+    optical_column: &SpectralOpticalDepth,
+    solar_irradiance: SpectralRadiance,
+    geometry: CanonicalGeometry,
+    surface_albedo: f64,
+) -> SpectralRadiance {
+    calculate_radiance_breakdown_at_geometry(
+        optical_column,
+        solar_irradiance,
+        geometry,
+        surface_albedo,
+    )
+    .total
 }
 
 pub fn calculate_sky_radiances(
@@ -203,19 +265,19 @@ pub fn calculate_sky_radiances(
     solar_irradiance: SpectralRadiance,
     surface_albedo: f64,
 ) -> SkyRadianceDiagnostic {
-    let zenith = calculate_radiance_at_geometry(
+    let zenith = calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::zenith(),
         surface_albedo,
     );
-    let horizon = calculate_radiance_at_geometry(
+    let horizon = calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::horizon(),
         surface_albedo,
     );
-    let sunset = calculate_radiance_at_geometry(
+    let sunset = calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::sunset(),
@@ -224,8 +286,14 @@ pub fn calculate_sky_radiances(
 
     SkyRadianceDiagnostic {
         solar_irradiance,
-        zenith_radiance: zenith,
-        horizon_radiance: horizon,
-        sunset_radiance: sunset,
+        zenith_radiance: zenith.total,
+        horizon_radiance: horizon.total,
+        sunset_radiance: sunset.total,
+        zenith_diffuse: zenith.diffuse,
+        zenith_single: zenith.single_scattering,
+        horizon_diffuse: horizon.diffuse,
+        horizon_single: horizon.single_scattering,
+        sunset_diffuse: sunset.diffuse,
+        sunset_single: sunset.single_scattering,
     }
 }

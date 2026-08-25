@@ -18,10 +18,12 @@ use crate::hierarchy::find_parent_star;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
-use astronomicon_core::units::{Duration, Length};
+use astronomicon_core::math::radiometry::{photopic_illuminance, photopic_luminance};
+use astronomicon_core::units::{Duration, Illuminance, Length, Luminance};
 use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{atmosphere_repository, planet_repository};
 use serde::{Deserialize, Serialize};
+use std::f64::consts::PI;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -41,6 +43,14 @@ pub struct SkyDiagnostic {
     pub total_optical_depth_r: f64,
     pub total_optical_depth_g: f64,
     pub total_optical_depth_b: f64,
+    pub diffuse_radiance_r: f64,
+    pub diffuse_radiance_g: f64,
+    pub diffuse_radiance_b: f64,
+    pub photopic_illuminance: Illuminance,
+    pub zenith_luminance: Luminance,
+    pub horizon_luminance: Luminance,
+    pub sunset_luminance: Luminance,
+    pub exposure_value: f64,
     pub clouds: CloudCoverDiagnostic,
 }
 
@@ -102,12 +112,50 @@ pub async fn resolve_sky_diagnostics(
         mie_b: optical_depth.aerosol_b / scale_h_val,
     };
 
+    let dir_r = solar_irradiance.r * (-optical_depth.total_r).exp();
+    let dir_g = solar_irradiance.g * (-optical_depth.total_g).exp();
+    let dir_b = solar_irradiance.b * (-optical_depth.total_b).exp();
+    let diff_irr_r = PI * radiances.zenith_diffuse.r;
+    let diff_irr_g = PI * radiances.zenith_diffuse.g;
+    let diff_irr_b = PI * radiances.zenith_diffuse.b;
+
+    let tot_irr_r = dir_r + diff_irr_r;
+    let tot_irr_g = dir_g + diff_irr_g;
+    let tot_irr_b = dir_b + diff_irr_b;
+
+    let phot_illum = photopic_illuminance(tot_irr_r, tot_irr_g, tot_irr_b);
+    let z_lum = photopic_luminance(
+        radiances.zenith_radiance.r,
+        radiances.zenith_radiance.g,
+        radiances.zenith_radiance.b,
+    );
+    let h_lum = photopic_luminance(
+        radiances.horizon_radiance.r,
+        radiances.horizon_radiance.g,
+        radiances.horizon_radiance.b,
+    );
+    let s_lum = photopic_luminance(
+        radiances.sunset_radiance.r,
+        radiances.sunset_radiance.g,
+        radiances.sunset_radiance.b,
+    );
+
+    let ev = ev100_from_illuminance(phot_illum);
+
     Ok(Some(SkyDiagnostic {
         scattering,
         colors,
         total_optical_depth_r: optical_depth.total_r,
         total_optical_depth_g: optical_depth.total_g,
         total_optical_depth_b: optical_depth.total_b,
+        diffuse_radiance_r: radiances.zenith_diffuse.r,
+        diffuse_radiance_g: radiances.zenith_diffuse.g,
+        diffuse_radiance_b: radiances.zenith_diffuse.b,
+        photopic_illuminance: phot_illum,
+        zenith_luminance: z_lum,
+        horizon_luminance: h_lum,
+        sunset_luminance: s_lum,
+        exposure_value: ev,
         clouds: cloud_diag,
     }))
 }

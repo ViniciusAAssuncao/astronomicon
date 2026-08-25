@@ -4,6 +4,7 @@ use astronomicon_app::climate::{
     resolve_cloud_cover_at_latitude,
     resolve_global_mean_temperature,
     resolve_star_emission_profile,
+    resolve_surface_albedo,
     resolve_top_of_atmosphere_irradiance,
 };
 use astronomicon_app::hierarchy::find_parent_star;
@@ -11,13 +12,18 @@ use astronomicon_app::sky::{
     SpectralOpticalDepth,
     SpectralRadiance,
     calculate_sky_radiances,
+    ev100_from_illuminance,
+    ev100_from_luminance,
+    expose_and_tone_map_radiance,
     linear_to_srgb,
     resolve_optical_column,
     resolve_optical_column_at_latitude,
     resolve_spectral_solar_irradiance,
+    sunny_16_exposure_value,
 };
 use astronomicon_core::domain::Planet;
 use astronomicon_core::math::gravity::{ gravitational_parameter, surface_gravity };
+use astronomicon_core::math::radiometry::{ photopic_illuminance, photopic_luminance };
 use astronomicon_core::units::{ Angle, Duration, Length, MolarMass };
 use astronomicon_db::repositories::{
     atmosphere_repository,
@@ -48,10 +54,24 @@ pub struct ComprehensiveSkyReport {
     pub scale_height_km: f64,
     pub mean_molar_mass_g_per_mol: f64,
     pub surface_air_density_kg_per_m3: f64,
+    pub surface_albedo: f64,
     pub top_of_atmosphere_irradiance_w_per_m2: f64,
     pub solar_irradiance_rgb: SpectralRadianceSummary,
     pub global_optical_depth: SpectralOpticalDepthSummary,
     pub global_sky_radiance: SkyRadianceSummary,
+    pub global_diffuse_radiance: SpectralRadianceSummary,
+    pub global_single_radiance: SpectralRadianceSummary,
+    pub global_photopic_illuminance_lux: f64,
+    pub global_direct_illuminance_lux: f64,
+    pub global_diffuse_illuminance_lux: f64,
+    pub global_zenith_luminance_cd_m2: f64,
+    pub global_horizon_luminance_cd_m2: f64,
+    pub global_sunset_luminance_cd_m2: f64,
+    pub global_ev100_incident: f64,
+    pub global_ev100_zenith: f64,
+    pub global_ev100_horizon: f64,
+    pub global_ev100_sunset: f64,
+    pub sunny_16_ev: f64,
     pub global_sky_colors: SkyColorSummary,
     pub scattering_coefficients: ScatteringCoefficientsSummary,
     pub cloud_summary: CloudSummary,
@@ -101,6 +121,12 @@ pub struct SkyRadianceSummary {
     pub zenith: SpectralRadianceSummary,
     pub horizon: SpectralRadianceSummary,
     pub sunset: SpectralRadianceSummary,
+    pub zenith_diffuse: SpectralRadianceSummary,
+    pub zenith_single: SpectralRadianceSummary,
+    pub horizon_diffuse: SpectralRadianceSummary,
+    pub horizon_single: SpectralRadianceSummary,
+    pub sunset_diffuse: SpectralRadianceSummary,
+    pub sunset_single: SpectralRadianceSummary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,8 +171,19 @@ pub struct LatitudinalSkyDiagnostic {
     pub latitude_deg: f64,
     pub surface_temperature_k: f64,
     pub surface_temperature_c: f64,
+    pub surface_albedo: f64,
     pub optical_depth: SpectralOpticalDepthSummary,
     pub sky_radiance: SkyRadianceSummary,
+    pub diffuse_radiance: SpectralRadianceSummary,
+    pub single_radiance: SpectralRadianceSummary,
+    pub photopic_illuminance_lux: f64,
+    pub direct_illuminance_lux: f64,
+    pub diffuse_illuminance_lux: f64,
+    pub zenith_luminance_cd_m2: f64,
+    pub horizon_luminance_cd_m2: f64,
+    pub sunset_luminance_cd_m2: f64,
+    pub ev100_incident: f64,
+    pub ev100_zenith: f64,
     pub sky_colors: SkyColorSummary,
     pub cloud_fraction: f64,
 }
@@ -183,16 +220,11 @@ fn opt_depth_to_summary(od: &SpectralOpticalDepth) -> SpectralOpticalDepthSummar
     }
 }
 
-fn color_to_summary(
-    radiance: SpectralRadiance,
-    solar_irradiance: SpectralRadiance
-) -> ColorSummary {
-    let r_lin = ((PI * radiance.r) / solar_irradiance.r.max(1e-12)).clamp(0.0, 1.0);
-    let g_lin = ((PI * radiance.g) / solar_irradiance.g.max(1e-12)).clamp(0.0, 1.0);
-    let b_lin = ((PI * radiance.b) / solar_irradiance.b.max(1e-12)).clamp(0.0, 1.0);
-    let r_srgb = linear_to_srgb(r_lin);
-    let g_srgb = linear_to_srgb(g_lin);
-    let b_srgb = linear_to_srgb(b_lin);
+fn color_to_summary(radiance: SpectralRadiance) -> ColorSummary {
+    let (r_mapped, g_mapped, b_mapped) = expose_and_tone_map_radiance(radiance);
+    let r_srgb = linear_to_srgb(r_mapped);
+    let g_srgb = linear_to_srgb(g_mapped);
+    let b_srgb = linear_to_srgb(b_mapped);
     let r_byte = (r_srgb * 255.0).round().clamp(0.0, 255.0) as u8;
     let g_byte = (g_srgb * 255.0).round().clamp(0.0, 255.0) as u8;
     let b_byte = (b_srgb * 255.0).round().clamp(0.0, 255.0) as u8;
@@ -258,13 +290,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ).await?;
             let solar_irr = resolve_spectral_solar_irradiance(toa_irradiance, star_temp);
 
+            let surface_albedo = resolve_surface_albedo(
+                &pool,
+                planet_id,
+                universe_epoch,
+                at_epoch
+            ).await?;
+
             let global_optical_depth = resolve_optical_column(
                 &pool,
                 planet_id,
                 universe_epoch,
                 at_epoch
             ).await?;
-            let global_radiances = calculate_sky_radiances(&global_optical_depth, solar_irr);
+            let global_radiances = calculate_sky_radiances(
+                &global_optical_depth,
+                solar_irr,
+                surface_albedo
+            );
 
             let clouds = resolve_cloud_cover(&pool, planet_id, universe_epoch, at_epoch).await?;
 
@@ -278,10 +321,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 mie_b_per_m: global_optical_depth.aerosol_b / scale_h_val,
             };
 
+            let global_direct_r = solar_irr.r * (-global_optical_depth.total_r).exp();
+            let global_direct_g = solar_irr.g * (-global_optical_depth.total_g).exp();
+            let global_direct_b = solar_irr.b * (-global_optical_depth.total_b).exp();
+            let global_diffuse_irr_r = PI * global_radiances.zenith_diffuse.r;
+            let global_diffuse_irr_g = PI * global_radiances.zenith_diffuse.g;
+            let global_diffuse_irr_b = PI * global_radiances.zenith_diffuse.b;
+            let global_tot_irr_r = global_direct_r + global_diffuse_irr_r;
+            let global_tot_irr_g = global_direct_g + global_diffuse_irr_g;
+            let global_tot_irr_b = global_direct_b + global_diffuse_irr_b;
+
+            let global_phot_illum = photopic_illuminance(
+                global_tot_irr_r,
+                global_tot_irr_g,
+                global_tot_irr_b
+            );
+            let global_dir_illum = photopic_illuminance(
+                global_direct_r,
+                global_direct_g,
+                global_direct_b
+            );
+            let global_diff_illum = photopic_illuminance(
+                global_diffuse_irr_r,
+                global_diffuse_irr_g,
+                global_diffuse_irr_b
+            );
+
+            let global_zenith_lum = photopic_luminance(
+                global_radiances.zenith_radiance.r,
+                global_radiances.zenith_radiance.g,
+                global_radiances.zenith_radiance.b
+            );
+            let global_horizon_lum = photopic_luminance(
+                global_radiances.horizon_radiance.r,
+                global_radiances.horizon_radiance.g,
+                global_radiances.horizon_radiance.b
+            );
+            let global_sunset_lum = photopic_luminance(
+                global_radiances.sunset_radiance.r,
+                global_radiances.sunset_radiance.g,
+                global_radiances.sunset_radiance.b
+            );
+
+            let global_ev_incident = ev100_from_illuminance(global_phot_illum);
+            let global_ev_zenith = ev100_from_luminance(global_zenith_lum);
+            let global_ev_horizon = ev100_from_luminance(global_horizon_lum);
+            let global_ev_sunset = ev100_from_luminance(global_sunset_lum);
+            let sunny16 = sunny_16_exposure_value();
+
             let global_colors = SkyColorSummary {
-                zenith: color_to_summary(global_radiances.zenith_radiance, solar_irr),
-                horizon: color_to_summary(global_radiances.horizon_radiance, solar_irr),
-                sunset: color_to_summary(global_radiances.sunset_radiance, solar_irr),
+                zenith: color_to_summary(global_radiances.zenith_radiance),
+                horizon: color_to_summary(global_radiances.horizon_radiance),
+                sunset: color_to_summary(global_radiances.sunset_radiance),
             };
 
             let sampled_latitudes_deg = [0.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0];
@@ -303,7 +394,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     universe_epoch,
                     at_epoch
                 ).await?;
-                let lat_rads = calculate_sky_radiances(&lat_od, solar_irr);
+                let lat_rads = calculate_sky_radiances(&lat_od, solar_irr, surface_albedo);
                 let lat_cloud = resolve_cloud_cover_at_latitude(
                     &pool,
                     planet_id,
@@ -312,16 +403,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     at_epoch
                 ).await?;
 
+                let lat_dir_r = solar_irr.r * (-lat_od.total_r).exp();
+                let lat_dir_g = solar_irr.g * (-lat_od.total_g).exp();
+                let lat_dir_b = solar_irr.b * (-lat_od.total_b).exp();
+                let lat_diff_irr_r = PI * lat_rads.zenith_diffuse.r;
+                let lat_diff_irr_g = PI * lat_rads.zenith_diffuse.g;
+                let lat_diff_irr_b = PI * lat_rads.zenith_diffuse.b;
+                let lat_tot_irr_r = lat_dir_r + lat_diff_irr_r;
+                let lat_tot_irr_g = lat_dir_g + lat_diff_irr_g;
+                let lat_tot_irr_b = lat_dir_b + lat_diff_irr_b;
+
+                let lat_phot_illum = photopic_illuminance(
+                    lat_tot_irr_r,
+                    lat_tot_irr_g,
+                    lat_tot_irr_b
+                );
+                let lat_dir_illum = photopic_illuminance(lat_dir_r, lat_dir_g, lat_dir_b);
+                let lat_diff_illum = photopic_illuminance(
+                    lat_diff_irr_r,
+                    lat_diff_irr_g,
+                    lat_diff_irr_b
+                );
+
+                let lat_z_lum = photopic_luminance(
+                    lat_rads.zenith_radiance.r,
+                    lat_rads.zenith_radiance.g,
+                    lat_rads.zenith_radiance.b
+                );
+                let lat_h_lum = photopic_luminance(
+                    lat_rads.horizon_radiance.r,
+                    lat_rads.horizon_radiance.g,
+                    lat_rads.horizon_radiance.b
+                );
+                let lat_s_lum = photopic_luminance(
+                    lat_rads.sunset_radiance.r,
+                    lat_rads.sunset_radiance.g,
+                    lat_rads.sunset_radiance.b
+                );
+
+                let lat_ev_incident = ev100_from_illuminance(lat_phot_illum);
+                let lat_ev_zenith = ev100_from_luminance(lat_z_lum);
+
                 let lat_colors = SkyColorSummary {
-                    zenith: color_to_summary(lat_rads.zenith_radiance, solar_irr),
-                    horizon: color_to_summary(lat_rads.horizon_radiance, solar_irr),
-                    sunset: color_to_summary(lat_rads.sunset_radiance, solar_irr),
+                    zenith: color_to_summary(lat_rads.zenith_radiance),
+                    horizon: color_to_summary(lat_rads.horizon_radiance),
+                    sunset: color_to_summary(lat_rads.sunset_radiance),
                 };
 
                 latitudinal_transect.push(LatitudinalSkyDiagnostic {
                     latitude_deg: lat_deg,
                     surface_temperature_k: surf_t.value(),
                     surface_temperature_c: surf_t.value() - 273.15,
+                    surface_albedo,
                     optical_depth: opt_depth_to_summary(&lat_od),
                     sky_radiance: SkyRadianceSummary {
                         zenith: SpectralRadianceSummary {
@@ -339,7 +472,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             g: lat_rads.sunset_radiance.g,
                             b: lat_rads.sunset_radiance.b,
                         },
+                        zenith_diffuse: SpectralRadianceSummary {
+                            r: lat_rads.zenith_diffuse.r,
+                            g: lat_rads.zenith_diffuse.g,
+                            b: lat_rads.zenith_diffuse.b,
+                        },
+                        zenith_single: SpectralRadianceSummary {
+                            r: lat_rads.zenith_single.r,
+                            g: lat_rads.zenith_single.g,
+                            b: lat_rads.zenith_single.b,
+                        },
+                        horizon_diffuse: SpectralRadianceSummary {
+                            r: lat_rads.horizon_diffuse.r,
+                            g: lat_rads.horizon_diffuse.g,
+                            b: lat_rads.horizon_diffuse.b,
+                        },
+                        horizon_single: SpectralRadianceSummary {
+                            r: lat_rads.horizon_single.r,
+                            g: lat_rads.horizon_single.g,
+                            b: lat_rads.horizon_single.b,
+                        },
+                        sunset_diffuse: SpectralRadianceSummary {
+                            r: lat_rads.sunset_diffuse.r,
+                            g: lat_rads.sunset_diffuse.g,
+                            b: lat_rads.sunset_diffuse.b,
+                        },
+                        sunset_single: SpectralRadianceSummary {
+                            r: lat_rads.sunset_single.r,
+                            g: lat_rads.sunset_single.g,
+                            b: lat_rads.sunset_single.b,
+                        },
                     },
+                    diffuse_radiance: SpectralRadianceSummary {
+                        r: lat_rads.zenith_diffuse.r,
+                        g: lat_rads.zenith_diffuse.g,
+                        b: lat_rads.zenith_diffuse.b,
+                    },
+                    single_radiance: SpectralRadianceSummary {
+                        r: lat_rads.zenith_single.r,
+                        g: lat_rads.zenith_single.g,
+                        b: lat_rads.zenith_single.b,
+                    },
+                    photopic_illuminance_lux: lat_phot_illum.value(),
+                    direct_illuminance_lux: lat_dir_illum.value(),
+                    diffuse_illuminance_lux: lat_diff_illum.value(),
+                    zenith_luminance_cd_m2: lat_z_lum.value(),
+                    horizon_luminance_cd_m2: lat_h_lum.value(),
+                    sunset_luminance_cd_m2: lat_s_lum.value(),
+                    ev100_incident: lat_ev_incident,
+                    ev100_zenith: lat_ev_zenith,
                     sky_colors: lat_colors,
                     cloud_fraction: lat_cloud.total_cloud_fraction,
                 });
@@ -363,6 +544,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 scale_height_km: scale_h.value() / 1000.0,
                 mean_molar_mass_g_per_mol: mean_mm.value() * 1000.0,
                 surface_air_density_kg_per_m3: surface_density,
+                surface_albedo,
                 top_of_atmosphere_irradiance_w_per_m2: toa_irradiance.value(),
                 solar_irradiance_rgb: SpectralRadianceSummary {
                     r: solar_irr.r,
@@ -386,7 +568,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         g: global_radiances.sunset_radiance.g,
                         b: global_radiances.sunset_radiance.b,
                     },
+                    zenith_diffuse: SpectralRadianceSummary {
+                        r: global_radiances.zenith_diffuse.r,
+                        g: global_radiances.zenith_diffuse.g,
+                        b: global_radiances.zenith_diffuse.b,
+                    },
+                    zenith_single: SpectralRadianceSummary {
+                        r: global_radiances.zenith_single.r,
+                        g: global_radiances.zenith_single.g,
+                        b: global_radiances.zenith_single.b,
+                    },
+                    horizon_diffuse: SpectralRadianceSummary {
+                        r: global_radiances.horizon_diffuse.r,
+                        g: global_radiances.horizon_diffuse.g,
+                        b: global_radiances.horizon_diffuse.b,
+                    },
+                    horizon_single: SpectralRadianceSummary {
+                        r: global_radiances.horizon_single.r,
+                        g: global_radiances.horizon_single.g,
+                        b: global_radiances.horizon_single.b,
+                    },
+                    sunset_diffuse: SpectralRadianceSummary {
+                        r: global_radiances.sunset_diffuse.r,
+                        g: global_radiances.sunset_diffuse.g,
+                        b: global_radiances.sunset_diffuse.b,
+                    },
+                    sunset_single: SpectralRadianceSummary {
+                        r: global_radiances.sunset_single.r,
+                        g: global_radiances.sunset_single.g,
+                        b: global_radiances.sunset_single.b,
+                    },
                 },
+                global_diffuse_radiance: SpectralRadianceSummary {
+                    r: global_radiances.zenith_diffuse.r,
+                    g: global_radiances.zenith_diffuse.g,
+                    b: global_radiances.zenith_diffuse.b,
+                },
+                global_single_radiance: SpectralRadianceSummary {
+                    r: global_radiances.zenith_single.r,
+                    g: global_radiances.zenith_single.g,
+                    b: global_radiances.zenith_single.b,
+                },
+                global_photopic_illuminance_lux: global_phot_illum.value(),
+                global_direct_illuminance_lux: global_dir_illum.value(),
+                global_diffuse_illuminance_lux: global_diff_illum.value(),
+                global_zenith_luminance_cd_m2: global_zenith_lum.value(),
+                global_horizon_luminance_cd_m2: global_horizon_lum.value(),
+                global_sunset_luminance_cd_m2: global_sunset_lum.value(),
+                global_ev100_incident: global_ev_incident,
+                global_ev100_zenith: global_ev_zenith,
+                global_ev100_horizon: global_ev_horizon,
+                global_ev100_sunset: global_ev_sunset,
+                sunny_16_ev: sunny16,
                 global_sky_colors: global_colors,
                 scattering_coefficients: scattering_summary,
                 cloud_summary: CloudSummary {
@@ -429,6 +662,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.solar_irradiance_rgb.g,
                 report.solar_irradiance_rgb.b
             );
+            println!("  Albedo Superficial Dinâmico:   {:.2}%", report.surface_albedo * 100.0);
             println!("  Massa Planetária:              {:.3e} kg", report.mass_kg);
             println!("  Raio Equatorial:               {:.2} km", report.equatorial_radius_km);
             println!("  Gravidade Superficial:         {:.2} m/s²", report.surface_gravity_ms2);
@@ -525,27 +759,104 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.scattering_coefficients.mie_b_per_m
             );
 
-            println!("\n4. RADIÂNCIAS ESPECTRAIS EM GEOMETRIAS CANÔNICAS (W/(m²·sr)):");
             println!(
-                "  Zênite (Sol a Pino):           {:.4e} / {:.4e} / {:.4e}",
+                "\n4. DECOMPOSIÇÃO DE RADIÂNCIA ESPECTRAL: ESPALHAMENTO SIMPLES + DIFUSO (W/(m²·sr)):"
+            );
+            println!(
+                "  Zênite Total (L_zen):          {:.4e} / {:.4e} / {:.4e}",
                 report.global_sky_radiance.zenith.r,
                 report.global_sky_radiance.zenith.g,
                 report.global_sky_radiance.zenith.b
             );
             println!(
-                "  Horizonte (Elevação Média):    {:.4e} / {:.4e} / {:.4e}",
+                "    - Componente Single Scatter: {:.4e} / {:.4e} / {:.4e}",
+                report.global_sky_radiance.zenith_single.r,
+                report.global_sky_radiance.zenith_single.g,
+                report.global_sky_radiance.zenith_single.b
+            );
+            println!(
+                "    - Componente Difuso (2-Str): {:.4e} / {:.4e} / {:.4e}",
+                report.global_sky_radiance.zenith_diffuse.r,
+                report.global_sky_radiance.zenith_diffuse.g,
+                report.global_sky_radiance.zenith_diffuse.b
+            );
+            println!(
+                "  Horizonte Total (L_hor):       {:.4e} / {:.4e} / {:.4e}",
                 report.global_sky_radiance.horizon.r,
                 report.global_sky_radiance.horizon.g,
                 report.global_sky_radiance.horizon.b
             );
             println!(
-                "  Pôr-do-Sol (Sol Rasante):      {:.4e} / {:.4e} / {:.4e}",
+                "    - Componente Single Scatter: {:.4e} / {:.4e} / {:.4e}",
+                report.global_sky_radiance.horizon_single.r,
+                report.global_sky_radiance.horizon_single.g,
+                report.global_sky_radiance.horizon_single.b
+            );
+            println!(
+                "    - Componente Difuso (2-Str): {:.4e} / {:.4e} / {:.4e}",
+                report.global_sky_radiance.horizon_diffuse.r,
+                report.global_sky_radiance.horizon_diffuse.g,
+                report.global_sky_radiance.horizon_diffuse.b
+            );
+            println!(
+                "  Pôr-do-Sol Total (L_sunset):   {:.4e} / {:.4e} / {:.4e}",
                 report.global_sky_radiance.sunset.r,
                 report.global_sky_radiance.sunset.g,
                 report.global_sky_radiance.sunset.b
             );
+            println!(
+                "    - Componente Single Scatter: {:.4e} / {:.4e} / {:.4e}",
+                report.global_sky_radiance.sunset_single.r,
+                report.global_sky_radiance.sunset_single.g,
+                report.global_sky_radiance.sunset_single.b
+            );
+            println!(
+                "    - Componente Difuso (2-Str): {:.4e} / {:.4e} / {:.4e}",
+                report.global_sky_radiance.sunset_diffuse.r,
+                report.global_sky_radiance.sunset_diffuse.g,
+                report.global_sky_radiance.sunset_diffuse.b
+            );
 
-            println!("\n5. CORES PERCEBIDAS DO CÉU (ESPAÇO DE COR sRGB):");
+            println!("\n5. FOTOMETRIA, ILUMINÂNCIA SUPERFICIAL E LUMINÂNCIAS (CIE 1931):");
+            println!(
+                "  Iluminância Direta do Sol:     {:.2} lux ({:.2} klux)",
+                report.global_direct_illuminance_lux,
+                report.global_direct_illuminance_lux / 1000.0
+            );
+            println!(
+                "  Iluminância Difusa do Céu:     {:.2} lux ({:.2} klux)",
+                report.global_diffuse_illuminance_lux,
+                report.global_diffuse_illuminance_lux / 1000.0
+            );
+            println!(
+                "  Iluminância Fotométrica Total: {:.2} lux ({:.2} klux)",
+                report.global_photopic_illuminance_lux,
+                report.global_photopic_illuminance_lux / 1000.0
+            );
+            println!(
+                "  Luminância no Zênite:          {:.2} cd/m² ({:.2} kcd/m²)",
+                report.global_zenith_luminance_cd_m2,
+                report.global_zenith_luminance_cd_m2 / 1000.0
+            );
+            println!(
+                "  Luminância no Horizonte:       {:.2} cd/m² ({:.2} kcd/m²)",
+                report.global_horizon_luminance_cd_m2,
+                report.global_horizon_luminance_cd_m2 / 1000.0
+            );
+            println!(
+                "  Luminância no Pôr-do-Sol:      {:.2} cd/m² ({:.2} kcd/m²)",
+                report.global_sunset_luminance_cd_m2,
+                report.global_sunset_luminance_cd_m2 / 1000.0
+            );
+
+            println!("\n6. VALORES DE EXPOSIÇÃO FOTOGRÁFICA (EV100 / ISO 2720 / Sunny 16):");
+            println!("  EV100 Incidente (Iluminância): {:.2} EV", report.global_ev100_incident);
+            println!("  EV100 Refletido no Zênite:     {:.2} EV", report.global_ev100_zenith);
+            println!("  EV100 Refletido no Horizonte:  {:.2} EV", report.global_ev100_horizon);
+            println!("  EV100 Refletido no Pôr-do-Sol: {:.2} EV", report.global_ev100_sunset);
+            println!("  Referência Sunny 16 Terrestre: {:.2} EV", report.sunny_16_ev);
+
+            println!("\n7. CORES PERCEBIDAS DO CÉU (ESPAÇO DE COR sRGB):");
             println!(
                 "  Zênite:     {} | RGB: ({:>3}, {:>3}, {:>3}) | sRGB: ({:.3}, {:.3}, {:.3})",
                 report.global_sky_colors.zenith.hex,
@@ -577,7 +888,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.global_sky_colors.sunset.b_srgb
             );
 
-            println!("\n6. COBERTURA DE NUVENS E MACROFÍSICA:");
+            println!("\n8. COBERTURA DE NUVENS E MACROFÍSICA:");
             println!(
                 "  Cobertura Total de Nuvens:     {:.1}%",
                 report.cloud_summary.total_cloud_fraction * 100.0
@@ -599,22 +910,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 report.cloud_summary.freezing_level_km
             );
 
-            println!("\n7. TABELA DE TRANSECTO LATITUDINAL DE CÉU E ÓPTICA:");
             println!(
-                "--------------------------------------------------------------------------------------------------------------------------------"
+                "\n9. TABELA DE TRANSECTO LATITUDINAL COMPLETO (Óptica -> Radiância -> Fotometria -> EV -> Cor):"
             );
             println!(
-                "{:<6} | {:<7} | {:<20} | {:<10} | {:<10} | {:<10} | {:<8}",
+                "------------------------------------------------------------------------------------------------------------------------------------------------------"
+            );
+            println!(
+                "{:<6} | {:<7} | {:<16} | {:<16} | {:<12} | {:<10} | {:<8} | {:<8} | {:<8} | {:<8}",
                 "Lat",
                 "T_surf",
-                "Prof. Óptica (R/G/B)",
+                "τ_Total(R/G/B)",
+                "L_Difusa(R/G/B)",
+                "Ilum (lux)",
+                "L_Zen(cd/m²)",
+                "EV100",
                 "Zênite",
-                "Horizonte",
-                "Pôr-do-Sol",
+                "Pôr-Sol",
                 "Nuvens"
             );
             println!(
-                "--------------------------------------------------------------------------------------------------------------------------------"
+                "------------------------------------------------------------------------------------------------------------------------------------------------------"
             );
             for lat in &report.latitudinal_transect {
                 let tau_str = format!(
@@ -623,29 +939,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     lat.optical_depth.total_g,
                     lat.optical_depth.total_b
                 );
+                let diff_str = format!(
+                    "{:.2e}/{:.2e}",
+                    lat.diffuse_radiance.r,
+                    lat.diffuse_radiance.b
+                );
                 println!(
-                    "{:>4.0}° | {:>5.1} K | {:<20} | {:<10} | {:<10} | {:<10} | {:>6.1}%",
+                    "{:>4.0}° | {:>5.1} K | {:<16} | {:<16} | {:>12.1} | {:>10.1} | {:>8.2} | {:<8} | {:<8} | {:>6.1}%",
                     lat.latitude_deg,
                     lat.surface_temperature_k,
                     tau_str,
+                    diff_str,
+                    lat.photopic_illuminance_lux,
+                    lat.zenith_luminance_cd_m2,
+                    lat.ev100_incident,
                     lat.sky_colors.zenith.hex,
-                    lat.sky_colors.horizon.hex,
                     lat.sky_colors.sunset.hex,
                     lat.cloud_fraction * 100.0
                 );
             }
             println!(
-                "--------------------------------------------------------------------------------------------------------------------------------"
+                "------------------------------------------------------------------------------------------------------------------------------------------------------"
             );
 
-            println!("\n8. DETALHAMENTO ESPECTRAL POR LATITUDE:");
+            println!("\n10. DETALHAMENTO DA CADEIA FÍSICA POR LATITUDE:");
             for lat in &report.latitudinal_transect {
                 println!(
-                    "\n  === LATITUDE {:>4.1}° (T_surf: {:.2} K / {:.2} °C | Nuvens: {:.1}%) ===",
+                    "\n  === LATITUDE {:>4.1}° (T_surf: {:.2} K / {:.2} °C | Nuvens: {:.1}% | Albedo: {:.1}%) ===",
                     lat.latitude_deg,
                     lat.surface_temperature_k,
                     lat.surface_temperature_c,
-                    lat.cloud_fraction * 100.0
+                    lat.cloud_fraction * 100.0,
+                    lat.surface_albedo * 100.0
                 );
                 println!(
                     "    Profundidades Ópticas: Total=[{:.3}, {:.3}, {:.3}] | Rayleigh=[{:.3}, {:.3}, {:.3}] | Aerossol=[{:.3}, {:.3}, {:.3}]",
@@ -660,41 +985,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     lat.optical_depth.aerosol_b
                 );
                 println!(
-                    "    Albedo SSA / Assimetria g:  SSA=[{:.3}, {:.3}, {:.3}] | g=[{:.3}, {:.3}, {:.3}]",
-                    lat.optical_depth.single_scattering_albedo_r,
-                    lat.optical_depth.single_scattering_albedo_g,
-                    lat.optical_depth.single_scattering_albedo_b,
-                    lat.optical_depth.asymmetry_factor_r,
-                    lat.optical_depth.asymmetry_factor_g,
-                    lat.optical_depth.asymmetry_factor_b
+                    "    Radiâncias no Zênite:  Total=[{:.3e}, {:.3e}, {:.3e}] | Single=[{:.3e}, {:.3e}, {:.3e}] | Difusa=[{:.3e}, {:.3e}, {:.3e}] W/(m²·sr)",
+                    lat.sky_radiance.zenith.r,
+                    lat.sky_radiance.zenith.g,
+                    lat.sky_radiance.zenith.b,
+                    lat.single_radiance.r,
+                    lat.single_radiance.g,
+                    lat.single_radiance.b,
+                    lat.diffuse_radiance.r,
+                    lat.diffuse_radiance.g,
+                    lat.diffuse_radiance.b
                 );
                 println!(
-                    "    Zênite:     {} | RGB: ({:>3}, {:>3}, {:>3})",
+                    "    Fotometria & Exposição: Ilum.Total={:.1} lux (Direta={:.1}, Difusa={:.1}) | L_Zenith={:.1} cd/m² | EV100_Incidente={:.2} | EV100_Zenith={:.2}",
+                    lat.photopic_illuminance_lux,
+                    lat.direct_illuminance_lux,
+                    lat.diffuse_illuminance_lux,
+                    lat.zenith_luminance_cd_m2,
+                    lat.ev100_incident,
+                    lat.ev100_zenith
+                );
+                println!(
+                    "    Cores Finais:          Zênite={} (RGB: {:>3}, {:>3}, {:>3}) | Horizonte={} | Pôr-do-Sol={}",
                     lat.sky_colors.zenith.hex,
                     lat.sky_colors.zenith.r_byte,
                     lat.sky_colors.zenith.g_byte,
-                    lat.sky_colors.zenith.b_byte
-                );
-                println!(
-                    "    Horizonte:  {} | RGB: ({:>3}, {:>3}, {:>3})",
+                    lat.sky_colors.zenith.b_byte,
                     lat.sky_colors.horizon.hex,
-                    lat.sky_colors.horizon.r_byte,
-                    lat.sky_colors.horizon.g_byte,
-                    lat.sky_colors.horizon.b_byte
-                );
-                println!(
-                    "    Pôr-do-Sol: {} | RGB: ({:>3}, {:>3}, {:>3})",
-                    lat.sky_colors.sunset.hex,
-                    lat.sky_colors.sunset.r_byte,
-                    lat.sky_colors.sunset.g_byte,
-                    lat.sky_colors.sunset.b_byte
+                    lat.sky_colors.sunset.hex
                 );
             }
 
             let report_path = format!("sky_diagnostics_{}.txt", report.planet_id);
             let report_json = serde_json::to_string_pretty(&report)?;
             std::fs::write(&report_path, report_json)?;
-            println!("\n9. SÍNTESE DO DIAGNÓSTICO exportada para: {}\n", report_path);
+            println!("\n11. SÍNTESE DO DIAGNÓSTICO exportada para: {}\n", report_path);
         }
     }
 
