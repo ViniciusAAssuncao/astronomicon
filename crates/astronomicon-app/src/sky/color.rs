@@ -1,4 +1,5 @@
 use crate::sky::radiance::{SkyRadianceDiagnostic, SpectralRadiance};
+use astronomicon_core::units::constants::GLOBAL_SKY_EXPOSURE;
 use astronomicon_core::units::ColorRGB;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
@@ -23,9 +24,9 @@ pub fn spectral_radiance_to_color_rgb(
     radiance: SpectralRadiance,
     solar_irradiance: SpectralRadiance,
 ) -> ColorRGB {
-    let r_lin = (PI * radiance.r / solar_irradiance.r.max(1e-12)).clamp(0.0, 1.0);
-    let g_lin = (PI * radiance.g / solar_irradiance.g.max(1e-12)).clamp(0.0, 1.0);
-    let b_lin = (PI * radiance.b / solar_irradiance.b.max(1e-12)).clamp(0.0, 1.0);
+    let r_lin = (GLOBAL_SKY_EXPOSURE * PI * radiance.r / solar_irradiance.r.max(1e-12)).clamp(0.0, 1.0);
+    let g_lin = (GLOBAL_SKY_EXPOSURE * PI * radiance.g / solar_irradiance.g.max(1e-12)).clamp(0.0, 1.0);
+    let b_lin = (GLOBAL_SKY_EXPOSURE * PI * radiance.b / solar_irradiance.b.max(1e-12)).clamp(0.0, 1.0);
 
     ColorRGB::new(
         linear_to_srgb(r_lin),

@@ -38,11 +38,16 @@ impl CanonicalGeometry {
     }
 
     pub fn sunset() -> Self {
-        let angle = Angle::new(88.0 * PI / 180.0);
+        let sun_zenith = Angle::new(88.0 * PI / 180.0);
+        let view_zenith = Angle::new(85.0 * PI / 180.0);
+        let az_diff = 15.0 * PI / 180.0;
+        let cos_theta = (88.0 * PI / 180.0).cos() * (85.0 * PI / 180.0).cos()
+            + (88.0 * PI / 180.0).sin() * (85.0 * PI / 180.0).sin() * az_diff.cos();
+        let scattering = Angle::new(cos_theta.clamp(-1.0, 1.0).acos());
         Self {
-            sun_zenith_angle: angle,
-            view_zenith_angle: angle,
-            scattering_angle: Angle::new(0.0),
+            sun_zenith_angle: sun_zenith,
+            view_zenith_angle: view_zenith,
+            scattering_angle: scattering,
         }
     }
 }
@@ -87,10 +92,10 @@ pub fn resolve_spectral_solar_irradiance(
     let b_sum = b_r + b_g + b_b;
 
     if b_sum <= 0.0 || !b_sum.is_finite() {
-        return SpectralRadiance::new(f_total, f_total, f_total);
+        return SpectralRadiance::new(f_total / 3.0, f_total / 3.0, f_total / 3.0);
     }
 
-    let scale = (3.0 * f_total) / b_sum;
+    let scale = f_total / b_sum;
     SpectralRadiance::new(b_r * scale, b_g * scale, b_b * scale)
 }
 
