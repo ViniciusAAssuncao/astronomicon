@@ -1,8 +1,10 @@
 pub mod color;
+pub mod exposure;
 pub mod optical_column;
 pub mod radiance;
 
 pub use color::*;
+pub use exposure::*;
 pub use optical_column::*;
 pub use radiance::*;
 
