@@ -72,12 +72,12 @@ pub async fn resolve_top_of_atmosphere_irradiance(
     Ok(Irradiance::new(base_irradiance.value() / (z_factor * z_factor)))
 }
 
-pub async fn resolve_global_mean_temperature(
+pub async fn resolve_surface_albedo(
     pool: &SqlitePool,
     planet_id: Uuid,
     universe_epoch: Duration,
     at_epoch: Duration,
-) -> AppResult<Temperature> {
+) -> AppResult<f64> {
     let planet_row = planet_repository::get_by_id(pool, &planet_id)
         .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
@@ -97,7 +97,7 @@ pub async fn resolve_global_mean_temperature(
         None => Temperature::new(0.0),
     };
 
-    let effective_albedo = if let Some(hydrosphere) =
+    if let Some(hydrosphere) =
         hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?
     {
         let base_eq = local_radiative_equilibrium_temperature(
@@ -110,10 +110,38 @@ pub async fn resolve_global_mean_temperature(
             None => Pressure::new(0.0),
         };
         let initial_state = hydrosphere.matter_state(base_surface_temp, pressure)?;
-        hydrosphere.dynamic_albedo(bond_albedo, initial_state)?
+        Ok(hydrosphere.dynamic_albedo(bond_albedo, initial_state)?)
     } else {
-        bond_albedo
+        Ok(bond_albedo)
+    }
+}
+
+pub async fn resolve_global_mean_temperature(
+    pool: &SqlitePool,
+    planet_id: Uuid,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> AppResult<Temperature> {
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
+        .ok_or_else(|| DomainError::InvalidInvariant {
+            field: "planet_id".to_string(),
+            reason: format!("planet '{}' not found", planet_id),
+        })?;
+    let planet = Planet::try_from(planet_row)?;
+
+    let star = find_parent_star(pool, planet.orbital_parent()).await?;
+    let top_irradiance =
+        resolve_top_of_atmosphere_irradiance(pool, &planet, &star, universe_epoch, at_epoch)
+            .await?;
+
+    let greenhouse = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
+        Some(atmosphere) => atmosphere.greenhouse_effect(),
+        None => Temperature::new(0.0),
     };
+
+    let effective_albedo =
+        resolve_surface_albedo(pool, planet_id, universe_epoch, at_epoch).await?;
 
     let eq_temp = local_radiative_equilibrium_temperature(
         Irradiance::new(top_irradiance.value() * 0.25),

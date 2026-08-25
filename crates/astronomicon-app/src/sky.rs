@@ -9,7 +9,7 @@ pub use radiance::*;
 use crate::climate::clouds::cover::{CloudCoverDiagnostic, resolve_cloud_cover};
 use crate::climate::emission::resolve_star_emission_profile;
 use crate::climate::temperature::{
-    resolve_global_mean_temperature, resolve_top_of_atmosphere_irradiance,
+    resolve_global_mean_temperature, resolve_surface_albedo, resolve_top_of_atmosphere_irradiance,
 };
 use crate::error::AppResult;
 use crate::hierarchy::find_parent_star;
@@ -73,8 +73,11 @@ pub async fn resolve_sky_diagnostics(
     let optical_depth =
         resolve_optical_column(pool, planet_id, universe_epoch, at_epoch).await?;
 
+    let surface_albedo =
+        resolve_surface_albedo(pool, planet_id, universe_epoch, at_epoch).await?;
+
     let solar_irradiance = resolve_spectral_solar_irradiance(toa_irradiance, star_temp);
-    let radiances = calculate_sky_radiances(&optical_depth, solar_irradiance);
+    let radiances = calculate_sky_radiances(&optical_depth, solar_irradiance, surface_albedo);
     let colors = process_sky_colors_from_radiances(&radiances);
 
     let cloud_diag = resolve_cloud_cover(pool, planet_id, universe_epoch, at_epoch).await?;

@@ -2,7 +2,8 @@ use crate::sky::optical_column::{
     SpectralOpticalDepth, wavelength_blue, wavelength_green, wavelength_red,
 };
 use astronomicon_core::math::optics::{
-    henyey_greenstein_phase_function, rayleigh_phase_function, relative_airmass,
+    delta_eddington_two_stream, henyey_greenstein_phase_function, rayleigh_phase_function,
+    relative_airmass,
 };
 use astronomicon_core::math::radiation::planck_spectral_radiance;
 use astronomicon_core::units::{Angle, Irradiance, Temperature};
@@ -105,9 +106,19 @@ pub fn calculate_single_scattering_radiance(
     solar_irradiance: SpectralRadiance,
     geometry: CanonicalGeometry,
 ) -> SpectralRadiance {
+    calculate_radiance_at_geometry(optical_column, solar_irradiance, geometry, 0.0)
+}
+
+pub fn calculate_radiance_at_geometry(
+    optical_column: &SpectralOpticalDepth,
+    solar_irradiance: SpectralRadiance,
+    geometry: CanonicalGeometry,
+    surface_albedo: f64,
+) -> SpectralRadiance {
     let m_s = relative_airmass(geometry.sun_zenith_angle);
     let m_v = relative_airmass(geometry.view_zenith_angle);
     let theta = geometry.scattering_angle;
+    let mu0 = geometry.sun_zenith_angle.value().cos().max(0.0001);
 
     let p_r = rayleigh_phase_function(theta);
 
@@ -171,9 +182,14 @@ pub fn calculate_single_scattering_radiance(
             (m_v / (m_s - m_v)) * ((-m_v * tau).exp() - (-m_s * tau).exp())
         };
 
-        let rad = f_0 * omega * phase * t_geom.max(0.0);
-        radiances[i] = if rad.is_finite() && rad > 0.0 {
-            rad
+        let rad_single = f_0 * omega * phase * t_geom.max(0.0);
+
+        let two_stream = delta_eddington_two_stream(tau, omega, g, mu0, surface_albedo);
+        let rad_diffuse = (two_stream.transmittance * mu0 * f_0) / PI;
+
+        let total_rad = rad_single + rad_diffuse;
+        radiances[i] = if total_rad.is_finite() && total_rad > 0.0 {
+            total_rad
         } else {
             0.0
         };
@@ -185,21 +201,25 @@ pub fn calculate_single_scattering_radiance(
 pub fn calculate_sky_radiances(
     optical_column: &SpectralOpticalDepth,
     solar_irradiance: SpectralRadiance,
+    surface_albedo: f64,
 ) -> SkyRadianceDiagnostic {
-    let zenith = calculate_single_scattering_radiance(
+    let zenith = calculate_radiance_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::zenith(),
+        surface_albedo,
     );
-    let horizon = calculate_single_scattering_radiance(
+    let horizon = calculate_radiance_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::horizon(),
+        surface_albedo,
     );
-    let sunset = calculate_single_scattering_radiance(
+    let sunset = calculate_radiance_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::sunset(),
+        surface_albedo,
     );
 
     SkyRadianceDiagnostic {
