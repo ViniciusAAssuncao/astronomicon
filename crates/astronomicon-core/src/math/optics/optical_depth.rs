@@ -1,11 +1,4 @@
-use crate::chemistry::optics::GasOpticalProperties;
-use crate::math::aerosol::AtmosphericAerosolProperties;
-use crate::math::optics::aerosol_coefficients::mie_scattering_coefficient;
-use crate::math::optics::molecular_scattering::{
-    absorption_coefficient, rayleigh_scattering_coefficient,
-};
-use crate::units::constants::OPTICAL_REFERENCE_WAVELENGTH;
-use crate::units::{Angle, Length, Pressure, Temperature, Wavelength};
+use crate::units::{Angle, Length};
 use std::f64::consts::PI;
 
 pub fn relative_airmass(zenith_angle: Angle) -> f64 {
@@ -62,34 +55,6 @@ pub fn slant_optical_depth(vertical_optical_depth: f64, zenith_angle: Angle) -> 
     }
     let m = relative_airmass(zenith_angle);
     vertical_optical_depth * m
-}
-
-pub fn atmospheric_optical_depth(
-    wavelength: Wavelength,
-    gas_optical_properties: &GasOpticalProperties,
-    pressure: Pressure,
-    temperature: Temperature,
-    aerosol_properties: &AtmosphericAerosolProperties,
-    scale_height: Length,
-    aerosol_scale_height: Length,
-    zenith_angle: Angle,
-) -> f64 {
-    let b_r = rayleigh_scattering_coefficient(
-        wavelength,
-        gas_optical_properties.refractivity_stp(),
-        gas_optical_properties.king_factor(),
-        pressure,
-        temperature,
-    );
-    let b_m = mie_scattering_coefficient(
-        aerosol_properties,
-        wavelength,
-        Wavelength::new(OPTICAL_REFERENCE_WAVELENGTH),
-    );
-    let b_a = absorption_coefficient(gas_optical_properties, wavelength, pressure, temperature);
-
-    let tau_0 = vertical_optical_depth(b_r, b_m, b_a, scale_height, aerosol_scale_height);
-    slant_optical_depth(tau_0, zenith_angle)
 }
 
 pub fn atmospheric_transmittance(optical_depth: f64) -> f64 {
