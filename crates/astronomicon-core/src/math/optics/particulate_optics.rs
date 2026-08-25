@@ -128,3 +128,36 @@ pub fn particulate_optical_properties(
 
     ParticulateOpticalProperties::new(k_ext, ssa, g)
 }
+
+pub fn dust_imaginary_refractive_index(
+    iron_mass_fraction: f64,
+    wavelength: Wavelength,
+) -> f64 {
+    let fe = iron_mass_fraction.clamp(0.0, 1.0);
+    let lambda = wavelength.value();
+
+    if !lambda.is_finite() || lambda <= 0.0 {
+        return 0.001;
+    }
+
+    let spectral_scale = (550.0e-9 / lambda).powf(3.5);
+    let n_i = 0.0005 + (0.001 + 0.25 * fe) * spectral_scale;
+    n_i.clamp(1.0e-5, 0.5)
+}
+
+pub fn dust_optical_properties(
+    particle_radius: Length,
+    particle_density: Density,
+    refractive_index_real: f64,
+    iron_mass_fraction: f64,
+    wavelength: Wavelength,
+) -> ParticulateOpticalProperties {
+    let n_i = dust_imaginary_refractive_index(iron_mass_fraction, wavelength);
+    particulate_optical_properties(
+        particle_radius,
+        particle_density,
+        refractive_index_real,
+        n_i,
+        wavelength,
+    )
+}

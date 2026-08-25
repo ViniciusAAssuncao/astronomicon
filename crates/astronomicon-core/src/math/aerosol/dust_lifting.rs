@@ -479,3 +479,35 @@ pub fn airborne_dust_density(
         2.0,
     )
 }
+
+pub fn climatological_dust_column_mass(
+    dust_availability_factor: f64,
+    surface_coverage_fraction: f64,
+    surface_humidity: f64,
+    atmospheric_density: Density,
+) -> f64 {
+    let rho_a = atmospheric_density.value();
+    if rho_a <= 0.0 || !rho_a.is_finite() {
+        return 0.0;
+    }
+
+    let f_dust = dust_availability_factor.clamp(0.0, 1.0);
+    let f_land = (1.0 - surface_coverage_fraction.clamp(0.0, 1.0)).max(0.0);
+    let h = surface_humidity.clamp(0.0, 1.0);
+    let f_moisture = (1.0 - h).powi(2);
+
+    let pot = f_dust * f_land * f_moisture;
+    if pot <= 0.0 || !pot.is_finite() {
+        return 0.0;
+    }
+
+    let atm_factor = (rho_a / (rho_a + 0.001)).clamp(0.0, 1.0);
+    let max_column_mass = 0.006;
+    let m_col = max_column_mass * pot.powi(2) * atm_factor;
+
+    if !m_col.is_finite() || m_col <= 0.0 {
+        0.0
+    } else {
+        m_col
+    }
+}

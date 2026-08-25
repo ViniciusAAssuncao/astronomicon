@@ -25,8 +25,7 @@ use astronomicon_core::chemistry::solvent::SolventProperties;
 use astronomicon_core::domain::{ Atmosphere, Planet };
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::aerosol::{
-    airborne_dust_density_with_gustiness,
-    dust_threshold_surface_wind_with_params,
+    climatological_dust_column_mass,
     dynamic_aerosol_scale_height,
     volcanic_aerosol_density,
 };
@@ -36,6 +35,7 @@ use astronomicon_core::math::clouds::CloudMorphology;
 use astronomicon_core::math::gravity::{ gravitational_parameter, surface_gravity };
 use astronomicon_core::math::optics::{
     absorption_coefficient,
+    dust_optical_properties,
     particulate_optical_properties,
     rayleigh_scattering_coefficient,
 };
@@ -218,7 +218,7 @@ pub fn calculate_spectral_optical_depth(
     atmosphere: &Atmosphere,
     planet: &Planet,
     surface_temperature: Temperature,
-    surface_wind_speed: Speed,
+    _surface_wind_speed: Speed,
     volc_diag: &VolcanicDiagnostic,
     ocean_coverage: f64,
     surface_humidity: f64,
@@ -273,38 +273,16 @@ pub fn calculate_spectral_optical_depth(
     let dust_avail = planet
         .dust_availability_factor()
         .unwrap_or((1.0 - ocean_coverage).clamp(0.0, 1.0));
-    let v_thresh = dust_threshold_surface_wind_with_params(
-        gravity,
-        rho_air_surf,
-        grain_density,
-        dyn_visc,
-        Some(0.003)
-    );
-    let rho_dust_surf = airborne_dust_density_with_gustiness(
-        surface_wind_speed,
-        v_thresh,
-        rho_air_surf,
-        gravity,
+    let m_col_dust = climatological_dust_column_mass(
         dust_avail,
         ocean_coverage,
         surface_humidity,
-        2.0
+        rho_air_surf
     );
+
     let r_dust = planet
         .dust_particle_radius()
         .unwrap_or_else(|| Length::new(DEFAULT_DUST_PARTICLE_RADIUS_M));
-    let h_dust = dynamic_aerosol_scale_height(
-        scale_height,
-        gravity,
-        1.2,
-        grain_density,
-        rho_air_surf,
-        r_dust,
-        dyn_visc
-    );
-    let h_dust_val = if h_dust.value() > 0.0 { h_dust.value() } else { 0.2 * scale_h_val };
-    let m_col_dust = rho_dust_surf.value() * h_dust_val;
-
     let n_r_dust = 1.53;
     let fe_frac = crustal_iron_fraction.unwrap_or(0.05).clamp(0.0, 1.0);
 
@@ -313,15 +291,7 @@ pub fn calculate_spectral_optical_depth(
     let mut g_dust = [0.0; 3];
 
     for (i, &lambda) in wavelengths.iter().enumerate() {
-        let spectral_scale = (550.0e-9 / lambda.value()).powi(3);
-        let n_i_dust = (0.001 + 0.04 * fe_frac * spectral_scale).max(1e-5);
-        let opt_dust = particulate_optical_properties(
-            r_dust,
-            grain_density,
-            n_r_dust,
-            n_i_dust,
-            lambda
-        );
+        let opt_dust = dust_optical_properties(r_dust, grain_density, n_r_dust, fe_frac, lambda);
         let ext = (m_col_dust * opt_dust.mass_extinction_coefficient()).max(0.0);
         tau_ext_dust[i] = ext;
         tau_sca_dust[i] = (ext * opt_dust.single_scattering_albedo()).max(0.0);
