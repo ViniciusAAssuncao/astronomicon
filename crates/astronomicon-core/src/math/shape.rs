@@ -77,3 +77,29 @@ pub fn oblate_spheroid_mean_density(
         Density::new(m / volume)
     }
 }
+
+pub fn iugg_mean_radius(equatorial_radius: Length, polar_radius: Length) -> Length {
+    let r_eq = equatorial_radius.value();
+    let r_pol = polar_radius.value();
+
+    if r_eq <= 0.0 || r_pol <= 0.0 || !r_eq.is_finite() || !r_pol.is_finite() {
+        return Length::new(0.0);
+    }
+
+    Length::new((2.0 * r_eq + r_pol) / 3.0)
+}
+
+pub fn mean_radius(equatorial_radius: Length, polar_radius: Length) -> Length {
+    iugg_mean_radius(equatorial_radius, polar_radius)
+}
+
+pub fn volumetric_mean_radius(equatorial_radius: Length, polar_radius: Length) -> Length {
+    let r_eq = equatorial_radius.value();
+    let r_pol = polar_radius.value();
+
+    if r_eq <= 0.0 || r_pol <= 0.0 || !r_eq.is_finite() || !r_pol.is_finite() {
+        return Length::new(0.0);
+    }
+
+    Length::new((r_eq * r_eq * r_pol).cbrt())
+}
