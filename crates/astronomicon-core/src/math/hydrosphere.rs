@@ -1,5 +1,5 @@
 use crate::chemistry::solvent::SolventProperties;
-use crate::units::{Density, HeatFlux, Length, Mass, Temperature};
+use crate::units::{Acceleration, Density, HeatFlux, Length, Mass, Pressure, Temperature};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
@@ -55,6 +55,22 @@ pub fn hydrosphere_mass(
     } else {
         Mass::new(total_mass)
     }
+}
+
+pub fn hydrostatic_pressure_at_depth(
+    density: Density,
+    gravity: Acceleration,
+    depth: Length,
+) -> Pressure {
+    let rho = density.value();
+    let g = gravity.value();
+    let h = depth.value();
+
+    if rho <= 0.0 || g <= 0.0 || h <= 0.0 || !rho.is_finite() || !g.is_finite() || !h.is_finite() {
+        return Pressure::new(0.0);
+    }
+
+    Pressure::new(rho * g * h)
 }
 
 pub fn equilibrium_ice_thickness(
