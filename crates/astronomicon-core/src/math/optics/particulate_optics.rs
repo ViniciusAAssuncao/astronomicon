@@ -36,16 +36,17 @@ impl ParticulateOpticalProperties {
 }
 
 pub fn particulate_mass_extinction_coefficient(
+    q_ext: f64,
     particle_radius: Length,
     particle_density: Density,
 ) -> f64 {
     let r = particle_radius.value();
     let rho = particle_density.value();
 
-    if r <= 0.0 || rho <= 0.0 || !r.is_finite() || !rho.is_finite() {
+    if r <= 0.0 || rho <= 0.0 || !r.is_finite() || !rho.is_finite() || !q_ext.is_finite() {
         0.0
     } else {
-        1.5 / (rho * r)
+        (3.0 * q_ext) / (4.0 * rho * r)
     }
 }
 
@@ -84,16 +85,6 @@ pub fn particulate_absorption_efficiency(
     }
 }
 
-pub fn particulate_single_scattering_albedo(
-    particle_radius: Length,
-    refractive_index_imag: f64,
-    wavelength: Wavelength,
-) -> f64 {
-    let q_abs =
-        particulate_absorption_efficiency(particle_radius, refractive_index_imag, wavelength);
-    (1.0 - 0.5 * q_abs).clamp(0.0, 1.0)
-}
-
 pub fn particulate_asymmetry_factor(
     refractive_index_real: f64,
     refractive_index_imag: f64,
@@ -118,12 +109,57 @@ pub fn particulate_optical_properties(
     refractive_index_imag: f64,
     wavelength: Wavelength,
 ) -> ParticulateOpticalProperties {
-    let k_ext = particulate_mass_extinction_coefficient(particle_radius, particle_density);
-    let ssa = particulate_single_scattering_albedo(
-        particle_radius,
-        refractive_index_imag,
-        wavelength,
-    );
+    let r = particle_radius.value();
+    let nr = refractive_index_real;
+    let ni = refractive_index_imag;
+    let lambda = wavelength.value();
+
+    if r <= 0.0 || lambda <= 0.0 || nr <= 0.0 || !r.is_finite() || !lambda.is_finite() || !nr.is_finite() || !ni.is_finite() {
+        return ParticulateOpticalProperties::new(0.0, 1.0, 0.0);
+    }
+
+    let x = (2.0 * PI * r) / lambda;
+    
+    let (q_ext, q_sca) = if x < 1.0 {
+        let nr2 = nr * nr;
+        let ni2 = ni * ni;
+        let a = nr2 - ni2 - 1.0;
+        let b = 2.0 * nr * ni;
+        let c = nr2 - ni2 + 2.0;
+        let d = 2.0 * nr * ni;
+        
+        let m2_minus_1_sq = a * a + b * b;
+        let m2_plus_2_sq = c * c + d * d;
+        
+        if m2_plus_2_sq <= 0.0 {
+            (0.0, 0.0)
+        } else {
+            let q_sca = (8.0 / 3.0) * x.powi(4) * (m2_minus_1_sq / m2_plus_2_sq);
+            let q_abs = 24.0 * x * (nr * ni) / m2_plus_2_sq;
+            (q_sca + q_abs, q_sca)
+        }
+    } else {
+        let rho_star = 2.0 * x * (nr - 1.0).abs();
+        let q_ext = if rho_star < 1e-4 {
+            0.5 * rho_star * rho_star
+        } else {
+            2.0 - (4.0 / rho_star) * rho_star.sin() + (4.0 / (rho_star * rho_star)) * (1.0 - rho_star.cos())
+        };
+        
+        let q_abs = particulate_absorption_efficiency(particle_radius, refractive_index_imag, wavelength);
+        let q_sca = (q_ext - q_abs).max(0.0);
+        
+        (q_ext, q_sca)
+    };
+
+    let k_ext = particulate_mass_extinction_coefficient(q_ext, particle_radius, particle_density);
+    
+    let ssa = if q_ext > 0.0 {
+        (q_sca / q_ext).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    
     let g = particulate_asymmetry_factor(refractive_index_real, refractive_index_imag);
 
     ParticulateOpticalProperties::new(k_ext, ssa, g)

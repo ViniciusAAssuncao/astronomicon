@@ -4,7 +4,8 @@ use astronomicon_core::units::{Illuminance, Luminance};
 use std::f64::consts::PI;
 
 pub const EARTH_STANDARD_TSI_W_M2: f64 = 1360.8;
-pub const CAMERA_EXPOSURE_CALIBRATION_K: f64 = PI / EARTH_STANDARD_TSI_W_M2;
+pub const EARTH_STANDARD_VISIBLE_TSI_W_M2: f64 = 530.7;
+pub const CAMERA_EXPOSURE_CALIBRATION_K: f64 = PI / EARTH_STANDARD_VISIBLE_TSI_W_M2;
 pub const ISO_2720_INCIDENT_CALIBRATION_C: f64 = 250.0;
 pub const ISO_2720_REFLECTED_CALIBRATION_K: f64 = 12.5;
 pub const SUNNY_16_APERTURE_NUMBER: f64 = 16.0;

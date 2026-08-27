@@ -1,18 +1,14 @@
 use crate::sky::optical_column::{
-    SpectralOpticalDepth,
-    wavelength_blue,
-    wavelength_green,
-    wavelength_red,
+    SpectralOpticalDepth, wavelength_blue, wavelength_green, wavelength_red,
 };
 use astronomicon_core::math::optics::{
-    delta_eddington_two_stream,
-    henyey_greenstein_phase_function,
-    rayleigh_phase_function,
+    delta_eddington_two_stream, henyey_greenstein_phase_function, rayleigh_phase_function,
     relative_airmass,
 };
 use astronomicon_core::math::radiation::planck_spectral_radiance;
-use astronomicon_core::units::{ Angle, Irradiance, Temperature };
-use serde::{ Deserialize, Serialize };
+use astronomicon_core::units::constants::STEFAN_BOLTZMANN_CONSTANT;
+use astronomicon_core::units::{Angle, Irradiance, Temperature};
+use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -117,31 +113,41 @@ pub struct SkyRadianceDiagnostic {
 
 pub fn resolve_spectral_solar_irradiance(
     total_irradiance: Irradiance,
-    effective_temperature: Temperature
+    effective_temperature: Temperature,
 ) -> SpectralRadiance {
     let f_total = total_irradiance.value().max(0.0);
-    if f_total <= 0.0 {
+    let t = effective_temperature.value();
+    if f_total <= 0.0 || t <= 0.0 || !f_total.is_finite() || !t.is_finite() {
         return SpectralRadiance::new(0.0, 0.0, 0.0);
     }
 
-    let b_r = planck_spectral_radiance(wavelength_red(), effective_temperature);
-    let b_g = planck_spectral_radiance(wavelength_green(), effective_temperature);
-    let b_b = planck_spectral_radiance(wavelength_blue(), effective_temperature);
-    let b_sum = b_r + b_g + b_b;
+    let delta_lambda_r = 120.0e-9;
+    let delta_lambda_g = 100.0e-9;
+    let delta_lambda_b = 100.0e-9;
 
-    if b_sum <= 0.0 || !b_sum.is_finite() {
-        return SpectralRadiance::new(f_total / 3.0, f_total / 3.0, f_total / 3.0);
+    let b_r = planck_spectral_radiance(wavelength_red(), effective_temperature) * PI * delta_lambda_r;
+    let b_g = planck_spectral_radiance(wavelength_green(), effective_temperature) * PI * delta_lambda_g;
+    let b_b = planck_spectral_radiance(wavelength_blue(), effective_temperature) * PI * delta_lambda_b;
+
+    let sigma_t4 = STEFAN_BOLTZMANN_CONSTANT * t.powi(4);
+    if sigma_t4 <= 0.0 || !sigma_t4.is_finite() {
+        return SpectralRadiance::new(0.0, 0.0, 0.0);
     }
 
-    let scale = f_total / b_sum;
-    SpectralRadiance::new(b_r * scale, b_g * scale, b_b * scale)
+    let dilution_factor = f_total / sigma_t4;
+
+    SpectralRadiance::new(
+        b_r * dilution_factor,
+        b_g * dilution_factor,
+        b_b * dilution_factor,
+    )
 }
 
 pub fn calculate_radiance_breakdown_at_geometry(
     optical_column: &SpectralOpticalDepth,
     solar_irradiance: SpectralRadiance,
     geometry: CanonicalGeometry,
-    surface_albedo: f64
+    surface_albedo: f64,
 ) -> GeometryRadianceBreakdown {
     let m_s = relative_airmass(geometry.sun_zenith_angle);
     let m_v = relative_airmass(geometry.view_zenith_angle);
@@ -222,13 +228,13 @@ pub fn calculate_radiance_breakdown_at_geometry(
 pub fn calculate_single_scattering_radiance(
     optical_column: &SpectralOpticalDepth,
     solar_irradiance: SpectralRadiance,
-    geometry: CanonicalGeometry
+    geometry: CanonicalGeometry,
 ) -> SpectralRadiance {
     calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         geometry,
-        0.0
+        0.0,
     ).single_scattering
 }
 
@@ -236,13 +242,13 @@ pub fn calculate_diffuse_radiance_at_geometry(
     optical_column: &SpectralOpticalDepth,
     solar_irradiance: SpectralRadiance,
     geometry: CanonicalGeometry,
-    surface_albedo: f64
+    surface_albedo: f64,
 ) -> SpectralRadiance {
     calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         geometry,
-        surface_albedo
+        surface_albedo,
     ).diffuse
 }
 
@@ -250,44 +256,44 @@ pub fn calculate_radiance_at_geometry(
     optical_column: &SpectralOpticalDepth,
     solar_irradiance: SpectralRadiance,
     geometry: CanonicalGeometry,
-    surface_albedo: f64
+    surface_albedo: f64,
 ) -> SpectralRadiance {
     calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         geometry,
-        surface_albedo
+        surface_albedo,
     ).total
 }
 
 pub fn calculate_sky_radiances(
     optical_column: &SpectralOpticalDepth,
     solar_irradiance: SpectralRadiance,
-    surface_albedo: f64
+    surface_albedo: f64,
 ) -> SkyRadianceDiagnostic {
     let zenith = calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::zenith(),
-        surface_albedo
+        surface_albedo,
     );
     let horizon = calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::horizon(),
-        surface_albedo
+        surface_albedo,
     );
     let sunset = calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::sunset(),
-        surface_albedo
+        surface_albedo,
     );
     let sunset_halo = calculate_radiance_breakdown_at_geometry(
         optical_column,
         solar_irradiance,
         CanonicalGeometry::sunset_halo(),
-        surface_albedo
+        surface_albedo,
     );
 
     SkyRadianceDiagnostic {
