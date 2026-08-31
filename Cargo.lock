@@ -908,6 +908,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "rocketcon-app"
+version = "0.1.0"
+dependencies = [
+ "astronomicon-app",
+ "astronomicon-core",
+ "astronomicon-db",
+ "rocketcon-core",
+ "rocketcon-db",
+ "serde",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rocketcon-core"
+version = "0.1.0"
+dependencies = [
+ "astronomicon-core",
+ "serde",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "rocketcon-db"
+version = "0.1.0"
+dependencies = [
+ "astronomicon-db",
+ "rocketcon-core",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "rocketcon-sim"
+version = "0.1.0"
+dependencies = [
+ "astronomicon-app",
+ "astronomicon-core",
+ "rocketcon-app",
+ "rocketcon-core",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "rsa"
 version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

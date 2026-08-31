@@ -1,0 +1,10 @@
+[package]
+name = "rocketcon-db"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rocketcon-core = { path = "../rocketcon-core" }
+astronomicon-db = { path = "../astronomicon-db" }
+uuid.workspace = true
+thiserror.workspace = true
