@@ -938,7 +938,9 @@ version = "0.1.0"
 dependencies = [
  "astronomicon-db",
  "rocketcon-core",
+ "sqlx",
  "thiserror",
+ "tokio",
  "uuid",
 ]
 
