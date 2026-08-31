@@ -5,6 +5,8 @@ use sqlx::{
 };
 use std::str::FromStr;
 
+pub const DATABASE_URL: &str = "sqlite://database/astronomicon.db";
+
 pub async fn open_pool(db_url: &str) -> DbResult<SqlitePool> {
     let options = SqliteConnectOptions::from_str(db_url)?
         .create_if_missing(true)

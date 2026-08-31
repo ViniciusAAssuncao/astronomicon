@@ -19,6 +19,7 @@ pub mod shape;
 pub mod sky;
 pub mod tectonics;
 pub mod tidal;
+pub mod universe;
 pub mod volcanism;
 
 pub use black_hole::*;
@@ -40,6 +41,7 @@ pub use shape::*;
 pub use sky::*;
 pub use tectonics::*;
 pub use tidal::*;
+pub use universe::*;
 pub use volcanism::*;
 
 pub fn run() -> AppResult<()> {
