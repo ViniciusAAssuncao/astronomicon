@@ -13,7 +13,7 @@ pub const DEFAULT_TICK_SECONDS: f64 = 1.0;
 pub fn run() -> RocketResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let ctx = astronomicon_app::build_context().await?;
+        let ctx = rocketcon_app::build_context().await?;
 
         let planet_id = Uuid::parse_str("4beb55b2-62de-4ec2-abe5-ec00290407f8")?;
 
