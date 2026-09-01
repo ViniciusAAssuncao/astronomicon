@@ -1,15 +1,25 @@
+pub mod battery_specification;
 pub mod component;
 pub mod component_kind;
+pub mod component_record;
+pub mod engine_specification;
 pub mod ignition_type;
 pub mod propellant;
 pub mod propellant_kind;
+pub mod propellant_tank_specification;
 pub mod save_metadata;
+pub mod solar_panel_specification;
 pub mod vehicle_kind;
 
+pub use battery_specification::BatterySpecification;
 pub use component::{Component, ComponentBuilder};
 pub use component_kind::ComponentKind;
+pub use component_record::{ComponentDetails, ComponentRecord};
+pub use engine_specification::{EngineSpecification, EngineSpecificationBuilder};
 pub use ignition_type::IgnitionType;
 pub use propellant::Propellant;
 pub use propellant_kind::PropellantKind;
+pub use propellant_tank_specification::PropellantTankSpecification;
 pub use save_metadata::SaveMetadata;
+pub use solar_panel_specification::SolarPanelSpecification;
 pub use vehicle_kind::VehicleKind;
