@@ -9,6 +9,8 @@ pub mod propellant_kind;
 pub mod propellant_tank_specification;
 pub mod save_metadata;
 pub mod solar_panel_specification;
+pub mod vehicle;
+pub mod vehicle_component;
 pub mod vehicle_kind;
 
 pub use battery_specification::BatterySpecification;
@@ -22,4 +24,6 @@ pub use propellant_kind::PropellantKind;
 pub use propellant_tank_specification::PropellantTankSpecification;
 pub use save_metadata::SaveMetadata;
 pub use solar_panel_specification::SolarPanelSpecification;
+pub use vehicle::{Vehicle, VehicleBuilder};
+pub use vehicle_component::VehicleComponentEntry;
 pub use vehicle_kind::VehicleKind;
