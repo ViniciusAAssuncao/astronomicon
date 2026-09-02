@@ -1,7 +1,9 @@
 pub mod battery_specification;
 pub mod component;
 pub mod component_kind;
+pub mod component_operational_state;
 pub mod component_record;
+pub mod energy_reservoir_state;
 pub mod engine_fault;
 pub mod engine_specification;
 pub mod engine_state;
@@ -24,7 +26,9 @@ pub mod vehicle_kind;
 pub use battery_specification::BatterySpecification;
 pub use component::{Component, ComponentBuilder};
 pub use component_kind::ComponentKind;
+pub use component_operational_state::ComponentOperationalState;
 pub use component_record::{ComponentDetails, ComponentRecord};
+pub use energy_reservoir_state::EnergyReservoirState;
 pub use engine_fault::EngineFaultKind;
 pub use engine_specification::{EngineSpecification, EngineSpecificationBuilder};
 pub use engine_state::{is_valid_engine_transition, EngineState};
@@ -40,7 +44,7 @@ pub use reaction_control_thruster_specification::ReactionControlThrusterSpecific
 pub use reaction_wheel_specification::ReactionWheelSpecification;
 pub use rtg_specification::RtgSpecification;
 pub use save_metadata::SaveMetadata;
-pub use solar_panel_specification::SolarPanelSpecification;
+pub use solar_panel_specification::{SolarPanelSpecification, DEFAULT_SOLAR_PANEL_ABSORPTIVITY};
 pub use thrust_producer::ThrustProducer;
 pub use vehicle::{Vehicle, VehicleBuilder};
 pub use vehicle_component::VehicleComponentEntry;

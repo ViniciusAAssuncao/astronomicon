@@ -4,6 +4,8 @@ use astronomicon_core::units::Luminosity;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub const DEFAULT_SOLAR_PANEL_ABSORPTIVITY: f64 = 0.90;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SolarPanelSpecification {
     component_id: Uuid,
@@ -11,6 +13,7 @@ pub struct SolarPanelSpecification {
     conversion_efficiency: f64,
     max_power_output: Luminosity,
     is_sun_tracking: bool,
+    solar_absorptivity: Option<f64>,
 }
 
 impl SolarPanelSpecification {
@@ -20,6 +23,7 @@ impl SolarPanelSpecification {
         conversion_efficiency: f64,
         max_power_output: Luminosity,
         is_sun_tracking: bool,
+        solar_absorptivity: Option<f64>,
     ) -> RocketDomainResult<Self> {
         validate_positive_finite(surface_area_m2, "surface_area_m2")?;
         if !conversion_efficiency.is_finite()
@@ -33,12 +37,22 @@ impl SolarPanelSpecification {
         }
         validate_positive_finite(max_power_output.value(), "max_power_output")?;
 
+        if let Some(abs) = solar_absorptivity {
+            if !abs.is_finite() || abs <= 0.0 || abs > 1.0 {
+                return Err(RocketDomainError::InvalidInvariant {
+                    field: "solar_absorptivity".to_string(),
+                    reason: "must be in range (0, 1]".to_string(),
+                });
+            }
+        }
+
         Ok(Self {
             component_id,
             surface_area_m2,
             conversion_efficiency,
             max_power_output,
             is_sun_tracking,
+            solar_absorptivity,
         })
     }
 
@@ -60,5 +74,13 @@ impl SolarPanelSpecification {
 
     pub fn is_sun_tracking(&self) -> bool {
         self.is_sun_tracking
+    }
+
+    pub fn solar_absorptivity(&self) -> Option<f64> {
+        self.solar_absorptivity
+    }
+
+    pub fn effective_solar_absorptivity(&self) -> f64 {
+        self.solar_absorptivity.unwrap_or(DEFAULT_SOLAR_PANEL_ABSORPTIVITY)
     }
 }
