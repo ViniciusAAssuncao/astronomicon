@@ -1,6 +1,6 @@
 use crate::domain::{
     ComponentDetails, ComponentOperationalState, ComponentRecord, EnergyReservoirState,
-    VehicleComponentEntry,
+    VehicleComponentEntry, VehiclePhysicalState,
 };
 use crate::error::{RocketDomainError, RocketDomainResult};
 use crate::math::{resolve_mass_properties, MassProperties};
@@ -19,6 +19,7 @@ pub struct VehicleSnapshot {
     pub total_stored_energy: Energy,
     pub mass_properties: MassProperties,
     pub engine_operational_states: HashMap<Uuid, ComponentOperationalState>,
+    pub physical_state: Option<VehiclePhysicalState>,
     pub captured_universe_epoch: Duration,
     pub captured_at_epoch: Duration,
 }
@@ -32,6 +33,7 @@ impl VehicleSnapshot {
         total_stored_energy: Energy,
         mass_properties: MassProperties,
         engine_operational_states: HashMap<Uuid, ComponentOperationalState>,
+        physical_state: Option<VehiclePhysicalState>,
         captured_universe_epoch: Duration,
         captured_at_epoch: Duration,
     ) -> RocketDomainResult<Self> {
@@ -63,6 +65,19 @@ impl VehicleSnapshot {
         )?;
         validate_non_negative_finite(total_stored_energy.value(), "total_stored_energy")?;
 
+        if let Some(ref phys) = physical_state {
+            if phys.vehicle_id() != vehicle_id {
+                return Err(RocketDomainError::InvalidInvariant {
+                    field: "physical_state".to_string(),
+                    reason: format!(
+                        "physical state vehicle_id '{}' does not match snapshot vehicle_id '{}'",
+                        phys.vehicle_id(),
+                        vehicle_id
+                    ),
+                });
+            }
+        }
+
         Ok(Self {
             vehicle_id,
             active_stages,
@@ -71,6 +86,7 @@ impl VehicleSnapshot {
             total_stored_energy,
             mass_properties,
             engine_operational_states,
+            physical_state,
             captured_universe_epoch,
             captured_at_epoch,
         })
@@ -84,6 +100,7 @@ impl VehicleSnapshot {
         operational_states: &HashMap<Uuid, ComponentOperationalState>,
         propellant_load_fraction: f64,
         payload_masses: &HashMap<Uuid, Mass>,
+        physical_state: Option<VehiclePhysicalState>,
         captured_universe_epoch: Duration,
         captured_at_epoch: Duration,
     ) -> RocketDomainResult<Self> {
@@ -147,6 +164,7 @@ impl VehicleSnapshot {
             Energy::new(total_stored_energy_val),
             mass_props,
             engine_states,
+            physical_state,
             captured_universe_epoch,
             captured_at_epoch,
         )
@@ -159,6 +177,7 @@ impl VehicleSnapshot {
         reservoir_states: &HashMap<Uuid, EnergyReservoirState>,
         operational_states: &HashMap<Uuid, ComponentOperationalState>,
         propellant_load_fraction: f64,
+        physical_state: Option<VehiclePhysicalState>,
         captured_universe_epoch: Duration,
         captured_at_epoch: Duration,
     ) -> RocketDomainResult<Self> {
@@ -171,6 +190,7 @@ impl VehicleSnapshot {
             operational_states,
             propellant_load_fraction,
             &empty,
+            physical_state,
             captured_universe_epoch,
             captured_at_epoch,
         )
@@ -214,6 +234,15 @@ impl VehicleSnapshot {
 
     pub fn active_engine_operational_states(&self) -> &HashMap<Uuid, ComponentOperationalState> {
         &self.engine_operational_states
+    }
+
+    pub fn physical_state(&self) -> Option<&VehiclePhysicalState> {
+        self.physical_state.as_ref()
+    }
+
+    pub fn with_physical_state(mut self, physical_state: Option<VehiclePhysicalState>) -> Self {
+        self.physical_state = physical_state;
+        self
     }
 
     pub fn captured_universe_epoch(&self) -> Duration {

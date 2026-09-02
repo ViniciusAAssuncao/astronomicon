@@ -14,6 +14,7 @@ use rocketcon_db::repositories::{
     operational_state as operational_state_repository,
     payload_state as payload_state_repository,
     vehicle as vehicle_repository,
+    vehicle_physical_state as vehicle_physical_state_repository,
 };
 use std::collections::{ HashMap, HashSet };
 use uuid::Uuid;
@@ -283,6 +284,7 @@ pub async fn resolve_vehicle_snapshot_with_options(
     }
 
     let payload_masses = resolve_payload_masses(pool, &components, universe_epoch, at_epoch).await?;
+    let physical_state = vehicle_physical_state_repository::get_by_vehicle_id(pool, &vehicle_id).await?;
 
     let snapshot = VehicleSnapshot::from_components(
         vehicle_id,
@@ -292,6 +294,7 @@ pub async fn resolve_vehicle_snapshot_with_options(
         &operational_states,
         propellant_load_fraction,
         &payload_masses,
+        physical_state,
         universe_epoch,
         at_epoch
     )?;
