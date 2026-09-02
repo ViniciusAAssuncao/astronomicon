@@ -11,7 +11,8 @@ const BASE_QUERY: &str = "SELECT id, star_system_id, parent_star_id, parent_plan
     inclination_rad, longitude_ascending_node_rad, argument_periapsis_rad, \
     mean_anomaly_at_epoch_rad, oblateness_j2, core_mass_fraction, radioactive_heating_rate, \
     magnetic_field_locked, love_number_k2, tidal_dissipation_factor_q, \
-    mantle_hydration_fraction, dust_availability_factor FROM planets";
+    mantle_hydration_fraction, dust_availability_factor, surface_roughness_m, \
+    dust_particle_radius_m, volcanic_ash_particle_radius_m FROM planets";
 
 pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> DbResult<Option<PlanetRow>> {
     let query = format!("{BASE_QUERY} WHERE id = ?");

@@ -6,6 +6,7 @@ pub mod error;
 pub mod geology;
 pub mod geophysics;
 pub mod gravity;
+pub mod habitability;
 pub mod hierarchy;
 pub mod hydrosphere;
 pub mod lagrange;
@@ -18,6 +19,7 @@ pub mod shape;
 pub mod sky;
 pub mod tectonics;
 pub mod tidal;
+pub mod universe;
 pub mod volcanism;
 
 pub use black_hole::*;
@@ -27,6 +29,7 @@ pub use error::{AppError, AppResult};
 pub use geology::*;
 pub use geophysics::*;
 pub use gravity::*;
+pub use habitability::*;
 pub use hydrosphere::*;
 pub use lagrange::*;
 pub use mineralogy::*;
@@ -38,6 +41,7 @@ pub use shape::*;
 pub use sky::*;
 pub use tectonics::*;
 pub use tidal::*;
+pub use universe::*;
 pub use volcanism::*;
 
 pub fn run() -> AppResult<()> {

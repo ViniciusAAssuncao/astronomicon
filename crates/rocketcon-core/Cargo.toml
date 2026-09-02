@@ -1,0 +1,10 @@
+[package]
+name = "rocketcon-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+astronomicon-core = { path = "../astronomicon-core" }
+serde.workspace = true
+uuid.workspace = true
+thiserror.workspace = true

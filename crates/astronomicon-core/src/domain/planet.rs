@@ -44,6 +44,7 @@ pub struct PlanetBuilder {
     polar_radius: Option<Length>,
     rotation_period: Option<Duration>,
     obliquity: Option<Angle>,
+    prime_meridian_epoch_angle: Option<Angle>,
     geometric_albedo: Option<f64>,
     bond_albedo: Option<f64>,
     thermal_inertia: Option<f64>,
@@ -57,6 +58,9 @@ pub struct PlanetBuilder {
     tidal_dissipation_factor_q: Option<f64>,
     mantle_hydration_fraction: Option<f64>,
     dust_availability_factor: Option<f64>,
+    surface_roughness: Option<Length>,
+    dust_particle_radius: Option<Length>,
+    volcanic_ash_particle_radius: Option<Length>,
     rheology: Option<PlanetRheology>,
 }
 
@@ -79,6 +83,7 @@ impl PlanetBuilder {
             polar_radius: None,
             rotation_period: None,
             obliquity: None,
+            prime_meridian_epoch_angle: None,
             geometric_albedo: None,
             bond_albedo: None,
             thermal_inertia: None,
@@ -92,6 +97,9 @@ impl PlanetBuilder {
             tidal_dissipation_factor_q: None,
             mantle_hydration_fraction: None,
             dust_availability_factor: None,
+            surface_roughness: None,
+            dust_particle_radius: None,
+            volcanic_ash_particle_radius: None,
             rheology: None,
         }
     }
@@ -118,6 +126,14 @@ impl PlanetBuilder {
 
     pub fn with_obliquity(mut self, obliquity: impl Into<Option<Angle>>) -> Self {
         self.obliquity = obliquity.into();
+        self
+    }
+
+    pub fn with_prime_meridian_epoch_angle(
+        mut self,
+        prime_meridian_epoch_angle: impl Into<Option<Angle>>,
+    ) -> Self {
+        self.prime_meridian_epoch_angle = prime_meridian_epoch_angle.into();
         self
     }
 
@@ -207,6 +223,30 @@ impl PlanetBuilder {
         self
     }
 
+    pub fn with_surface_roughness(
+        mut self,
+        surface_roughness: impl Into<Option<Length>>,
+    ) -> Self {
+        self.surface_roughness = surface_roughness.into();
+        self
+    }
+
+    pub fn with_dust_particle_radius(
+        mut self,
+        dust_particle_radius: impl Into<Option<Length>>,
+    ) -> Self {
+        self.dust_particle_radius = dust_particle_radius.into();
+        self
+    }
+
+    pub fn with_volcanic_ash_particle_radius(
+        mut self,
+        volcanic_ash_particle_radius: impl Into<Option<Length>>,
+    ) -> Self {
+        self.volcanic_ash_particle_radius = volcanic_ash_particle_radius.into();
+        self
+    }
+
     pub fn with_rheology(mut self, rheology: impl Into<Option<PlanetRheology>>) -> Self {
         self.rheology = rheology.into();
         self
@@ -244,6 +284,10 @@ impl PlanetBuilder {
 
         if let Some(ob) = self.obliquity {
             validate_finite(ob.value(), "obliquity")?;
+        }
+
+        if let Some(pmea) = self.prime_meridian_epoch_angle {
+            validate_finite(pmea.value(), "prime_meridian_epoch_angle")?;
         }
 
         if let Some(geo) = self.geometric_albedo {
@@ -294,6 +338,18 @@ impl PlanetBuilder {
             validate_unit_interval(daf, "dust_availability_factor")?;
         }
 
+        if let Some(sr) = self.surface_roughness {
+            validate_positive_finite(sr.value(), "surface_roughness")?;
+        }
+
+        if let Some(dpr) = self.dust_particle_radius {
+            validate_positive_finite(dpr.value(), "dust_particle_radius")?;
+        }
+
+        if let Some(vapr) = self.volcanic_ash_particle_radius {
+            validate_positive_finite(vapr.value(), "volcanic_ash_particle_radius")?;
+        }
+
         let solstice_true_anomaly = self
             .solstice_true_anomaly
             .map(|angle| Angle::new(angle.value().rem_euclid(TAU)));
@@ -309,6 +365,7 @@ impl PlanetBuilder {
             polar_radius: self.polar_radius,
             rotation_period: self.rotation_period,
             obliquity: self.obliquity,
+            prime_meridian_epoch_angle: self.prime_meridian_epoch_angle,
             geometric_albedo: self.geometric_albedo,
             bond_albedo: self.bond_albedo,
             thermal_inertia: self.thermal_inertia,
@@ -322,6 +379,9 @@ impl PlanetBuilder {
             tidal_dissipation_factor_q: self.tidal_dissipation_factor_q,
             mantle_hydration_fraction: self.mantle_hydration_fraction,
             dust_availability_factor: self.dust_availability_factor,
+            surface_roughness: self.surface_roughness,
+            dust_particle_radius: self.dust_particle_radius,
+            volcanic_ash_particle_radius: self.volcanic_ash_particle_radius,
             rheology: self.rheology,
         })
     }
@@ -339,6 +399,7 @@ pub struct Planet {
     polar_radius: Option<Length>,
     rotation_period: Option<Duration>,
     obliquity: Option<Angle>,
+    prime_meridian_epoch_angle: Option<Angle>,
     geometric_albedo: Option<f64>,
     bond_albedo: Option<f64>,
     thermal_inertia: Option<f64>,
@@ -352,6 +413,9 @@ pub struct Planet {
     tidal_dissipation_factor_q: Option<f64>,
     mantle_hydration_fraction: Option<f64>,
     dust_availability_factor: Option<f64>,
+    surface_roughness: Option<Length>,
+    dust_particle_radius: Option<Length>,
+    volcanic_ash_particle_radius: Option<Length>,
     rheology: Option<PlanetRheology>,
 }
 
@@ -377,6 +441,7 @@ impl Planet {
         polar_radius: Option<Length>,
         rotation_period: Option<Duration>,
         obliquity: Option<Angle>,
+        prime_meridian_epoch_angle: Option<Angle>,
         geometric_albedo: Option<f64>,
         bond_albedo: Option<f64>,
         thermal_inertia: Option<f64>,
@@ -390,6 +455,9 @@ impl Planet {
         tidal_dissipation_factor_q: Option<f64>,
         mantle_hydration_fraction: Option<f64>,
         dust_availability_factor: Option<f64>,
+        surface_roughness: Option<Length>,
+        dust_particle_radius: Option<Length>,
+        volcanic_ash_particle_radius: Option<Length>,
         rheology: Option<PlanetRheology>,
     ) -> DomainResult<Self> {
         Self::builder(id, name, mass, kind, orbital_parent)
@@ -398,6 +466,7 @@ impl Planet {
             .with_polar_radius(polar_radius)
             .with_rotation_period(rotation_period)
             .with_obliquity(obliquity)
+            .with_prime_meridian_epoch_angle(prime_meridian_epoch_angle)
             .with_geometric_albedo(geometric_albedo)
             .with_bond_albedo(bond_albedo)
             .with_thermal_inertia(thermal_inertia)
@@ -411,6 +480,9 @@ impl Planet {
             .with_tidal_dissipation_factor_q(tidal_dissipation_factor_q)
             .with_mantle_hydration_fraction(mantle_hydration_fraction)
             .with_dust_availability_factor(dust_availability_factor)
+            .with_surface_roughness(surface_roughness)
+            .with_dust_particle_radius(dust_particle_radius)
+            .with_volcanic_ash_particle_radius(volcanic_ash_particle_radius)
             .with_rheology(rheology)
             .build()
     }
@@ -453,6 +525,10 @@ impl Planet {
 
     pub fn obliquity(&self) -> Option<Angle> {
         self.obliquity
+    }
+
+    pub fn prime_meridian_epoch_angle(&self) -> Option<Angle> {
+        self.prime_meridian_epoch_angle
     }
 
     pub fn geometric_albedo(&self) -> Option<f64> {
@@ -505,6 +581,18 @@ impl Planet {
 
     pub fn dust_availability_factor(&self) -> Option<f64> {
         self.dust_availability_factor
+    }
+
+    pub fn surface_roughness(&self) -> Option<Length> {
+        self.surface_roughness
+    }
+
+    pub fn dust_particle_radius(&self) -> Option<Length> {
+        self.dust_particle_radius
+    }
+
+    pub fn volcanic_ash_particle_radius(&self) -> Option<Length> {
+        self.volcanic_ash_particle_radius
     }
 
     pub fn rheology(&self) -> Option<&PlanetRheology> {

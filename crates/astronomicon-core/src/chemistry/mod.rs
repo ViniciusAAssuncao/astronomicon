@@ -1,4 +1,6 @@
 pub mod abundance;
+pub mod acid_chemistry;
+pub mod bioessentiality;
 pub mod composition_mean;
 pub mod condensation;
 pub mod geochemistry;
@@ -7,8 +9,12 @@ pub mod molecular_formula;
 pub mod optics;
 pub mod periodic_table;
 pub mod solvent;
+pub mod thermochemistry;
+pub mod viscosity;
 
 pub use abundance::*;
+pub use acid_chemistry::*;
+pub use bioessentiality::*;
 pub use composition_mean::*;
 pub use condensation::*;
 pub use geochemistry::*;
@@ -17,3 +23,5 @@ pub use molecular_formula::*;
 pub use optics::*;
 pub use periodic_table::*;
 pub use solvent::*;
+pub use thermochemistry::*;
+pub use viscosity::*;

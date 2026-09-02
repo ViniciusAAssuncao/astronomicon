@@ -1,4 +1,3 @@
-use crate::math::aerosol::composite_properties::AtmosphericAerosolProperties;
 use crate::units::{Acceleration, Density, DynamicViscosity, Length, Speed};
 
 pub fn particle_terminal_velocity(
@@ -17,6 +16,7 @@ pub fn particle_terminal_velocity(
     if g <= 0.0
         || rho_p <= rho_f
         || rho_p <= 0.0
+        || rho_f <= 0.0
         || r <= 0.0
         || eta <= 0.0
         || !g.is_finite()
@@ -29,12 +29,51 @@ pub fn particle_terminal_velocity(
     }
 
     let delta_rho = rho_p - rho_f;
-    let v_term = (2.0 / 9.0) * (delta_rho * g * r * r) / eta;
+    let v_stokes = (2.0 / 9.0) * (delta_rho * g * r * r) / eta;
+    let re_stokes = (2.0 * rho_f * v_stokes * r) / eta;
 
-    if !v_term.is_finite() || v_term <= 0.0 {
+    if re_stokes < 1.0 {
+        if !v_stokes.is_finite() || v_stokes <= 0.0 {
+            return Speed::new(0.0);
+        }
+        return Speed::new(v_stokes);
+    }
+
+    let k = (8.0 * delta_rho * g * r) / (3.0 * rho_f);
+    let v_newton = (k / 0.44).sqrt();
+    let re_newton = (2.0 * rho_f * v_newton * r) / eta;
+
+    if re_newton > 1000.0 {
+        if !v_newton.is_finite() || v_newton <= 0.0 {
+            return Speed::new(0.0);
+        }
+        return Speed::new(v_newton);
+    }
+
+    let mut low = 0.0;
+    let mut high = v_stokes;
+    let mut v = 0.5 * (low + high);
+
+    for _ in 0..50 {
+        let re = (2.0 * rho_f * v * r) / eta;
+        let cd = if re <= 0.0 {
+            f64::INFINITY
+        } else {
+            (24.0 / re) * (1.0 + 0.15 * re.powf(0.687))
+        };
+        let diff = v * v * cd - k;
+        if diff < 0.0 {
+            low = v;
+        } else {
+            high = v;
+        }
+        v = 0.5 * (low + high);
+    }
+
+    if !v.is_finite() || v <= 0.0 {
         Speed::new(0.0)
     } else {
-        Speed::new(v_term)
+        Speed::new(v)
     }
 }
 
@@ -129,48 +168,4 @@ pub fn aerosol_density_at_altitude(
     } else {
         Density::new(rho)
     }
-}
-
-pub fn aerosol_properties_at_altitude(
-    surface_properties: &AtmosphericAerosolProperties,
-    altitude: Length,
-    aerosol_scale_height: Length,
-) -> AtmosphericAerosolProperties {
-    let z = altitude.value();
-    let h_aero = aerosol_scale_height.value();
-
-    if z <= 0.0 {
-        return *surface_properties;
-    }
-
-    if h_aero <= 0.0 || !h_aero.is_finite() || !z.is_finite() {
-        return AtmosphericAerosolProperties::new(
-            Density::new(0.0),
-            Density::new(0.0),
-            Density::new(0.0),
-            Density::new(0.0),
-            surface_properties.asymmetry_factor_g(),
-            0.0,
-            0.0,
-            surface_properties.angstrom_exponent(),
-        );
-    }
-
-    let exponent = -z / h_aero;
-    let factor = if exponent < -700.0 {
-        0.0
-    } else {
-        exponent.exp()
-    };
-
-    AtmosphericAerosolProperties::new(
-        Density::new(surface_properties.dust_density().value() * factor),
-        Density::new(surface_properties.volcanic_density().value() * factor),
-        Density::new(surface_properties.cloud_density().value() * factor),
-        Density::new(surface_properties.total_density().value() * factor),
-        surface_properties.asymmetry_factor_g(),
-        surface_properties.base_extinction_coefficient() * factor,
-        surface_properties.base_scattering_coefficient() * factor,
-        surface_properties.angstrom_exponent(),
-    )
 }
