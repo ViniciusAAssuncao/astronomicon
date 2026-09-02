@@ -1,4 +1,7 @@
-use astronomicon_core::units::{Acceleration, Duration, Force, Mass, MassRate, Speed};
+use crate::domain::{ComponentDetails, ComponentRecord, EngineState, VehicleComponentEntry};
+use astronomicon_core::units::{Acceleration, Duration, Force, Mass, MassRate, Speed, Vector3};
+use std::collections::HashMap;
+use uuid::Uuid;
 
 pub fn tsiolkovsky_delta_v(
     effective_exhaust_velocity: Speed,
@@ -119,4 +122,38 @@ pub fn thrust_to_weight_ratio(
     } else {
         twr
     }
+}
+
+pub fn combined_thrust_vector(
+    entries: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    engine_states: &HashMap<Uuid, EngineState>,
+) -> Vector3 {
+    let mut total_thrust = Vector3::zero();
+
+    for (entry, record) in entries {
+        if !active_stages.contains(&entry.stage_index()) {
+            continue;
+        }
+
+        if let ComponentDetails::Engine(engine) = record.details() {
+            let state = engine_states
+                .get(&entry.id())
+                .or_else(|| engine_states.get(&entry.component_id()));
+
+            if let Some(state) = state {
+                if matches!(state, EngineState::MainStage | EngineState::Throttling) {
+                    let thrust = engine.max_thrust().value();
+                    if thrust.is_finite() && thrust > 0.0 {
+                        let dir = entry
+                            .actuation_axis()
+                            .unwrap_or(Vector3::new(0.0, 0.0, 1.0));
+                        total_thrust = total_thrust + dir * thrust;
+                    }
+                }
+            }
+        }
+    }
+
+    total_thrust
 }

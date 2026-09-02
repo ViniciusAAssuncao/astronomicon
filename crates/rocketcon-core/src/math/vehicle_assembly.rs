@@ -26,6 +26,7 @@ pub struct VehicleAssemblyTotals {
 
 pub fn aggregate_vehicle_assembly(
     entries: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
 ) -> VehicleAssemblyTotals {
     let mut total_dry_mass = Mass::new(0.0);
     let mut total_power_consumption = Luminosity::new(0.0);
@@ -44,7 +45,11 @@ pub fn aggregate_vehicle_assembly(
     let mut total_propellant_capacity_by_propellant: HashMap<Uuid, Mass> = HashMap::new();
     let mut total_mass_flow_rate_by_propellant: HashMap<Uuid, MassRate> = HashMap::new();
 
-    for (_, record) in entries {
+    for (entry, record) in entries {
+        if !active_stages.contains(&entry.stage_index()) {
+            continue;
+        }
+
         let comp = record.component();
         total_dry_mass = total_dry_mass + comp.dry_mass();
         total_power_consumption =

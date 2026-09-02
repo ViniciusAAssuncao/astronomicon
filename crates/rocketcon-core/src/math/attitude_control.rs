@@ -61,6 +61,7 @@ impl AttitudeControlAuthority {
 
 pub fn resolve_attitude_control_authority(
     entries: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
     center_of_mass: Vector3,
 ) -> AttitudeControlAuthority {
     let mut gimbal_tx = 0.0;
@@ -86,6 +87,10 @@ pub fn resolve_attitude_control_authority(
     ];
 
     for (entry, record) in entries {
+        if !active_stages.contains(&entry.stage_index()) {
+            continue;
+        }
+
         let r = entry.mount_offset() - center_of_mass;
 
         match record.details() {
@@ -176,7 +181,8 @@ pub fn resolve_attitude_control_authority(
 
 pub fn attitude_control_authority(
     entries: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
     center_of_mass: Vector3,
 ) -> AttitudeControlAuthority {
-    resolve_attitude_control_authority(entries, center_of_mass)
+    resolve_attitude_control_authority(entries, active_stages, center_of_mass)
 }

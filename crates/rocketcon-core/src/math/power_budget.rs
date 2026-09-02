@@ -1,3 +1,4 @@
+use crate::domain::VehicleComponentEntry;
 use crate::math::battery_dynamics::estimated_autonomy_duration;
 use astronomicon_core::units::{Duration, Energy, Luminosity};
 use serde::{Deserialize, Serialize};
@@ -92,7 +93,8 @@ pub fn component_consumption_waste_heat(consumed_power: Luminosity) -> Luminosit
 }
 
 pub fn aggregate_power_budget(
-    contributions: &[ComponentPowerContribution],
+    contributions: &[(VehicleComponentEntry, ComponentPowerContribution)],
+    active_stages: &[u32],
     battery_capacity: Energy,
     battery_stored: Energy,
     dumped_power: Luminosity,
@@ -101,7 +103,11 @@ pub fn aggregate_power_budget(
     let mut total_con = 0.0;
     let mut comp_waste = 0.0;
 
-    for c in contributions {
+    for (entry, c) in contributions {
+        if !active_stages.contains(&entry.stage_index()) {
+            continue;
+        }
+
         if c.electrical_generation.value().is_finite() && c.electrical_generation.value() > 0.0 {
             total_gen += c.electrical_generation.value();
         }

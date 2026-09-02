@@ -31,6 +31,7 @@ impl MassProperties {
 
 pub fn resolve_mass_properties(
     entries: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
     propellant_load_fraction: f64,
 ) -> MassProperties {
     let load_frac = propellant_load_fraction.clamp(0.0, 1.0);
@@ -40,6 +41,10 @@ pub fn resolve_mass_properties(
     let mut component_masses = Vec::with_capacity(entries.len());
 
     for (entry, record) in entries {
+        if !active_stages.contains(&entry.stage_index()) {
+            continue;
+        }
+
         let comp = record.component();
         let mut m = comp.dry_mass().value();
 

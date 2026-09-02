@@ -127,7 +127,7 @@ impl VehicleSnapshot {
         }
 
         let mass_props =
-            resolve_mass_properties(&active_entries, propellant_load_fraction);
+            resolve_mass_properties(components, &active_stages, propellant_load_fraction);
 
         Self::new(
             vehicle_id,

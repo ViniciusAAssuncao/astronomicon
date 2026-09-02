@@ -1,3 +1,4 @@
+pub use crate::domain::decouple_event::DecoupleEvent;
 use crate::domain::vehicle_kind::VehicleKind;
 use crate::error::{RocketDomainError, RocketDomainResult};
 use astronomicon_core::domain::validation::validate_not_empty;
