@@ -1,15 +1,19 @@
 pub mod component_operational_state_row;
+pub mod component_payload_state_row;
 pub mod component_row;
 pub mod energy_reservoir_state_row;
 pub mod propellant_row;
 pub mod save_metadata_row;
 pub mod vehicle_component_row;
+pub mod vehicle_physical_state_row;
 pub mod vehicle_row;
 
 pub use component_operational_state_row::ComponentOperationalStateRow;
+pub use component_payload_state_row::ComponentPayloadStateRow;
 pub use component_row::ComponentRow;
 pub use energy_reservoir_state_row::EnergyReservoirStateRow;
 pub use propellant_row::PropellantRow;
 pub use save_metadata_row::SaveMetadataRow;
 pub use vehicle_component_row::VehicleComponentRow;
+pub use vehicle_physical_state_row::VehiclePhysicalStateRow;
 pub use vehicle_row::VehicleRow;

@@ -12,4 +12,6 @@ pub enum ComponentKind {
     Rtg,
     NuclearReactor,
     Radiator,
+    PayloadFairing,
+    PayloadDispenser,
 }

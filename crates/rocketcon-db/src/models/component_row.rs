@@ -35,6 +35,8 @@ impl TryFrom<ComponentRow> for Component {
             "Rtg" => ComponentKind::Rtg,
             "NuclearReactor" => ComponentKind::NuclearReactor,
             "Radiator" => ComponentKind::Radiator,
+            "PayloadFairing" => ComponentKind::PayloadFairing,
+            "PayloadDispenser" => ComponentKind::PayloadDispenser,
             other => {
                 return Err(RocketDbError::Domain(RocketDomainError::InvalidInvariant {
                     field: "component_kind".to_string(),

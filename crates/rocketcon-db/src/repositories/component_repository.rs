@@ -6,13 +6,14 @@ use crate::repositories::component_attributes::{
 };
 use astronomicon_core::units::{
     Angle, AngularMomentum, AngularVelocity, Duration, Energy, Force, Impulse, Luminosity, Mass,
-    Torque,
+    Speed, Torque, Volume,
 };
 use rocketcon_core::domain::{
     BatterySpecification, Component, ComponentDetails, ComponentKind, ComponentRecord,
     EngineSpecification, IgnitionType, NuclearReactorSpecification, NuclearReactorType,
-    PropellantTankSpecification, RadiatorSpecification, ReactionControlThrusterSpecification,
-    ReactionWheelSpecification, RtgSpecification, SolarPanelSpecification,
+    PayloadSpecification, PropellantTankSpecification, RadiatorSpecification,
+    ReactionControlThrusterSpecification, ReactionWheelSpecification, RtgSpecification,
+    SolarPanelSpecification,
 };
 use rocketcon_core::error::RocketDomainError;
 use rocketcon_core::physics_reference::{NuclearFuelType, RadioisotopeType};
@@ -257,6 +258,43 @@ async fn fetch_component_details(
             )?;
 
             Ok(ComponentDetails::Radiator(spec))
+        }
+        ComponentKind::PayloadFairing | ComponentKind::PayloadDispenser => {
+            let max_payload_mass_kg = match optional_numeric(&attr_map, &id, "max_payload_mass_kg")? {
+                Some(v) => v,
+                None => required_numeric(&attr_map, &id, "max_payload_mass")?,
+            };
+            let max_payload_volume_m3 =
+                match optional_numeric(&attr_map, &id, "max_payload_volume_m3")? {
+                    Some(v) => v,
+                    None => required_numeric(&attr_map, &id, "max_payload_volume")?,
+                };
+            let contained_vehicle_id = optional_uuid(&attr_map, &id, "contained_vehicle_id")?;
+            let generic_cargo_mass_kg =
+                match optional_numeric(&attr_map, &id, "generic_cargo_mass_kg")? {
+                    Some(v) => Some(v),
+                    None => optional_numeric(&attr_map, &id, "generic_cargo_mass")?,
+                };
+            let separation_velocity_m_s =
+                match optional_numeric(&attr_map, &id, "separation_velocity_m_s")? {
+                    Some(v) => v,
+                    None => match optional_numeric(&attr_map, &id, "separation_velocity")? {
+                        Some(v) => v,
+                        None => 0.0,
+                    },
+                };
+
+            let spec = PayloadSpecification::builder(
+                id,
+                Mass::new(max_payload_mass_kg),
+                Volume::new(max_payload_volume_m3),
+                Speed::new(separation_velocity_m_s),
+            )
+            .with_contained_vehicle_id(contained_vehicle_id)
+            .with_generic_cargo_mass(generic_cargo_mass_kg.map(Mass::new))
+            .build()?;
+
+            Ok(ComponentDetails::Payload(spec))
         }
     }
 }
