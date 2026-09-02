@@ -13,6 +13,7 @@ pub struct AtmosphereRow {
     pub lapse_rate_k_per_m: f64,
     pub surface_humidity: Option<f64>,
     pub cloud_coverage_fraction: Option<f64>,
+    pub cloud_condensation_nuclei_factor: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, FromRow)]
@@ -36,6 +37,7 @@ impl AtmosphereRow {
         .with_composition(components)
         .with_surface_humidity(self.surface_humidity)
         .with_cloud_coverage_fraction(self.cloud_coverage_fraction)
+        .with_cloud_condensation_nuclei_factor(self.cloud_condensation_nuclei_factor)
         .build()?;
 
         Ok(atmosphere)

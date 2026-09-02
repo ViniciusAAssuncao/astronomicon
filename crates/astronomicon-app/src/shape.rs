@@ -1,3 +1,5 @@
+pub use astronomicon_core::math::shape::geodetic_altitude_and_normal;
+
 use crate::error::AppResult;
 use astronomicon_core::domain::{Planet, Star};
 use astronomicon_core::error::DomainError;

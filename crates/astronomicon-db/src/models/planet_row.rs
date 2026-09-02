@@ -39,6 +39,9 @@ pub struct PlanetRow {
     pub tidal_dissipation_factor_q: Option<f64>,
     pub mantle_hydration_fraction: Option<f64>,
     pub dust_availability_factor: Option<f64>,
+    pub surface_roughness_m: Option<f64>,
+    pub dust_particle_radius_m: Option<f64>,
+    pub volcanic_ash_particle_radius_m: Option<f64>,
 }
 
 impl TryFrom<PlanetRow> for Planet {
@@ -106,6 +109,9 @@ impl TryFrom<PlanetRow> for Planet {
             .with_tidal_dissipation_factor_q(row.tidal_dissipation_factor_q)
             .with_mantle_hydration_fraction(row.mantle_hydration_fraction)
             .with_dust_availability_factor(row.dust_availability_factor)
+            .with_surface_roughness(row.surface_roughness_m.map(Length::new))
+            .with_dust_particle_radius(row.dust_particle_radius_m.map(Length::new))
+            .with_volcanic_ash_particle_radius(row.volcanic_ash_particle_radius_m.map(Length::new))
             .build()?;
 
         Ok(planet)

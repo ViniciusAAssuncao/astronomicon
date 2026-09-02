@@ -1,0 +1,12 @@
+[package]
+name = "rocketcon-sim"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rocketcon-core = { path = "../rocketcon-core" }
+rocketcon-app = { path = "../rocketcon-app" }
+astronomicon-core = { path = "../astronomicon-core" }
+astronomicon-app = { path = "../astronomicon-app" }
+uuid.workspace = true
+tokio = { version = "1.0", features = ["rt-multi-thread"] }

@@ -9,7 +9,7 @@ pub async fn get_by_planet_id(pool: &SqlitePool, planet_id: &Uuid) -> DbResult<O
     let base_row = fetch_optional_by_param::<AtmosphereRow, _>(
         pool,
         "SELECT id, planet_id, pressure_pa, greenhouse_effect_k, lapse_rate_k_per_m, \
-         surface_humidity, cloud_coverage_fraction \
+         surface_humidity, cloud_coverage_fraction, cloud_condensation_nuclei_factor \
          FROM atmospheres WHERE planet_id = ?",
         planet_id.to_string(),
     )

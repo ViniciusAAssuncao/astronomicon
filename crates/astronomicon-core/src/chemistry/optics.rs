@@ -134,6 +134,31 @@ fn o3_absorption_bands() -> Vec<AbsorptionBand> {
     ]
 }
 
+fn so2_absorption_bands() -> Vec<AbsorptionBand> {
+    vec![
+        AbsorptionBand::new(
+            Wavelength::new(210.0e-9),
+            3.5e-21,
+            Wavelength::new(35.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(290.0e-9),
+            1.5e-22,
+            Wavelength::new(55.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(7400.0e-9),
+            4.0e-23,
+            Wavelength::new(400.0e-9),
+        ),
+        AbsorptionBand::new(
+            Wavelength::new(8700.0e-9),
+            2.0e-23,
+            Wavelength::new(500.0e-9),
+        ),
+    ]
+}
+
 fn h2o_absorption_bands() -> Vec<AbsorptionBand> {
     vec![
         AbsorptionBand::new(Wavelength::new(942.0e-9), 1.0e-25, Wavelength::new(40.0e-9)),
@@ -239,13 +264,18 @@ pub fn gas_optical_properties(formula: &str) -> Option<GasOpticalProperties> {
             1.150,
             co2_absorption_bands(),
         )),
+        "CO" => Some(GasOpticalProperties::new(3.500e-4, 1.000, Vec::new())),
         "CH4" => Some(GasOpticalProperties::new(
             4.439e-4,
             1.000,
             ch4_absorption_bands(),
         )),
         "NH3" => Some(GasOpticalProperties::new(3.760e-4, 1.070, Vec::new())),
-        "SO2" => Some(GasOpticalProperties::new(6.860e-4, 1.240, Vec::new())),
+        "SO2" => Some(GasOpticalProperties::new(
+            6.860e-4,
+            1.240,
+            so2_absorption_bands(),
+        )),
         _ => None,
     }
 }

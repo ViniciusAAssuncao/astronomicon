@@ -1,15 +1,17 @@
 use crate::chemistry::molar_mass::{
     mean_mass_attenuation_coefficient, mean_molar_mass, mean_specific_heat_capacity,
 };
+use crate::chemistry::viscosity::{kinematic_viscosity, mean_dynamic_viscosity};
 use crate::domain::gas_component::GasComponent;
 use crate::domain::validation::{
     validate_composition, validate_finite, validate_finite_and_non_negative, validate_unit_interval,
 };
 use crate::error::DomainResult;
+use crate::math::thermodynamics::acoustics::{adiabatic_index_of_gas_mixture, speed_of_sound};
 use crate::units::constants::{ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT};
 use crate::units::{
-    Acceleration, Density, Length, MassAttenuationCoefficient, MolarMass, Pressure, Temperature,
-    TemperatureGradient,
+    Acceleration, Density, DynamicViscosity, Length, MassAttenuationCoefficient, MolarMass,
+    Pressure, Speed, Temperature, TemperatureGradient,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -24,6 +26,7 @@ pub struct AtmosphereBuilder {
     composition: Vec<GasComponent>,
     surface_humidity: Option<f64>,
     cloud_coverage_fraction: Option<f64>,
+    cloud_condensation_nuclei_factor: Option<f64>,
 }
 
 impl AtmosphereBuilder {
@@ -43,6 +46,7 @@ impl AtmosphereBuilder {
             composition: Vec::new(),
             surface_humidity: None,
             cloud_coverage_fraction: None,
+            cloud_condensation_nuclei_factor: None,
         }
     }
 
@@ -69,6 +73,14 @@ impl AtmosphereBuilder {
         self
     }
 
+    pub fn with_cloud_condensation_nuclei_factor(
+        mut self,
+        cloud_condensation_nuclei_factor: impl Into<Option<f64>>,
+    ) -> Self {
+        self.cloud_condensation_nuclei_factor = cloud_condensation_nuclei_factor.into();
+        self
+    }
+
     pub fn build(self) -> DomainResult<Atmosphere> {
         validate_finite_and_non_negative(self.surface_pressure.value(), "surface_pressure")?;
         validate_finite(self.greenhouse_effect.value(), "greenhouse_effect")?;
@@ -80,6 +92,10 @@ impl AtmosphereBuilder {
 
         if let Some(cc) = self.cloud_coverage_fraction {
             validate_unit_interval(cc, "cloud_coverage_fraction")?;
+        }
+
+        if let Some(ccn) = self.cloud_condensation_nuclei_factor {
+            validate_unit_interval(ccn, "cloud_condensation_nuclei_factor")?;
         }
 
         validate_composition(
@@ -100,6 +116,7 @@ impl AtmosphereBuilder {
             composition: self.composition,
             surface_humidity: self.surface_humidity,
             cloud_coverage_fraction: self.cloud_coverage_fraction,
+            cloud_condensation_nuclei_factor: self.cloud_condensation_nuclei_factor,
         })
     }
 }
@@ -114,6 +131,7 @@ pub struct Atmosphere {
     composition: Vec<GasComponent>,
     surface_humidity: Option<f64>,
     cloud_coverage_fraction: Option<f64>,
+    cloud_condensation_nuclei_factor: Option<f64>,
 }
 
 impl Atmosphere {
@@ -142,6 +160,7 @@ impl Atmosphere {
         composition: Vec<GasComponent>,
         surface_humidity: Option<f64>,
         cloud_coverage_fraction: Option<f64>,
+        cloud_condensation_nuclei_factor: Option<f64>,
     ) -> DomainResult<Self> {
         Self::builder(
             id,
@@ -153,6 +172,7 @@ impl Atmosphere {
         .with_composition(composition)
         .with_surface_humidity(surface_humidity)
         .with_cloud_coverage_fraction(cloud_coverage_fraction)
+        .with_cloud_condensation_nuclei_factor(cloud_condensation_nuclei_factor)
         .build()
     }
 
@@ -188,6 +208,10 @@ impl Atmosphere {
         self.cloud_coverage_fraction
     }
 
+    pub fn cloud_condensation_nuclei_factor(&self) -> Option<f64> {
+        self.cloud_condensation_nuclei_factor
+    }
+
     pub fn mean_molar_mass(&self) -> DomainResult<MolarMass> {
         let mapped: Vec<(String, f64)> = self
             .composition
@@ -206,6 +230,21 @@ impl Atmosphere {
         mean_specific_heat_capacity(&mapped)
     }
 
+    pub fn speed_of_sound_at(&self, temperature: Temperature) -> DomainResult<Speed> {
+        let molar_mass = self.mean_molar_mass()?;
+        let cp = self.mean_specific_heat_capacity()?;
+        if molar_mass.value() <= 0.0 || cp <= 0.0 || temperature.value() <= 0.0 {
+            return Ok(Speed::new(0.0));
+        }
+        let specific_gas_constant = UNIVERSAL_GAS_CONSTANT / molar_mass.value();
+        let gamma = adiabatic_index_of_gas_mixture(cp, specific_gas_constant);
+        Ok(speed_of_sound(
+            temperature,
+            specific_gas_constant,
+            gamma,
+        ))
+    }
+
     pub fn mean_mass_attenuation_coefficient(&self) -> DomainResult<MassAttenuationCoefficient> {
         let mapped: Vec<(String, f64)> = self
             .composition
@@ -213,6 +252,27 @@ impl Atmosphere {
             .map(|c| (c.formula().to_string(), c.percentage()))
             .collect();
         mean_mass_attenuation_coefficient(&mapped)
+    }
+
+    pub fn mean_dynamic_viscosity(
+        &self,
+        temperature: Temperature,
+    ) -> DomainResult<DynamicViscosity> {
+        let mapped: Vec<(String, f64)> = self
+            .composition
+            .iter()
+            .map(|c| (c.formula().to_string(), c.percentage()))
+            .collect();
+        mean_dynamic_viscosity(&mapped, temperature)
+    }
+
+    pub fn mean_kinematic_viscosity(
+        &self,
+        temperature: Temperature,
+        density: Density,
+    ) -> DomainResult<f64> {
+        let dyn_visc = self.mean_dynamic_viscosity(temperature)?;
+        Ok(kinematic_viscosity(dyn_visc, density))
     }
 
     pub fn mass_column(&self, gravity: Acceleration) -> f64 {

@@ -1,5 +1,6 @@
 use crate::error::AppResult;
 use astronomicon_db::SqlitePool;
+use astronomicon_db::connection::DATABASE_URL;
 
 pub struct AppContext {
     pool: SqlitePool,
@@ -16,7 +17,6 @@ impl AppContext {
 }
 
 pub async fn build_context() -> AppResult<AppContext> {
-    let db_url = "sqlite://database/astronomicon.db";
-    let pool = astronomicon_db::save::initialize_save(db_url).await?;
+    let pool = astronomicon_db::save::initialize_save(DATABASE_URL).await?;
     Ok(AppContext::new(pool))
 }

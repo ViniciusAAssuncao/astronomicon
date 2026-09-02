@@ -8,3 +8,5 @@ saves/
 .DS_Store
 .vscode/
 .idea/
+/database
+/queries

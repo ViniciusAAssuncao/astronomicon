@@ -1,0 +1,2 @@
+ALTER TABLE planets ADD COLUMN dust_particle_radius_m REAL CHECK (dust_particle_radius_m IS NULL OR dust_particle_radius_m > 0.0);
+ALTER TABLE planets ADD COLUMN volcanic_ash_particle_radius_m REAL CHECK (volcanic_ash_particle_radius_m IS NULL OR volcanic_ash_particle_radius_m > 0.0);

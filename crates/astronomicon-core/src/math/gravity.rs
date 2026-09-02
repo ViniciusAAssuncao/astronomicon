@@ -1,3 +1,7 @@
+pub mod oblateness;
+
+pub use oblateness::*;
+
 use crate::domain::{Barycenter, BarycenterMember, MinorPlanet, OrbitalParent, Planet, Star};
 use crate::error::{DomainError, DomainResult};
 use crate::units::constants::GRAVITATIONAL_CONSTANT;

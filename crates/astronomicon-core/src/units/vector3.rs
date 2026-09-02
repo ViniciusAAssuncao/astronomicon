@@ -37,6 +37,16 @@ impl Vector3 {
         }
     }
 
+    pub fn any_perpendicular(&self) -> Self {
+        let n = self.normalized();
+        let arbitrary = if n.0.abs() < 0.9 {
+            Self::new(1.0, 0.0, 0.0)
+        } else {
+            Self::new(0.0, 1.0, 0.0)
+        };
+        n.cross(&arbitrary).normalized()
+    }
+
     pub fn rotate_about_axis(&self, axis: Vector3, angle_rad: f64) -> Self {
         let cos_a = angle_rad.cos();
         let sin_a = angle_rad.sin();

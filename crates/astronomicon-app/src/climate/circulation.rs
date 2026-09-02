@@ -1,8 +1,9 @@
 use crate::climate::temperature::{
     resolve_advective_surface_temperature, resolve_global_mean_temperature,
-    resolve_latitudinal_surface_temperature,
+    resolve_latitudinal_surface_temperature, resolve_top_of_atmosphere_irradiance,
 };
 use crate::error::AppResult;
+use crate::hierarchy::find_parent_star;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::circulation::{
@@ -10,18 +11,23 @@ use astronomicon_core::math::circulation::{
 };
 use astronomicon_core::math::climate::{
     atmospheric_column_heat_capacity, combined_column_heat_capacity,
-    combined_thermal_redistribution_efficiency, thermal_redistribution_efficiency,
+    combined_thermal_redistribution_efficiency, day_length_half_angle,
+    diurnal_temperature_range_simple, mean_daily_insolation_factor, solar_declination,
+    thermal_redistribution_efficiency,
 };
-use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
+use astronomicon_core::math::gravity::{
+    combined_gravitational_parameter, gravitational_parameter, surface_gravity,
+};
+use astronomicon_core::math::kepler::true_anomaly_at_epoch;
 use astronomicon_core::math::rotation::{
     angular_velocity_from_rotation_period, coriolis_parameter, rossby_beta_parameter,
 };
 use astronomicon_core::math::wind::{
-    latitudinal_temperature_gradient, surface_wind_components, surface_wind_speed,
-    zonal_jet_stream_speed,
+    combined_surface_wind_components, diurnal_thermal_wind_speed,
+    latitudinal_temperature_gradient, total_surface_wind_velocity, zonal_jet_stream_speed,
 };
 use astronomicon_core::units::{
-    Angle, AngularVelocity, Duration, Length, Speed, TemperatureGradient,
+    Angle, AngularVelocity, Duration, Irradiance, Length, Speed, TemperatureGradient,
 };
 use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
@@ -198,17 +204,99 @@ pub async fn resolve_wind_profile_at_latitude(
 
     let t_grad = latitudinal_temperature_gradient(t_n, t_s, lat_n, lat_s, radius);
 
-    let scale_h = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
-        Some(atm) => atm.scale_height(g, t_local)?,
-        None => Length::new(8500.0),
+    let (scale_h, col_heat_cap) = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
+        Some(atm) => {
+            let h = atm.scale_height(g, t_local)?;
+            let cp = atm.mean_specific_heat_capacity()?;
+            let c_p = atmospheric_column_heat_capacity(atm.surface_pressure(), g, cp);
+            (h, c_p)
+        }
+        None => (Length::new(8500.0), 0.0),
     };
 
     let u_jet = zonal_jet_stream_speed(g, omega, radius, latitude, t_local, t_grad, scale_h);
-    let friction_factor = 0.65;
-    let cross_angle = Angle::new((20.0 * PI) / 180.0);
 
-    let u_surf = surface_wind_speed(u_jet, friction_factor);
-    let (u_surf_x, u_surf_y) = surface_wind_components(u_jet, friction_factor, cross_angle);
+    let z0 = planet
+        .surface_roughness()
+        .unwrap_or_else(|| Length::new(0.01));
+    let z0_val = z0.value().clamp(1e-6, 1.0);
+    let pbl_height = (0.15 * scale_h.value()).clamp(100.0, 5000.0);
+    let friction_factor = ((10.0 / z0_val).ln() / (pbl_height / z0_val).ln()).clamp(0.1, 0.9);
+    let cross_angle = Angle::new((15.0 + 15.0 * (1.0 - friction_factor)) * PI / 180.0);
+
+    let top_irradiance = if let Ok(star) = find_parent_star(pool, planet.orbital_parent()).await {
+        resolve_top_of_atmosphere_irradiance(pool, &planet, &star, universe_epoch, at_epoch)
+            .await
+            .unwrap_or(Irradiance::new(0.0))
+    } else {
+        Irradiance::new(0.0)
+    };
+
+    let insolation_factor = if let (Some(elements), Ok(star)) = (
+        planet.orbital_elements(),
+        find_parent_star(pool, planet.orbital_parent()).await,
+    ) {
+        let total_epoch = universe_epoch + at_epoch;
+        let mu_star = combined_gravitational_parameter(planet.mass(), star.mass());
+        if let Ok(true_anomaly) = true_anomaly_at_epoch(&elements, mu_star, total_epoch) {
+            let obliquity = planet.obliquity().unwrap_or_else(|| Angle::new(0.0));
+            let solstice_ta = planet
+                .solstice_true_anomaly()
+                .unwrap_or_else(|| Angle::new(0.0));
+            let declination = solar_declination(
+                obliquity,
+                elements.argument_of_periapsis(),
+                solstice_ta,
+                true_anomaly,
+            );
+            let half_angle = day_length_half_angle(latitude, declination);
+            mean_daily_insolation_factor(latitude, declination, half_angle)
+        } else {
+            latitude.value().cos().max(0.0) / PI
+        }
+    } else {
+        latitude.value().cos().max(0.0) / PI
+    };
+
+    let local_insolation = top_irradiance * insolation_factor;
+    let bond_albedo = planet.bond_albedo().unwrap_or(0.3);
+    let thermal_inertia = planet.thermal_inertia().unwrap_or(0.2);
+
+    let diurnal_range = diurnal_temperature_range_simple(
+        local_insolation,
+        bond_albedo,
+        rot_period,
+        thermal_inertia,
+        col_heat_cap,
+        t_local,
+    );
+
+    let u_diurnal = diurnal_thermal_wind_speed(
+        diurnal_range,
+        t_local,
+        g,
+        scale_h,
+        radius,
+        rot_period,
+        latitude,
+    );
+
+    let diurnal_phase = Angle::new(PI / 4.0);
+    let (u_surf_x, u_surf_y) = combined_surface_wind_components(
+        u_jet,
+        friction_factor,
+        cross_angle,
+        u_diurnal,
+        diurnal_phase,
+    );
+
+    let u_surf = total_surface_wind_velocity(
+        u_jet,
+        friction_factor,
+        cross_angle,
+        u_diurnal,
+        diurnal_phase,
+    );
 
     Ok(WindProfileDiagnostic {
         latitude,

@@ -5,6 +5,10 @@ members = [
     "crates/astronomicon-core",
     "crates/astronomicon-db",
     "crates/astronomicon-app",
+    "crates/rocketcon-core",
+    "crates/rocketcon-db",
+    "crates/rocketcon-app",
+    "crates/rocketcon-sim",
 ]
 
 [workspace.package]
