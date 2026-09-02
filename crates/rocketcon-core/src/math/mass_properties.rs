@@ -1,6 +1,8 @@
 use crate::domain::{ComponentDetails, ComponentRecord, VehicleComponentEntry};
 use astronomicon_core::units::{Mass, MomentOfInertia, Vector3};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MassProperties {
@@ -33,6 +35,7 @@ pub fn resolve_mass_properties(
     entries: &[(VehicleComponentEntry, ComponentRecord)],
     active_stages: &[u32],
     propellant_load_fraction: f64,
+    payload_masses: &HashMap<Uuid, Mass>,
 ) -> MassProperties {
     let load_frac = propellant_load_fraction.clamp(0.0, 1.0);
     let mut total_mass_val = 0.0;
@@ -50,6 +53,16 @@ pub fn resolve_mass_properties(
 
         if let ComponentDetails::PropellantTank(tank) = record.details() {
             m += tank.max_propellant_mass().value() * load_frac;
+        }
+
+        if let Some(payload_m) = payload_masses
+            .get(&entry.id())
+            .or_else(|| payload_masses.get(&entry.component_id()))
+        {
+            let p_val = payload_m.value();
+            if p_val.is_finite() && p_val > 0.0 {
+                m += p_val;
+            }
         }
 
         if m.is_finite() && m > 0.0 {
@@ -96,4 +109,22 @@ pub fn resolve_mass_properties(
         moment_of_inertia_y: MomentOfInertia::new(iyy),
         moment_of_inertia_z: MomentOfInertia::new(izz),
     }
+}
+
+pub fn resolve_mass_properties_without_payloads(
+    entries: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    propellant_load_fraction: f64,
+) -> MassProperties {
+    let empty = HashMap::new();
+    resolve_mass_properties(entries, active_stages, propellant_load_fraction, &empty)
+}
+
+pub fn mass_properties(
+    entries: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    propellant_load_fraction: f64,
+    payload_masses: &HashMap<Uuid, Mass>,
+) -> MassProperties {
+    resolve_mass_properties(entries, active_stages, propellant_load_fraction, payload_masses)
 }

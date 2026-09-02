@@ -27,6 +27,7 @@ pub struct VehicleAssemblyTotals {
 pub fn aggregate_vehicle_assembly(
     entries: &[(VehicleComponentEntry, ComponentRecord)],
     active_stages: &[u32],
+    payload_masses: &HashMap<Uuid, Mass>,
 ) -> VehicleAssemblyTotals {
     let mut total_dry_mass = Mass::new(0.0);
     let mut total_power_consumption = Luminosity::new(0.0);
@@ -51,7 +52,16 @@ pub fn aggregate_vehicle_assembly(
         }
 
         let comp = record.component();
-        total_dry_mass = total_dry_mass + comp.dry_mass();
+        let mut comp_dry = comp.dry_mass();
+        if let Some(payload_m) = payload_masses
+            .get(&entry.id())
+            .or_else(|| payload_masses.get(&entry.component_id()))
+        {
+            if payload_m.value().is_finite() && payload_m.value() > 0.0 {
+                comp_dry = comp_dry + *payload_m;
+            }
+        }
+        total_dry_mass = total_dry_mass + comp_dry;
         total_power_consumption =
             total_power_consumption + Luminosity::new(comp.power_consumption_w());
 
@@ -126,4 +136,12 @@ pub fn aggregate_vehicle_assembly(
         total_propellant_capacity_by_propellant,
         total_mass_flow_rate_by_propellant,
     }
+}
+
+pub fn aggregate_vehicle_assembly_without_payloads(
+    entries: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+) -> VehicleAssemblyTotals {
+    let empty = HashMap::new();
+    aggregate_vehicle_assembly(entries, active_stages, &empty)
 }

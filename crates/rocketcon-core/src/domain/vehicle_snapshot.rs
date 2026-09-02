@@ -83,6 +83,7 @@ impl VehicleSnapshot {
         reservoir_states: &HashMap<Uuid, EnergyReservoirState>,
         operational_states: &HashMap<Uuid, ComponentOperationalState>,
         propellant_load_fraction: f64,
+        payload_masses: &HashMap<Uuid, Mass>,
         captured_universe_epoch: Duration,
         captured_at_epoch: Duration,
     ) -> RocketDomainResult<Self> {
@@ -107,6 +108,15 @@ impl VehicleSnapshot {
         for (entry, record) in &active_entries {
             total_dry_mass_val += record.component().dry_mass().value();
 
+            if let Some(payload_m) = payload_masses
+                .get(&entry.id())
+                .or_else(|| payload_masses.get(&entry.component_id()))
+            {
+                if payload_m.value().is_finite() && payload_m.value() > 0.0 {
+                    total_dry_mass_val += payload_m.value();
+                }
+            }
+
             match record.details() {
                 ComponentDetails::Battery(battery) => {
                     let cap = battery.capacity().value();
@@ -127,7 +137,7 @@ impl VehicleSnapshot {
         }
 
         let mass_props =
-            resolve_mass_properties(components, &active_stages, propellant_load_fraction);
+            resolve_mass_properties(components, &active_stages, propellant_load_fraction, payload_masses);
 
         Self::new(
             vehicle_id,
@@ -137,6 +147,30 @@ impl VehicleSnapshot {
             Energy::new(total_stored_energy_val),
             mass_props,
             engine_states,
+            captured_universe_epoch,
+            captured_at_epoch,
+        )
+    }
+
+    pub fn from_components_without_payloads(
+        vehicle_id: Uuid,
+        components: &[(VehicleComponentEntry, ComponentRecord)],
+        active_stages: Vec<u32>,
+        reservoir_states: &HashMap<Uuid, EnergyReservoirState>,
+        operational_states: &HashMap<Uuid, ComponentOperationalState>,
+        propellant_load_fraction: f64,
+        captured_universe_epoch: Duration,
+        captured_at_epoch: Duration,
+    ) -> RocketDomainResult<Self> {
+        let empty = HashMap::new();
+        Self::from_components(
+            vehicle_id,
+            components,
+            active_stages,
+            reservoir_states,
+            operational_states,
+            propellant_load_fraction,
+            &empty,
             captured_universe_epoch,
             captured_at_epoch,
         )
