@@ -7,10 +7,11 @@ use crate::domain::validation::{
     validate_composition, validate_finite, validate_finite_and_non_negative, validate_unit_interval,
 };
 use crate::error::DomainResult;
+use crate::math::thermodynamics::acoustics::{adiabatic_index_of_gas_mixture, speed_of_sound};
 use crate::units::constants::{ATMOSPHERE_COMPOSITION_MAX_PERCENT_OVERAGE, UNIVERSAL_GAS_CONSTANT};
 use crate::units::{
     Acceleration, Density, DynamicViscosity, Length, MassAttenuationCoefficient, MolarMass,
-    Pressure, Temperature, TemperatureGradient,
+    Pressure, Speed, Temperature, TemperatureGradient,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -227,6 +228,21 @@ impl Atmosphere {
             .map(|c| (c.formula().to_string(), c.percentage()))
             .collect();
         mean_specific_heat_capacity(&mapped)
+    }
+
+    pub fn speed_of_sound_at(&self, temperature: Temperature) -> DomainResult<Speed> {
+        let molar_mass = self.mean_molar_mass()?;
+        let cp = self.mean_specific_heat_capacity()?;
+        if molar_mass.value() <= 0.0 || cp <= 0.0 || temperature.value() <= 0.0 {
+            return Ok(Speed::new(0.0));
+        }
+        let specific_gas_constant = UNIVERSAL_GAS_CONSTANT / molar_mass.value();
+        let gamma = adiabatic_index_of_gas_mixture(cp, specific_gas_constant);
+        Ok(speed_of_sound(
+            temperature,
+            specific_gas_constant,
+            gamma,
+        ))
     }
 
     pub fn mean_mass_attenuation_coefficient(&self) -> DomainResult<MassAttenuationCoefficient> {

@@ -1,3 +1,4 @@
+pub mod aerodynamics;
 pub mod attitude_control;
 pub mod battery_dynamics;
 pub mod mass_properties;
@@ -11,6 +12,7 @@ pub mod solar_power_generation;
 pub mod thermal_budget;
 pub mod vehicle_assembly;
 
+pub use aerodynamics::*;
 pub use attitude_control::*;
 pub use battery_dynamics::*;
 pub use mass_properties::*;
