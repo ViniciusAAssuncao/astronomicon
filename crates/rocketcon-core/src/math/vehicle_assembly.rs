@@ -1,5 +1,5 @@
 use crate::domain::{ComponentDetails, ComponentRecord, VehicleComponentEntry};
-use astronomicon_core::units::{Energy, Force, Luminosity, Mass};
+use astronomicon_core::units::{Energy, Force, Luminosity, Mass, MassRate};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -21,6 +21,7 @@ pub struct VehicleAssemblyTotals {
     pub has_reaction_wheel: bool,
     pub reaction_wheel_count: u32,
     pub total_propellant_capacity_by_propellant: HashMap<Uuid, Mass>,
+    pub total_mass_flow_rate_by_propellant: HashMap<Uuid, MassRate>,
 }
 
 pub fn aggregate_vehicle_assembly(
@@ -41,6 +42,7 @@ pub fn aggregate_vehicle_assembly(
     let mut has_reaction_wheel = false;
     let mut reaction_wheel_count = 0u32;
     let mut total_propellant_capacity_by_propellant: HashMap<Uuid, Mass> = HashMap::new();
+    let mut total_mass_flow_rate_by_propellant: HashMap<Uuid, MassRate> = HashMap::new();
 
     for (_, record) in entries {
         let comp = record.component();
@@ -52,6 +54,22 @@ pub fn aggregate_vehicle_assembly(
             ComponentDetails::Engine(engine) => {
                 engine_count += 1;
                 total_max_thrust = total_max_thrust + engine.max_thrust();
+
+                let fuel_flow = engine.fuel_mass_flow_rate_at_max_thrust();
+                let current_fuel = total_mass_flow_rate_by_propellant
+                    .entry(engine.fuel_propellant_id())
+                    .or_insert_with(|| MassRate::new(0.0));
+                *current_fuel = *current_fuel + fuel_flow;
+
+                if let (Some(ox_id), Some(ox_flow)) = (
+                    engine.oxidizer_propellant_id(),
+                    engine.oxidizer_mass_flow_rate_at_max_thrust(),
+                ) {
+                    let current_ox = total_mass_flow_rate_by_propellant
+                        .entry(ox_id)
+                        .or_insert_with(|| MassRate::new(0.0));
+                    *current_ox = *current_ox + ox_flow;
+                }
             }
             ComponentDetails::PropellantTank(tank) => {
                 let current = total_propellant_capacity_by_propellant
@@ -100,5 +118,6 @@ pub fn aggregate_vehicle_assembly(
         has_reaction_wheel,
         reaction_wheel_count,
         total_propellant_capacity_by_propellant,
+        total_mass_flow_rate_by_propellant,
     }
 }
