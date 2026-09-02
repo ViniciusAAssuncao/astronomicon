@@ -1,3 +1,4 @@
+pub mod component_attributes;
 pub mod component_repository;
 pub mod propellant_repository;
 pub mod save_metadata_repository;
