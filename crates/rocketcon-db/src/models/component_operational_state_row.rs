@@ -1,5 +1,5 @@
 use crate::error::RocketDbError;
-use astronomicon_core::units::Duration;
+use astronomicon_core::units::{Angle, Duration};
 use rocketcon_core::domain::ComponentOperationalState;
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -8,6 +8,8 @@ use uuid::Uuid;
 pub struct ComponentOperationalStateRow {
     pub vehicle_component_id: String,
     pub load_fraction: f64,
+    pub current_gimbal_pitch_rad: Option<f64>,
+    pub current_gimbal_yaw_rad: Option<f64>,
     pub captured_universe_epoch_s: f64,
     pub captured_at_epoch_s: f64,
 }
@@ -20,6 +22,8 @@ impl TryFrom<ComponentOperationalStateRow> for ComponentOperationalState {
         let state = ComponentOperationalState::new(
             id,
             row.load_fraction,
+            row.current_gimbal_pitch_rad.map(Angle::new),
+            row.current_gimbal_yaw_rad.map(Angle::new),
             Duration::new(row.captured_universe_epoch_s),
             Duration::new(row.captured_at_epoch_s),
         )?;
