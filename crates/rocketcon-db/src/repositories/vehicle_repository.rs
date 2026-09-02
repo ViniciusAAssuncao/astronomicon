@@ -32,7 +32,7 @@ pub async fn list_components_for_vehicle(
     vehicle_id: &Uuid,
 ) -> RocketDbResult<Vec<(VehicleComponentEntry, ComponentRecord)>> {
     let rows = sqlx::query_as::<_, VehicleComponentRow>(
-        "SELECT id, vehicle_id, component_id, instance_label FROM vehicle_components WHERE vehicle_id = ? ORDER BY id ASC",
+        "SELECT id, vehicle_id, component_id, instance_label, mount_offset_x_m, mount_offset_y_m, mount_offset_z_m, actuation_axis_x, actuation_axis_y, actuation_axis_z FROM vehicle_components WHERE vehicle_id = ? ORDER BY id ASC",
     )
     .bind(vehicle_id.to_string())
     .fetch_all(pool)

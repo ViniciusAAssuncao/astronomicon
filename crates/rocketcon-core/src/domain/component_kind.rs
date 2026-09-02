@@ -7,4 +7,6 @@ pub enum ComponentKind {
     Battery,
     SolarPanel,
     Cpu,
+    ReactionControlThruster,
+    ReactionWheel,
 }

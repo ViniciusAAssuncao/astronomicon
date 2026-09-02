@@ -15,6 +15,11 @@ pub struct VehicleAssemblyTotals {
     pub total_max_thrust: Force,
     pub has_cpu: bool,
     pub has_battery: bool,
+    pub has_rcs: bool,
+    pub rcs_thruster_count: u32,
+    pub total_rcs_max_thrust: Force,
+    pub has_reaction_wheel: bool,
+    pub reaction_wheel_count: u32,
     pub total_propellant_capacity_by_propellant: HashMap<Uuid, Mass>,
 }
 
@@ -30,6 +35,11 @@ pub fn aggregate_vehicle_assembly(
     let mut total_max_thrust = Force::new(0.0);
     let mut has_cpu = false;
     let mut has_battery = false;
+    let mut has_rcs = false;
+    let mut rcs_thruster_count = 0u32;
+    let mut total_rcs_max_thrust = Force::new(0.0);
+    let mut has_reaction_wheel = false;
+    let mut reaction_wheel_count = 0u32;
     let mut total_propellant_capacity_by_propellant: HashMap<Uuid, Mass> = HashMap::new();
 
     for (_, record) in entries {
@@ -62,6 +72,15 @@ pub fn aggregate_vehicle_assembly(
             ComponentDetails::Cpu => {
                 has_cpu = true;
             }
+            ComponentDetails::ReactionControlThruster(rcs) => {
+                has_rcs = true;
+                rcs_thruster_count += 1;
+                total_rcs_max_thrust = total_rcs_max_thrust + rcs.max_thrust();
+            }
+            ComponentDetails::ReactionWheel(_) => {
+                has_reaction_wheel = true;
+                reaction_wheel_count += 1;
+            }
         }
     }
 
@@ -75,6 +94,11 @@ pub fn aggregate_vehicle_assembly(
         total_max_thrust,
         has_cpu,
         has_battery,
+        has_rcs,
+        rcs_thruster_count,
+        total_rcs_max_thrust,
+        has_reaction_wheel,
+        reaction_wheel_count,
         total_propellant_capacity_by_propellant,
     }
 }

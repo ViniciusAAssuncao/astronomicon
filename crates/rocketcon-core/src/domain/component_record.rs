@@ -2,6 +2,8 @@ use crate::domain::battery_specification::BatterySpecification;
 use crate::domain::component::Component;
 use crate::domain::engine_specification::EngineSpecification;
 use crate::domain::propellant_tank_specification::PropellantTankSpecification;
+use crate::domain::reaction_control_thruster_specification::ReactionControlThrusterSpecification;
+use crate::domain::reaction_wheel_specification::ReactionWheelSpecification;
 use crate::domain::solar_panel_specification::SolarPanelSpecification;
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +14,8 @@ pub enum ComponentDetails {
     Battery(BatterySpecification),
     SolarPanel(SolarPanelSpecification),
     Cpu,
+    ReactionControlThruster(ReactionControlThrusterSpecification),
+    ReactionWheel(ReactionWheelSpecification),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

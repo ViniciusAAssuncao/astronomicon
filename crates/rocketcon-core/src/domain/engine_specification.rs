@@ -1,10 +1,11 @@
 use crate::domain::ignition_type::IgnitionType;
 use crate::domain::propellant::Propellant;
-use crate::error::{ RocketDomainError, RocketDomainResult };
+use crate::domain::thrust_producer::ThrustProducer;
+use crate::error::{RocketDomainError, RocketDomainResult};
 use astronomicon_core::domain::validation::validate_positive_finite;
 use astronomicon_core::units::constants::STANDARD_GRAVITY;
-use astronomicon_core::units::{ Angle, AngularVelocity, Duration, Force, Mass, MassRate, Speed };
-use serde::{ Deserialize, Serialize };
+use astronomicon_core::units::{Angle, AngularVelocity, Duration, Force, Mass, MassRate, Speed};
+use serde::{Deserialize, Serialize};
 use std::f64::consts::FRAC_PI_2;
 use uuid::Uuid;
 
@@ -30,7 +31,7 @@ impl EngineSpecificationBuilder {
         fuel_propellant_id: Uuid,
         specific_impulse_vacuum: Duration,
         max_thrust: Force,
-        ignition_type: IgnitionType
+        ignition_type: IgnitionType,
     ) -> Self {
         Self {
             component_id,
@@ -50,7 +51,7 @@ impl EngineSpecificationBuilder {
 
     pub fn with_oxidizer_propellant_id(
         mut self,
-        oxidizer_propellant_id: impl Into<Option<Uuid>>
+        oxidizer_propellant_id: impl Into<Option<Uuid>>,
     ) -> Self {
         self.oxidizer_propellant_id = oxidizer_propellant_id.into();
         self
@@ -58,7 +59,7 @@ impl EngineSpecificationBuilder {
 
     pub fn with_specific_impulse_sea_level(
         mut self,
-        specific_impulse_sea_level: impl Into<Option<Duration>>
+        specific_impulse_sea_level: impl Into<Option<Duration>>,
     ) -> Self {
         self.specific_impulse_sea_level = specific_impulse_sea_level.into();
         self
@@ -66,7 +67,7 @@ impl EngineSpecificationBuilder {
 
     pub fn with_integral_propellant_mass(
         mut self,
-        integral_propellant_mass: impl Into<Option<Mass>>
+        integral_propellant_mass: impl Into<Option<Mass>>,
     ) -> Self {
         self.integral_propellant_mass = integral_propellant_mass.into();
         self
@@ -74,7 +75,7 @@ impl EngineSpecificationBuilder {
 
     pub fn with_max_gimbal_deflection(
         mut self,
-        max_gimbal_deflection: impl Into<Option<Angle>>
+        max_gimbal_deflection: impl Into<Option<Angle>>,
     ) -> Self {
         self.max_gimbal_deflection = max_gimbal_deflection.into();
         self
@@ -82,7 +83,7 @@ impl EngineSpecificationBuilder {
 
     pub fn with_gimbal_slew_rate(
         mut self,
-        gimbal_slew_rate: impl Into<Option<AngularVelocity>>
+        gimbal_slew_rate: impl Into<Option<AngularVelocity>>,
     ) -> Self {
         self.gimbal_slew_rate = gimbal_slew_rate.into();
         self
@@ -90,7 +91,7 @@ impl EngineSpecificationBuilder {
 
     pub fn with_min_throttle_fraction(
         mut self,
-        min_throttle_fraction: impl Into<Option<f64>>
+        min_throttle_fraction: impl Into<Option<f64>>,
     ) -> Self {
         self.min_throttle_fraction = min_throttle_fraction.into();
         self
@@ -98,7 +99,7 @@ impl EngineSpecificationBuilder {
 
     pub fn with_oxidizer_to_fuel_mass_ratio(
         mut self,
-        oxidizer_to_fuel_mass_ratio: impl Into<Option<f64>>
+        oxidizer_to_fuel_mass_ratio: impl Into<Option<f64>>,
     ) -> Self {
         self.oxidizer_to_fuel_mass_ratio = oxidizer_to_fuel_mass_ratio.into();
         self
@@ -203,20 +204,30 @@ pub struct EngineSpecification {
     oxidizer_to_fuel_mass_ratio: Option<f64>,
 }
 
+impl ThrustProducer for EngineSpecification {
+    fn specific_impulse_vacuum(&self) -> Duration {
+        self.specific_impulse_vacuum
+    }
+
+    fn max_thrust(&self) -> Force {
+        self.max_thrust
+    }
+}
+
 impl EngineSpecification {
     pub fn builder(
         component_id: Uuid,
         fuel_propellant_id: Uuid,
         specific_impulse_vacuum: Duration,
         max_thrust: Force,
-        ignition_type: IgnitionType
+        ignition_type: IgnitionType,
     ) -> EngineSpecificationBuilder {
         EngineSpecificationBuilder::new(
             component_id,
             fuel_propellant_id,
             specific_impulse_vacuum,
             max_thrust,
-            ignition_type
+            ignition_type,
         )
     }
 
@@ -232,23 +243,23 @@ impl EngineSpecification {
         max_gimbal_deflection: Option<Angle>,
         gimbal_slew_rate: Option<AngularVelocity>,
         min_throttle_fraction: Option<f64>,
-        oxidizer_to_fuel_mass_ratio: Option<f64>
+        oxidizer_to_fuel_mass_ratio: Option<f64>,
     ) -> RocketDomainResult<Self> {
         Self::builder(
             component_id,
             fuel_propellant_id,
             specific_impulse_vacuum,
             max_thrust,
-            ignition_type
+            ignition_type,
         )
-            .with_oxidizer_propellant_id(oxidizer_propellant_id)
-            .with_specific_impulse_sea_level(specific_impulse_sea_level)
-            .with_integral_propellant_mass(integral_propellant_mass)
-            .with_max_gimbal_deflection(max_gimbal_deflection)
-            .with_gimbal_slew_rate(gimbal_slew_rate)
-            .with_min_throttle_fraction(min_throttle_fraction)
-            .with_oxidizer_to_fuel_mass_ratio(oxidizer_to_fuel_mass_ratio)
-            .build()
+        .with_oxidizer_propellant_id(oxidizer_propellant_id)
+        .with_specific_impulse_sea_level(specific_impulse_sea_level)
+        .with_integral_propellant_mass(integral_propellant_mass)
+        .with_max_gimbal_deflection(max_gimbal_deflection)
+        .with_gimbal_slew_rate(gimbal_slew_rate)
+        .with_min_throttle_fraction(min_throttle_fraction)
+        .with_oxidizer_to_fuel_mass_ratio(oxidizer_to_fuel_mass_ratio)
+        .build()
     }
 
     pub fn component_id(&self) -> Uuid {
@@ -311,21 +322,8 @@ impl EngineSpecification {
         fuel.is_cryogenic() || oxidizer.map_or(false, |o| o.is_cryogenic())
     }
 
-    pub fn effective_exhaust_velocity_vacuum(&self) -> Speed {
-        Speed::new(self.specific_impulse_vacuum.value() * STANDARD_GRAVITY)
-    }
-
     pub fn effective_exhaust_velocity_sea_level(&self) -> Option<Speed> {
         self.specific_impulse_sea_level.map(|isp| Speed::new(isp.value() * STANDARD_GRAVITY))
-    }
-
-    pub fn propellant_mass_flow_rate_at_max_thrust(&self) -> MassRate {
-        let v_e = self.effective_exhaust_velocity_vacuum().value();
-        if v_e <= 0.0 || !v_e.is_finite() {
-            MassRate::new(0.0)
-        } else {
-            MassRate::new(self.max_thrust.value() / v_e)
-        }
     }
 
     pub fn fuel_mass_flow_rate_at_max_thrust(&self) -> MassRate {

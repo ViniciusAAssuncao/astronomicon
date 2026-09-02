@@ -1,6 +1,8 @@
 pub mod component_battery_row;
 pub mod component_engine_row;
 pub mod component_propellant_tank_row;
+pub mod component_reaction_control_thruster_row;
+pub mod component_reaction_wheel_row;
 pub mod component_row;
 pub mod component_solar_panel_row;
 pub mod propellant_row;
@@ -11,6 +13,8 @@ pub mod vehicle_row;
 pub use component_battery_row::ComponentBatteryRow;
 pub use component_engine_row::ComponentEngineRow;
 pub use component_propellant_tank_row::ComponentPropellantTankRow;
+pub use component_reaction_control_thruster_row::ComponentReactionControlThrusterRow;
+pub use component_reaction_wheel_row::ComponentReactionWheelRow;
 pub use component_row::ComponentRow;
 pub use component_solar_panel_row::ComponentSolarPanelRow;
 pub use propellant_row::PropellantRow;
