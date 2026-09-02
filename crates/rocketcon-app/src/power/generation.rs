@@ -1,7 +1,7 @@
 use crate::error::RocketResult;
 use astronomicon_app::climate::resolve_irradiance_at_position;
 use astronomicon_core::math::eclipse::is_in_cylindrical_shadow;
-use astronomicon_core::units::{Duration, Length, Luminosity, Position};
+use astronomicon_core::units::{Duration, Length, Luminosity, Position, Quaternion, Vector3};
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::{ComponentDetails, ComponentRecord, VehicleComponentEntry};
 use rocketcon_core::environment::EnvironmentSnapshot;
@@ -12,7 +12,9 @@ use rocketcon_core::math::{
         reactor_waste_heat,
     },
     power_budget::ComponentPowerContribution,
-    solar_power_generation::{solar_panel_electrical_output, solar_panel_waste_heat},
+    solar_power_generation::{
+        solar_incidence_factor, solar_panel_electrical_output, solar_panel_waste_heat,
+    },
 };
 use rocketcon_db::repositories::{energy_reservoir_repository, operational_state_repository};
 
@@ -22,6 +24,7 @@ pub async fn resolve_component_generation(
     record: &ComponentRecord,
     environment: &EnvironmentSnapshot,
     vehicle_position: Position,
+    vehicle_orientation: Quaternion,
     universe_epoch: Duration,
     at_epoch: Duration,
 ) -> RocketResult<ComponentPowerContribution> {
@@ -126,11 +129,22 @@ pub async fn resolve_component_generation(
 
             let effective_area = spec.surface_area_m2() * load_fraction;
 
+            let local_normal = entry.actuation_axis().unwrap_or(Vector3::new(0.0, 0.0, 1.0));
+            let panel_normal_world = vehicle_orientation.rotate_vector(local_normal);
+            let sun_direction_world =
+                (environment.star_position.raw() - vehicle_position.raw()).normalized();
+
+            let incidence = solar_incidence_factor(
+                panel_normal_world,
+                sun_direction_world,
+                spec.is_sun_tracking(),
+            );
+
             let p_el = solar_panel_electrical_output(
                 irradiance,
                 effective_area,
                 spec.conversion_efficiency(),
-                spec.is_sun_tracking(),
+                incidence,
                 is_eclipsed,
             );
             let p_waste = solar_panel_waste_heat(
@@ -138,7 +152,7 @@ pub async fn resolve_component_generation(
                 effective_area,
                 spec.effective_solar_absorptivity(),
                 spec.conversion_efficiency(),
-                spec.is_sun_tracking(),
+                incidence,
                 is_eclipsed,
             );
 

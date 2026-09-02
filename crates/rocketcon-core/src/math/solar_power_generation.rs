@@ -1,10 +1,22 @@
-use astronomicon_core::units::{Irradiance, Luminosity};
+use astronomicon_core::units::{Irradiance, Luminosity, Vector3};
 
-pub fn solar_incidence_factor(is_sun_tracking: bool) -> f64 {
+pub fn solar_incidence_factor(
+    panel_normal_world: Vector3,
+    sun_direction_world: Vector3,
+    is_sun_tracking: bool,
+) -> f64 {
     if is_sun_tracking {
-        1.0
+        return 1.0;
+    }
+
+    let n = panel_normal_world.normalized();
+    let s = sun_direction_world.normalized();
+    let dot = n.dot(&s);
+
+    if !dot.is_finite() || dot <= 0.0 {
+        0.0
     } else {
-        0.25
+        dot.min(1.0)
     }
 }
 
@@ -34,15 +46,14 @@ pub fn solar_panel_electrical_output(
     irradiance: Irradiance,
     area_m2: f64,
     conversion_efficiency: f64,
-    is_sun_tracking: bool,
+    solar_incidence_factor: f64,
     is_eclipsed: bool,
 ) -> Luminosity {
     if is_eclipsed {
         return Luminosity::new(0.0);
     }
 
-    let inc_factor = solar_incidence_factor(is_sun_tracking);
-    let p_inc = solar_panel_incident_power(irradiance, area_m2, inc_factor).value();
+    let p_inc = solar_panel_incident_power(irradiance, area_m2, solar_incidence_factor).value();
     let eff = conversion_efficiency.clamp(0.0, 1.0);
 
     if p_inc <= 0.0 || !p_inc.is_finite() || !eff.is_finite() || eff <= 0.0 {
@@ -57,15 +68,14 @@ pub fn solar_panel_waste_heat(
     area_m2: f64,
     absorptivity: f64,
     conversion_efficiency: f64,
-    is_sun_tracking: bool,
+    solar_incidence_factor: f64,
     is_eclipsed: bool,
 ) -> Luminosity {
     if is_eclipsed {
         return Luminosity::new(0.0);
     }
 
-    let inc_factor = solar_incidence_factor(is_sun_tracking);
-    let p_inc = solar_panel_incident_power(irradiance, area_m2, inc_factor).value();
+    let p_inc = solar_panel_incident_power(irradiance, area_m2, solar_incidence_factor).value();
     let alpha = absorptivity.clamp(0.0, 1.0);
     let eff = conversion_efficiency.clamp(0.0, 1.0);
 

@@ -1,7 +1,7 @@
 use crate::error::RocketResult;
 use crate::power::consumption::resolve_component_consumption;
 use crate::power::generation::resolve_component_generation;
-use astronomicon_core::units::{Duration, Luminosity, Position};
+use astronomicon_core::units::{Duration, Luminosity, Position, Quaternion};
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::{ComponentDetails, VehicleComponentEntry, VehicleSnapshot};
 use rocketcon_core::environment::EnvironmentSnapshot;
@@ -25,6 +25,11 @@ pub async fn resolve_vehicle_power_budget(
         vehicle_repository::list_components_for_vehicle(pool, &vehicle_snapshot.vehicle_id())
             .await?;
 
+    let vehicle_orientation = vehicle_snapshot
+        .physical_state()
+        .map(|s| s.orientation())
+        .unwrap_or_else(Quaternion::identity);
+
     let mut contributions: Vec<(VehicleComponentEntry, ComponentPowerContribution)> =
         Vec::with_capacity(components.len());
     let mut total_generation = 0.0;
@@ -40,6 +45,7 @@ pub async fn resolve_vehicle_power_budget(
                 record,
                 environment,
                 vehicle_position,
+                vehicle_orientation,
                 universe_epoch,
                 at_epoch,
             )
