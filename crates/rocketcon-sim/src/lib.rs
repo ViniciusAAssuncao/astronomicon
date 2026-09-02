@@ -1,8 +1,10 @@
 pub mod bridge;
 pub mod clock;
+pub mod examples;
 
 pub use bridge::*;
 pub use clock::*;
+pub use examples::*;
 pub use rocketcon_app::{RocketError, RocketResult};
 
 use uuid::Uuid;
@@ -31,14 +33,31 @@ pub fn run() -> RocketResult<()> {
             Err(_) => DEFAULT_TICK_SECONDS,
         };
 
-        let bridge_report = run_bridge_smoke_test(&ctx, planet_id, tick_count, dt_seconds).await?;
+        let active_stages = vec![0, 1];
+
+        let bridge_report =
+            run_bridge_smoke_test(&ctx, planet_id, &active_stages, tick_count, dt_seconds).await?;
 
         println!("Rocketcon Bridge Smoke Test Report:");
+        println!("  Active Stages: {:?}", bridge_report.active_stages);
         println!("  Tick Count: {}", bridge_report.tick_count);
-        println!("  Total Wall Clock: {:.6} s", bridge_report.total_wall_clock_seconds);
+        println!(
+            "  Total Wall Clock: {:.6} s",
+            bridge_report.total_wall_clock_seconds
+        );
         println!("  Average Tick: {:.2} ns", bridge_report.average_tick_nanos);
-        println!("  Last Acceleration: {:?}", bridge_report.last_computed_acceleration);
-        println!("  Final Total Epoch: {:.2} s", bridge_report.final_total_epoch.value());
+        println!(
+            "  Last Acceleration: {:?}",
+            bridge_report.last_computed_acceleration
+        );
+        println!(
+            "  Final Total Epoch: {:.2} s",
+            bridge_report.final_total_epoch.value()
+        );
+        println!();
+
+        let _power_report =
+            run_mock_vehicle_power_smoke_test(&ctx, planet_id, &active_stages).await?;
         println!();
 
         Ok(())

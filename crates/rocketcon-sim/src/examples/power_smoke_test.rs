@@ -1,19 +1,15 @@
 use astronomicon_app::climate::resolve_irradiance_at_position;
 use astronomicon_app::AppContext;
 use astronomicon_core::math::eclipse::is_in_cylindrical_shadow;
-use astronomicon_core::units::{ Duration, Energy, Length, Luminosity, Position, Temperature };
-use rocketcon_app::error::{ RocketResult };
+use astronomicon_core::units::{
+    Duration, Energy, Length, Luminosity, Mass, Position, Temperature, Vector3,
+};
+use rocketcon_app::error::RocketResult;
+use rocketcon_core::domain::VehicleComponentEntry;
 use rocketcon_core::math::{
-    aggregate_power_budget,
-    component_consumption_waste_heat,
-    component_power_consumption,
-    effective_ga_product,
-    rtg_electrical_power,
-    rtg_waste_heat,
-    solar_panel_electrical_output,
-    solar_panel_waste_heat,
-    vehicle_equilibrium_temperature,
-    ComponentPowerContribution,
+    aggregate_power_budget, component_consumption_waste_heat, component_power_consumption,
+    effective_ga_product, rtg_electrical_power, rtg_waste_heat, solar_panel_electrical_output,
+    solar_panel_waste_heat, vehicle_equilibrium_temperature, ComponentPowerContribution,
     VehiclePowerStatus,
 };
 use rocketcon_core::physics_reference::RadioisotopeType;
@@ -33,11 +29,13 @@ pub struct PowerSmokeTestReport {
     pub total_internal_waste_heat: Luminosity,
     pub effective_radiator_ga_product: f64,
     pub equilibrium_temperature: Temperature,
+    pub active_stages: Vec<u32>,
 }
 
 pub async fn run_mock_vehicle_power_smoke_test(
     ctx: &AppContext,
-    planet_id: Uuid
+    planet_id: Uuid,
+    active_stages: &[u32],
 ) -> RocketResult<PowerSmokeTestReport> {
     let universe_epoch = rocketcon_app::universe::resolve_universe_epoch(ctx.pool()).await?;
     let at_epoch = Duration::new(0.0);
@@ -46,30 +44,36 @@ pub async fn run_mock_vehicle_power_smoke_test(
         ctx.pool(),
         planet_id,
         universe_epoch,
-        at_epoch
-    ).await?;
+        at_epoch,
+    )
+    .await?;
 
-    let radius = snapshot.planet.equatorial_radius().unwrap_or_else(|| Length::new(6_371_000.0));
+    let radius = snapshot
+        .planet
+        .equatorial_radius()
+        .unwrap_or_else(|| Length::new(6_371_000.0));
 
     let vehicle_altitude_m = 400_000.0;
-    let vehicle_position =
-        snapshot.planet_position +
-        Position::from_components(radius.value() + vehicle_altitude_m, 0.0, 0.0);
+    let vehicle_position = snapshot.planet_position
+        + Position::from_components(radius.value() + vehicle_altitude_m, 0.0, 0.0);
 
     let irradiance = resolve_irradiance_at_position(
         ctx.pool(),
         &snapshot.star,
         universe_epoch,
         at_epoch,
-        vehicle_position
-    ).await?;
+        vehicle_position,
+    )
+    .await?;
 
     let is_eclipsed = is_in_cylindrical_shadow(
         vehicle_position,
         snapshot.star_position,
         snapshot.planet_position,
-        radius
+        radius,
     );
+
+    let vehicle_id = Uuid::new_v4();
 
     let solar_area_m2 = 8.0;
     let solar_efficiency = 0.28;
@@ -81,7 +85,7 @@ pub async fn run_mock_vehicle_power_smoke_test(
         solar_area_m2,
         solar_efficiency,
         solar_is_tracking,
-        is_eclipsed
+        is_eclipsed,
     );
     let solar_waste = solar_panel_waste_heat(
         irradiance,
@@ -89,30 +93,48 @@ pub async fn run_mock_vehicle_power_smoke_test(
         solar_absorptivity,
         solar_efficiency,
         solar_is_tracking,
-        is_eclipsed
+        is_eclipsed,
     );
     let solar_contrib = ComponentPowerContribution::new(
         solar_gen,
         Luminosity::new(0.0),
-        solar_waste
+        solar_waste,
     );
+    let solar_entry = VehicleComponentEntry::new(
+        Uuid::new_v4(),
+        vehicle_id,
+        Uuid::new_v4(),
+        0,
+        Some("stage_0_solar_panel".to_string()),
+        Vector3::zero(),
+        None,
+    )?;
 
-    let rtg_fuel_mass = astronomicon_core::units::Mass::new(4.5);
+    let rtg_fuel_mass = Mass::new(4.5);
     let rtg_efficiency = 0.065;
     let rtg_elapsed = Duration::new(5.0 * 365.25 * 86_400.0);
     let rtg_gen = rtg_electrical_power(
         RadioisotopeType::Plutonium238,
         rtg_fuel_mass,
         rtg_efficiency,
-        rtg_elapsed
+        rtg_elapsed,
     );
     let rtg_waste = rtg_waste_heat(
         RadioisotopeType::Plutonium238,
         rtg_fuel_mass,
         rtg_efficiency,
-        rtg_elapsed
+        rtg_elapsed,
     );
     let rtg_contrib = ComponentPowerContribution::new(rtg_gen, Luminosity::new(0.0), rtg_waste);
+    let rtg_entry = VehicleComponentEntry::new(
+        Uuid::new_v4(),
+        vehicle_id,
+        Uuid::new_v4(),
+        1,
+        Some("stage_1_rtg".to_string()),
+        Vector3::zero(),
+        None,
+    )?;
 
     let avionics_rated = Luminosity::new(120.0);
     let avionics_load = 1.0;
@@ -121,8 +143,17 @@ pub async fn run_mock_vehicle_power_smoke_test(
     let avionics_contrib = ComponentPowerContribution::new(
         Luminosity::new(0.0),
         avionics_con,
-        avionics_waste
+        avionics_waste,
     );
+    let avionics_entry = VehicleComponentEntry::new(
+        Uuid::new_v4(),
+        vehicle_id,
+        Uuid::new_v4(),
+        1,
+        Some("stage_1_avionics".to_string()),
+        Vector3::zero(),
+        None,
+    )?;
 
     let payload_rated = Luminosity::new(350.0);
     let payload_load = 0.8;
@@ -131,8 +162,17 @@ pub async fn run_mock_vehicle_power_smoke_test(
     let payload_contrib = ComponentPowerContribution::new(
         Luminosity::new(0.0),
         payload_con,
-        payload_waste
+        payload_waste,
     );
+    let payload_entry = VehicleComponentEntry::new(
+        Uuid::new_v4(),
+        vehicle_id,
+        Uuid::new_v4(),
+        1,
+        Some("stage_1_payload".to_string()),
+        Vector3::zero(),
+        None,
+    )?;
 
     let comms_rated = Luminosity::new(80.0);
     let comms_load = 0.5;
@@ -141,30 +181,63 @@ pub async fn run_mock_vehicle_power_smoke_test(
     let comms_contrib = ComponentPowerContribution::new(
         Luminosity::new(0.0),
         comms_con,
-        comms_waste
+        comms_waste,
     );
+    let comms_entry = VehicleComponentEntry::new(
+        Uuid::new_v4(),
+        vehicle_id,
+        Uuid::new_v4(),
+        1,
+        Some("stage_1_comms".to_string()),
+        Vector3::zero(),
+        None,
+    )?;
 
     let contributions = [
-        solar_contrib,
-        rtg_contrib,
-        avionics_contrib,
-        payload_contrib,
-        comms_contrib,
+        (solar_entry, solar_contrib),
+        (rtg_entry, rtg_contrib),
+        (avionics_entry, avionics_contrib),
+        (payload_entry, payload_contrib),
+        (comms_entry, comms_contrib),
     ];
 
-    let battery_capacity = Energy::new(10_000_000.0);
-    let battery_stored = Energy::new(8_500_000.0);
-    let battery_max_charge_power = Luminosity::new(1_500.0);
+    let battery_definitions = [
+        (0u32, 8_000_000.0, 6_800_000.0, 1_200.0),
+        (1u32, 2_000_000.0, 1_700_000.0, 300.0),
+    ];
 
-    let total_gen_val = solar_gen.value() + rtg_gen.value();
-    let total_con_val = avionics_con.value() + payload_con.value() + comms_con.value();
+    let mut battery_capacity_val = 0.0;
+    let mut battery_stored_val = 0.0;
+    let mut battery_max_charge_val = 0.0;
+
+    for &(stage, cap, stored, max_charge) in &battery_definitions {
+        if active_stages.contains(&stage) {
+            battery_capacity_val += cap;
+            battery_stored_val += stored;
+            battery_max_charge_val += max_charge;
+        }
+    }
+
+    let battery_capacity = Energy::new(battery_capacity_val);
+    let battery_stored = Energy::new(battery_stored_val);
+
+    let mut total_gen_val = 0.0;
+    let mut total_con_val = 0.0;
+
+    for (entry, c) in &contributions {
+        if active_stages.contains(&entry.stage_index()) {
+            total_gen_val += c.electrical_generation.value();
+            total_con_val += c.electrical_consumption.value();
+        }
+    }
+
     let net_power_val = total_gen_val - total_con_val;
 
     let dumped_power = if net_power_val > 0.0 {
-        if battery_stored.value() >= battery_capacity.value() {
+        if battery_stored_val >= battery_capacity_val || battery_capacity_val <= 0.0 {
             Luminosity::new(net_power_val)
-        } else if net_power_val > battery_max_charge_power.value() {
-            Luminosity::new(net_power_val - battery_max_charge_power.value())
+        } else if net_power_val > battery_max_charge_val {
+            Luminosity::new(net_power_val - battery_max_charge_val)
         } else {
             Luminosity::new(0.0)
         }
@@ -174,16 +247,24 @@ pub async fn run_mock_vehicle_power_smoke_test(
 
     let budget = aggregate_power_budget(
         &contributions,
+        active_stages,
         battery_capacity,
         battery_stored,
-        dumped_power
+        dumped_power,
     );
 
     let radiator_specs = [
-        (3.5, 0.88),
-        (2.0, 0.85),
+        (0u32, 3.5, 0.88),
+        (1u32, 2.0, 0.85),
     ];
-    let effective_ga = effective_ga_product(&radiator_specs);
+
+    let active_radiators: Vec<(f64, f64)> = radiator_specs
+        .iter()
+        .filter(|(stage, _, _)| active_stages.contains(stage))
+        .map(|&(_, area, emiss)| (area, emiss))
+        .collect();
+
+    let effective_ga = effective_ga_product(&active_radiators);
     let eq_temp = vehicle_equilibrium_temperature(budget.total_internal_waste_heat, effective_ga);
 
     let report = PowerSmokeTestReport {
@@ -199,10 +280,16 @@ pub async fn run_mock_vehicle_power_smoke_test(
         total_internal_waste_heat: budget.total_internal_waste_heat,
         effective_radiator_ga_product: effective_ga,
         equilibrium_temperature: eq_temp,
+        active_stages: active_stages.to_vec(),
     };
 
     println!("Rocketcon Mock Vehicle Power Smoke Test Report:");
-    println!("  Solar Irradiance: {:.2} W/m² (Eclipsed: {})", irradiance.value(), is_eclipsed);
+    println!("  Active Stages: {:?}", report.active_stages);
+    println!(
+        "  Solar Irradiance: {:.2} W/m² (Eclipsed: {})",
+        irradiance.value(),
+        is_eclipsed
+    );
     println!("  Total Generation: {:.2} W", report.total_generation.value());
     println!("  Total Consumption: {:.2} W", report.total_consumption.value());
     println!("  Net Power: {:.2} W", report.net_power.value());
@@ -220,8 +307,14 @@ pub async fn run_mock_vehicle_power_smoke_test(
         None => println!("  Estimated Autonomy: Infinite / Charging"),
     }
     println!("  Power Status: {:?}", report.status);
-    println!("  Total Internal Waste Heat: {:.2} W", report.total_internal_waste_heat.value());
-    println!("  Effective Radiator GA: {:.3} m²", report.effective_radiator_ga_product);
+    println!(
+        "  Total Internal Waste Heat: {:.2} W",
+        report.total_internal_waste_heat.value()
+    );
+    println!(
+        "  Effective Radiator GA: {:.3} m²",
+        report.effective_radiator_ga_product
+    );
     println!(
         "  Equilibrium Temperature: {:.2} K ({:.2} °C)",
         report.equilibrium_temperature.value(),
