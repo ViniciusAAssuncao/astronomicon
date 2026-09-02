@@ -9,3 +9,4 @@ saves/
 .vscode/
 .idea/
 /database
+/queries
