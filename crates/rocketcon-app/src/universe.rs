@@ -56,6 +56,16 @@ pub async fn persist_operational_state(
     Ok(())
 }
 
+pub async fn persist_operational_states(
+    pool: &SqlitePool,
+    states: &[ComponentOperationalState]
+) -> RocketResult<()> {
+    for state in states {
+        operational_state_repository::upsert(pool, state).await?;
+    }
+    Ok(())
+}
+
 pub async fn persist_reaction_wheel_state(
     pool: &SqlitePool,
     state: &ReactionWheelState
