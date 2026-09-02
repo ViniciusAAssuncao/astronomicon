@@ -9,6 +9,7 @@ pub struct VehicleComponentEntry {
     id: Uuid,
     vehicle_id: Uuid,
     component_id: Uuid,
+    stage_index: u32,
     instance_label: Option<String>,
     mount_offset: Vector3,
     actuation_axis: Option<Vector3>,
@@ -19,6 +20,7 @@ impl VehicleComponentEntry {
         id: Uuid,
         vehicle_id: Uuid,
         component_id: Uuid,
+        stage_index: u32,
         instance_label: Option<String>,
         mount_offset: Vector3,
         actuation_axis: Option<Vector3>,
@@ -47,6 +49,7 @@ impl VehicleComponentEntry {
             id,
             vehicle_id,
             component_id,
+            stage_index,
             instance_label,
             mount_offset,
             actuation_axis: normalized_actuation_axis,
@@ -63,6 +66,10 @@ impl VehicleComponentEntry {
 
     pub fn component_id(&self) -> Uuid {
         self.component_id
+    }
+
+    pub fn stage_index(&self) -> u32 {
+        self.stage_index
     }
 
     pub fn instance_label(&self) -> Option<&str> {

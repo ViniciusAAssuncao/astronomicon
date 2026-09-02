@@ -22,6 +22,7 @@ pub mod thrust_producer;
 pub mod vehicle;
 pub mod vehicle_component;
 pub mod vehicle_kind;
+pub mod vehicle_snapshot;
 
 pub use battery_specification::BatterySpecification;
 pub use component::{Component, ComponentBuilder};
@@ -49,3 +50,4 @@ pub use thrust_producer::ThrustProducer;
 pub use vehicle::{Vehicle, VehicleBuilder};
 pub use vehicle_component::VehicleComponentEntry;
 pub use vehicle_kind::VehicleKind;
+pub use vehicle_snapshot::VehicleSnapshot;

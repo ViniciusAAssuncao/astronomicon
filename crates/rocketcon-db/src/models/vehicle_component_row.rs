@@ -10,6 +10,7 @@ pub struct VehicleComponentRow {
     pub id: String,
     pub vehicle_id: String,
     pub component_id: String,
+    pub stage_index: i32,
     pub instance_label: Option<String>,
     pub mount_offset_x_m: f64,
     pub mount_offset_y_m: f64,
@@ -26,6 +27,14 @@ impl TryFrom<VehicleComponentRow> for VehicleComponentEntry {
         let id = Uuid::parse_str(&row.id)?;
         let vehicle_id = Uuid::parse_str(&row.vehicle_id)?;
         let component_id = Uuid::parse_str(&row.component_id)?;
+
+        if row.stage_index < 0 {
+            return Err(RocketDbError::Domain(RocketDomainError::InvalidInvariant {
+                field: "stage_index".to_string(),
+                reason: "cannot be negative".to_string(),
+            }));
+        }
+        let stage_index = row.stage_index as u32;
 
         let mount_offset = Vector3::new(
             row.mount_offset_x_m,
@@ -52,6 +61,7 @@ impl TryFrom<VehicleComponentRow> for VehicleComponentEntry {
             id,
             vehicle_id,
             component_id,
+            stage_index,
             row.instance_label,
             mount_offset,
             actuation_axis,

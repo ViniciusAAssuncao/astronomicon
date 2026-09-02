@@ -1,0 +1,1 @@
+ALTER TABLE vehicle_components ADD COLUMN stage_index INTEGER NOT NULL DEFAULT 0;
