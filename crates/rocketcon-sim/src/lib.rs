@@ -31,14 +31,15 @@ pub fn run() -> RocketResult<()> {
             Err(_) => DEFAULT_TICK_SECONDS,
         };
 
-        let report = run_bridge_smoke_test(&ctx, planet_id, tick_count, dt_seconds).await?;
+        let bridge_report = run_bridge_smoke_test(&ctx, planet_id, tick_count, dt_seconds).await?;
 
         println!("Rocketcon Bridge Smoke Test Report:");
-        println!("  Tick Count: {}", report.tick_count);
-        println!("  Total Wall Clock: {:.6} s", report.total_wall_clock_seconds);
-        println!("  Average Tick: {:.2} ns", report.average_tick_nanos);
-        println!("  Last Acceleration: {:?}", report.last_computed_acceleration);
-        println!("  Final Total Epoch: {:.2} s", report.final_total_epoch.value());
+        println!("  Tick Count: {}", bridge_report.tick_count);
+        println!("  Total Wall Clock: {:.6} s", bridge_report.total_wall_clock_seconds);
+        println!("  Average Tick: {:.2} ns", bridge_report.average_tick_nanos);
+        println!("  Last Acceleration: {:?}", bridge_report.last_computed_acceleration);
+        println!("  Final Total Epoch: {:.2} s", bridge_report.final_total_epoch.value());
+        println!();
 
         Ok(())
     })
