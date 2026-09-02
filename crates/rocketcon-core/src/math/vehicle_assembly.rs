@@ -99,6 +99,7 @@ pub fn aggregate_vehicle_assembly(
                 has_reaction_wheel = true;
                 reaction_wheel_count += 1;
             }
+            _ => {}
         }
     }
 

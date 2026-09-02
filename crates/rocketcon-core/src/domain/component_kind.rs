@@ -9,4 +9,7 @@ pub enum ComponentKind {
     Cpu,
     ReactionControlThruster,
     ReactionWheel,
+    Rtg,
+    NuclearReactor,
+    Radiator,
 }
