@@ -1,6 +1,7 @@
 pub mod aerodynamics;
 pub mod attitude_control;
 pub mod battery_dynamics;
+pub mod collision;
 pub mod mass_properties;
 pub mod nuclear_decay;
 pub mod nuclear_reactor;
@@ -17,6 +18,7 @@ pub mod vehicle_assembly;
 pub use aerodynamics::*;
 pub use attitude_control::*;
 pub use battery_dynamics::*;
+pub use collision::*;
 pub use mass_properties::*;
 pub use nuclear_decay::*;
 pub use nuclear_reactor::*;
