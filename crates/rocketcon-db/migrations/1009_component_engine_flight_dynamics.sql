@@ -1,0 +1,4 @@
+ALTER TABLE component_engines ADD COLUMN max_gimbal_deflection_rad REAL CHECK (max_gimbal_deflection_rad IS NULL OR (max_gimbal_deflection_rad > 0 AND max_gimbal_deflection_rad < 1.5707963267948966));
+ALTER TABLE component_engines ADD COLUMN gimbal_slew_rate_rad_s REAL CHECK (gimbal_slew_rate_rad_s IS NULL OR gimbal_slew_rate_rad_s > 0);
+ALTER TABLE component_engines ADD COLUMN min_throttle_fraction REAL CHECK (min_throttle_fraction IS NULL OR (min_throttle_fraction > 0 AND min_throttle_fraction <= 1.0));
+ALTER TABLE component_engines ADD COLUMN oxidizer_to_fuel_mass_ratio REAL CHECK (oxidizer_to_fuel_mass_ratio IS NULL OR oxidizer_to_fuel_mass_ratio > 0);

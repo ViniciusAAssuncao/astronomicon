@@ -22,7 +22,7 @@ async fn fetch_component_details(
     match component.kind() {
         ComponentKind::Engine => {
             let row = sqlx::query_as::<_, ComponentEngineRow>(
-                "SELECT component_id, fuel_propellant_id, oxidizer_propellant_id, specific_impulse_vacuum_s, specific_impulse_sea_level_s, max_thrust_n, ignition_type, integral_propellant_mass_kg FROM component_engines WHERE component_id = ?",
+                "SELECT component_id, fuel_propellant_id, oxidizer_propellant_id, specific_impulse_vacuum_s, specific_impulse_sea_level_s, max_thrust_n, ignition_type, integral_propellant_mass_kg, max_gimbal_deflection_rad, gimbal_slew_rate_rad_s, min_throttle_fraction, oxidizer_to_fuel_mass_ratio FROM component_engines WHERE component_id = ?",
             )
             .bind(&id_str)
             .fetch_optional(pool)

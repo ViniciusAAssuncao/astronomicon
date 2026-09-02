@@ -1,5 +1,5 @@
 use crate::error::RocketDbError;
-use astronomicon_core::units::{Duration, Force, Mass};
+use astronomicon_core::units::{Angle, AngularVelocity, Duration, Force, Mass};
 use rocketcon_core::domain::{EngineSpecification, IgnitionType};
 use rocketcon_core::error::RocketDomainError;
 use sqlx::FromRow;
@@ -15,6 +15,10 @@ pub struct ComponentEngineRow {
     pub max_thrust_n: f64,
     pub ignition_type: String,
     pub integral_propellant_mass_kg: Option<f64>,
+    pub max_gimbal_deflection_rad: Option<f64>,
+    pub gimbal_slew_rate_rad_s: Option<f64>,
+    pub min_throttle_fraction: Option<f64>,
+    pub oxidizer_to_fuel_mass_ratio: Option<f64>,
 }
 
 impl TryFrom<ComponentEngineRow> for EngineSpecification {
@@ -49,6 +53,10 @@ impl TryFrom<ComponentEngineRow> for EngineSpecification {
         .with_oxidizer_propellant_id(oxidizer_propellant_id)
         .with_specific_impulse_sea_level(row.specific_impulse_sea_level_s.map(Duration::new))
         .with_integral_propellant_mass(row.integral_propellant_mass_kg.map(Mass::new))
+        .with_max_gimbal_deflection(row.max_gimbal_deflection_rad.map(Angle::new))
+        .with_gimbal_slew_rate(row.gimbal_slew_rate_rad_s.map(AngularVelocity::new))
+        .with_min_throttle_fraction(row.min_throttle_fraction)
+        .with_oxidizer_to_fuel_mass_ratio(row.oxidizer_to_fuel_mass_ratio)
         .build()?;
 
         Ok(spec)
