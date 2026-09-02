@@ -1,5 +1,8 @@
 use crate::domain::{ComponentDetails, ComponentRecord, VehicleComponentEntry};
-use astronomicon_core::units::{Mass, MomentOfInertia, Vector3};
+use crate::math::rigid_body_shapes::{
+    solid_cylinder_inertia_tensor, thin_shell_cylinder_inertia_tensor,
+};
+use astronomicon_core::units::{InertiaTensor, Length, Mass, Quaternion, Vector3};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -8,26 +11,32 @@ use uuid::Uuid;
 pub struct MassProperties {
     pub total_mass: Mass,
     pub center_of_mass: Vector3,
-    pub moment_of_inertia_x: MomentOfInertia,
-    pub moment_of_inertia_y: MomentOfInertia,
-    pub moment_of_inertia_z: MomentOfInertia,
+    pub inertia_tensor: InertiaTensor,
 }
 
 impl MassProperties {
     pub fn new(
         total_mass: Mass,
         center_of_mass: Vector3,
-        moment_of_inertia_x: MomentOfInertia,
-        moment_of_inertia_y: MomentOfInertia,
-        moment_of_inertia_z: MomentOfInertia,
+        inertia_tensor: InertiaTensor,
     ) -> Self {
         Self {
             total_mass,
             center_of_mass,
-            moment_of_inertia_x,
-            moment_of_inertia_y,
-            moment_of_inertia_z,
+            inertia_tensor,
         }
+    }
+
+    pub fn total_mass(&self) -> Mass {
+        self.total_mass
+    }
+
+    pub fn center_of_mass(&self) -> Vector3 {
+        self.center_of_mass
+    }
+
+    pub fn inertia_tensor(&self) -> InertiaTensor {
+        self.inertia_tensor
     }
 }
 
@@ -68,7 +77,7 @@ pub fn resolve_mass_properties(
         if m.is_finite() && m > 0.0 {
             total_mass_val += m;
             sum_mr = sum_mr + entry.mount_offset() * m;
-            component_masses.push((m, entry.mount_offset()));
+            component_masses.push((entry, record, m));
         }
     }
 
@@ -76,38 +85,44 @@ pub fn resolve_mass_properties(
         return MassProperties {
             total_mass: Mass::new(0.0),
             center_of_mass: Vector3::zero(),
-            moment_of_inertia_x: MomentOfInertia::new(0.0),
-            moment_of_inertia_y: MomentOfInertia::new(0.0),
-            moment_of_inertia_z: MomentOfInertia::new(0.0),
+            inertia_tensor: InertiaTensor::zero(),
         };
     }
 
     let center_of_mass = sum_mr / total_mass_val;
+    let mut total_inertia = InertiaTensor::zero();
 
-    let mut ixx = 0.0;
-    let mut iyy = 0.0;
-    let mut izz = 0.0;
+    for (entry, record, m) in component_masses {
+        let comp = record.component();
+        let radius = Length::new(comp.diameter().value() * 0.5);
+        let length = comp.length();
+        let mass = Mass::new(m);
 
-    for (m, pos) in component_masses {
-        let dx = pos.0 - center_of_mass.0;
-        let dy = pos.1 - center_of_mass.1;
-        let dz = pos.2 - center_of_mass.2;
+        let i_local = match record.details() {
+            ComponentDetails::PropellantTank(_) => {
+                thin_shell_cylinder_inertia_tensor(mass, radius, length)
+            }
+            _ => solid_cylinder_inertia_tensor(mass, radius, length),
+        };
 
-        let dx_sq = dx * dx;
-        let dy_sq = dy * dy;
-        let dz_sq = dz * dz;
+        let i_rotated = match entry.actuation_axis() {
+            Some(axis) => {
+                let rot_q = Quaternion::from_rotation_between(Vector3::new(0.0, 0.0, 1.0), axis);
+                let rot_m = rot_q.to_rotation_matrix();
+                i_local.rotate_by(&rot_m)
+            }
+            None => i_local,
+        };
 
-        ixx += m * (dy_sq + dz_sq);
-        iyy += m * (dx_sq + dz_sq);
-        izz += m * (dx_sq + dy_sq);
+        let d = entry.mount_offset() - center_of_mass;
+        let i_shifted = i_rotated.parallel_axis_shift(mass, d);
+        total_inertia = total_inertia.add(&i_shifted);
     }
 
     MassProperties {
         total_mass: Mass::new(total_mass_val),
         center_of_mass,
-        moment_of_inertia_x: MomentOfInertia::new(ixx),
-        moment_of_inertia_y: MomentOfInertia::new(iyy),
-        moment_of_inertia_z: MomentOfInertia::new(izz),
+        inertia_tensor: total_inertia,
     }
 }
 

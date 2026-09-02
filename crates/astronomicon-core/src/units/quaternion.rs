@@ -1,4 +1,4 @@
-use crate::units::{Angle, AngularVelocityVector, Duration, Vector3};
+use crate::units::{Angle, AngularVelocityVector, Duration, Matrix3, Vector3};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -115,6 +115,26 @@ impl Quaternion {
         let s = self.w;
         let t = u.cross(&v) * 2.0;
         v + t * s + u.cross(&t)
+    }
+
+    pub fn to_rotation_matrix(self) -> Matrix3 {
+        let q = self.normalized();
+        let w = q.w;
+        let x = q.x;
+        let y = q.y;
+        let z = q.z;
+
+        Matrix3::new(
+            1.0 - 2.0 * (y * y + z * z),
+            2.0 * (x * y - w * z),
+            2.0 * (x * z + w * y),
+            2.0 * (x * y + w * z),
+            1.0 - 2.0 * (x * x + z * z),
+            2.0 * (y * z - w * x),
+            2.0 * (x * z - w * y),
+            2.0 * (y * z + w * x),
+            1.0 - 2.0 * (x * x + y * y),
+        )
     }
 
     pub fn conjugate(self) -> Self {
