@@ -1,15 +1,21 @@
 pub mod attitude_control;
+pub mod battery_dynamics;
 pub mod mass_properties;
 pub mod nuclear_decay;
 pub mod nuclear_reactor;
+pub mod power_budget;
 pub mod rocket_equation;
 pub mod solar_power_generation;
+pub mod thermal_budget;
 pub mod vehicle_assembly;
 
 pub use attitude_control::*;
+pub use battery_dynamics::*;
 pub use mass_properties::*;
 pub use nuclear_decay::*;
 pub use nuclear_reactor::*;
+pub use power_budget::*;
 pub use rocket_equation::*;
 pub use solar_power_generation::*;
+pub use thermal_budget::*;
 pub use vehicle_assembly::*;
