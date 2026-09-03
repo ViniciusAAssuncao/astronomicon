@@ -46,6 +46,7 @@ pub struct AerodynamicDiagnostic {
     pub speed_of_sound: Speed,
     pub relative_airspeed: Speed,
     pub drag_force: ForceVector,
+    pub ambient_pressure: Pressure,
 }
 
 pub async fn resolve_vehicle_aerodynamics(
@@ -108,7 +109,7 @@ pub async fn resolve_vehicle_aerodynamics(
         at_epoch
     ).await?;
 
-    let (_p_alt, t_alt, rho_alt) = resolve_atmospheric_profile_at_altitude(
+    let (p_alt, t_alt, rho_alt) = resolve_atmospheric_profile_at_altitude(
         pool,
         planet_id,
         surface_temperature,
@@ -179,6 +180,7 @@ pub async fn resolve_vehicle_aerodynamics(
             speed_of_sound: sound_speed,
             relative_airspeed: v_rel_speed,
             drag_force: drag,
+            ambient_pressure: p_alt,
         })
     )
 }

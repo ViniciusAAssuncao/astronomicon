@@ -16,6 +16,7 @@ use astronomicon_core::units::{
     AngularVelocity,
     Duration,
     ForceVector,
+    Pressure,
     Quaternion,
     TorqueVector,
     Vector3,
@@ -58,13 +59,47 @@ pub fn engine_thrust_direction_local_clamped(
     engine_thrust_direction_local(neutral_axis, Angle::new(pitch_rad), Angle::new(yaw_rad))
 }
 
+pub fn engine_thrust_magnitude(
+    spec: &EngineSpecification,
+    load_fraction: f64,
+    local_atmospheric_pressure: Pressure
+) -> f64 {
+    let load = load_fraction.clamp(0.0, 1.0);
+    if load <= 0.0 {
+        return 0.0;
+    }
+
+    let f_vac = spec.max_thrust().value();
+    if f_vac <= 0.0 || !f_vac.is_finite() {
+        return 0.0;
+    }
+
+    let pa = local_atmospheric_pressure.value().max(0.0);
+    let pe = spec.exit_pressure().value();
+    let ae = spec.effective_nozzle_exit_area_m2();
+
+    let unseparated_thrust = (f_vac - pa * ae).max(0.0);
+
+    let base_thrust = if pe > 0.0 && pa > 2.5 * pe {
+        let r = pa / pe;
+        let x = r - 2.5;
+        let sep_factor = 0.20 + 0.80 * (-0.5 * x).exp();
+        let floor = unseparated_thrust.max(0.20 * f_vac);
+        floor * sep_factor
+    } else {
+        unseparated_thrust
+    };
+
+    (base_thrust * load).max(0.0)
+}
+
 pub fn engine_thrust_force(
     spec: &EngineSpecification,
     load_fraction: f64,
-    thrust_direction_world: Vector3
+    thrust_direction_world: Vector3,
+    local_atmospheric_pressure: Pressure
 ) -> ForceVector {
-    let load = load_fraction.clamp(0.0, 1.0);
-    let mag = spec.max_thrust().value() * load;
+    let mag = engine_thrust_magnitude(spec, load_fraction, local_atmospheric_pressure);
     let dir = thrust_direction_world.normalized();
     ForceVector::from_raw(dir * mag)
 }
@@ -167,7 +202,7 @@ impl VehiclePropulsionForces {
     }
 }
 
-pub fn aggregate_active_thrust_and_torque(
+pub fn aggregate_active_thrust_and_torque_with_ambient_pressure(
     entries_and_records: &[(VehicleComponentEntry, ComponentRecord)],
     active_stages: &[u32],
     mass_properties: &MassProperties,
@@ -175,7 +210,8 @@ pub fn aggregate_active_thrust_and_torque(
     reaction_wheel_states: &HashMap<Uuid, ReactionWheelState>,
     vehicle_orientation: Quaternion,
     control_input: &VehicleControlInput,
-    dt: Duration
+    dt: Duration,
+    ambient_pressure: Pressure
 ) -> VehiclePropulsionForces {
     let mut total_world_force = Vector3::zero();
     let mut total_body_torque = Vector3::zero();
@@ -209,7 +245,7 @@ pub fn aggregate_active_thrust_and_torque(
                     engine.max_gimbal_deflection()
                 );
 
-                let thrust_mag = engine.max_thrust().value() * load_fraction.clamp(0.0, 1.0);
+                let thrust_mag = engine_thrust_magnitude(engine, load_fraction, ambient_pressure);
                 let force_body = thrust_dir_body * thrust_mag;
                 let force_world = vehicle_orientation.rotate_vector(force_body);
 
@@ -275,5 +311,28 @@ pub fn aggregate_active_thrust_and_torque(
     VehiclePropulsionForces::new(
         ForceVector::from_raw(total_world_force),
         TorqueVector::from_raw(total_body_torque)
+    )
+}
+
+pub fn aggregate_active_thrust_and_torque(
+    entries_and_records: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    mass_properties: &MassProperties,
+    operational_states: &HashMap<Uuid, ComponentOperationalState>,
+    reaction_wheel_states: &HashMap<Uuid, ReactionWheelState>,
+    vehicle_orientation: Quaternion,
+    control_input: &VehicleControlInput,
+    dt: Duration
+) -> VehiclePropulsionForces {
+    aggregate_active_thrust_and_torque_with_ambient_pressure(
+        entries_and_records,
+        active_stages,
+        mass_properties,
+        operational_states,
+        reaction_wheel_states,
+        vehicle_orientation,
+        control_input,
+        dt,
+        Pressure::new(0.0)
     )
 }

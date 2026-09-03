@@ -6,7 +6,7 @@ use crate::repositories::component_attributes::{
 };
 use astronomicon_core::units::{
     Angle, AngularMomentum, AngularVelocity, Duration, Energy, Force, Impulse, Luminosity, Mass,
-    Speed, Torque, Volume,
+    Pressure, Speed, Torque, Volume,
 };
 use rocketcon_core::domain::{
     BatterySpecification, Component, ComponentDetails, ComponentKind, ComponentRecord,
@@ -66,6 +66,10 @@ async fn fetch_component_details(
                 optional_numeric(&attr_map, &id, "min_throttle_fraction")?;
             let oxidizer_to_fuel_mass_ratio =
                 optional_numeric(&attr_map, &id, "oxidizer_to_fuel_mass_ratio")?;
+            let nozzle_exit_area_m2 =
+                optional_numeric(&attr_map, &id, "nozzle_exit_area_m2")?;
+            let chamber_pressure_pa =
+                optional_numeric(&attr_map, &id, "chamber_pressure_pa")?;
 
             let spec = EngineSpecification::builder(
                 id,
@@ -83,6 +87,8 @@ async fn fetch_component_details(
             .with_gimbal_slew_rate(gimbal_slew_rate_rad_s.map(AngularVelocity::new))
             .with_min_throttle_fraction(min_throttle_fraction)
             .with_oxidizer_to_fuel_mass_ratio(oxidizer_to_fuel_mass_ratio)
+            .with_nozzle_exit_area_m2(nozzle_exit_area_m2)
+            .with_chamber_pressure(chamber_pressure_pa.map(Pressure::new))
             .build()?;
 
             Ok(ComponentDetails::Engine(spec))

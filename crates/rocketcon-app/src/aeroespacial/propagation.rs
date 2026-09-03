@@ -1,10 +1,17 @@
 use crate::aeroespacial::aerodynamics::resolve_vehicle_aerodynamics;
-use crate::aeroespacial::dynamics_step::evaluate_rigid_body_derivative;
+use crate::aeroespacial::dynamics_step::evaluate_rigid_body_derivative_with_ambient_pressure;
 use crate::aeroespacial::gravity::resolve_vehicle_gravitational_acceleration;
 use crate::aeroespacial::vehicle::resolve_vehicle_snapshot;
 use crate::environment::load_environment_snapshot;
 use crate::error::{ RocketError, RocketResult };
-use astronomicon_core::units::{ Angle, AngularMomentum, Duration, ForceVector, Vector3 };
+use astronomicon_core::units::{
+    Angle,
+    AngularMomentum,
+    Duration,
+    ForceVector,
+    Pressure,
+    Vector3,
+};
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::{
     ComponentDetails,
@@ -194,12 +201,15 @@ pub async fn advance_vehicle_physical_state(
         current_at_epoch
     ).await?;
 
-    let drag_force = aero_diag.map(|d| d.drag_force).unwrap_or(ForceVector::zero());
+    let (drag_force, ambient_pressure) = match aero_diag {
+        Some(d) => (d.drag_force, d.ambient_pressure),
+        None => (ForceVector::zero(), Pressure::new(0.0)),
+    };
 
     let initial_rigid_state = RigidBodyState::from_physical_state(&physical_state);
 
     let new_rigid_state = rk4_step(&initial_rigid_state, dt, |sub_state| {
-        evaluate_rigid_body_derivative(
+        evaluate_rigid_body_derivative_with_ambient_pressure(
             sub_state,
             snapshot.mass_properties(),
             &components,
@@ -209,7 +219,8 @@ pub async fn advance_vehicle_physical_state(
             control_input,
             grav_acc,
             drag_force,
-            dt
+            dt,
+            ambient_pressure
         )
     });
 
