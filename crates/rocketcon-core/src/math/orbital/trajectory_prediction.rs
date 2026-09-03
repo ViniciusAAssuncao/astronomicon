@@ -1,3 +1,9 @@
+use crate::constants::{
+    CHEBYSHEV_DEFAULT_FIT_DEGREE, COWELL_DEFAULT_ABSOLUTE_TOLERANCE,
+    COWELL_DEFAULT_INITIAL_STEP_S, COWELL_DEFAULT_RELATIVE_TOLERANCE,
+    HILL_SPHERE_MULTI_BODY_FRACTION, LAGRANGE_ZONE_RADIUS_RATIO,
+    N_BODY_PERTURBATION_RATIO_THRESHOLD,
+};
 use crate::domain::{ConicPatchData, TrajectoryPatch, TrajectoryPatchKind};
 use crate::error::{RocketDomainError, RocketDomainResult};
 use crate::math::aerothermodynamics::aerocapture::{
@@ -6,6 +12,10 @@ use crate::math::aerothermodynamics::aerocapture::{
 };
 use crate::math::orbital::hyperbolic::{
     hyperbolic_mean_anomaly_from_true_anomaly, hyperbolic_mean_motion,
+};
+use crate::math::orbital::n_body::{
+    n_body_trajectory_to_chebyshev_patch, perturbation_to_primary_ratio, propagate_n_body,
+    CowellPerturbationConfig, NBodyPropagationConfig, NBodySystemBody,
 };
 use crate::math::orbital::parabolic::parabolic_time_since_periapsis;
 use crate::math::orbital::sphere_of_influence::{
@@ -247,14 +257,75 @@ pub fn find_atmospheric_entry_event(
     let nu_curr = elements.true_anomaly().value().rem_euclid(TAU);
     let nu_entry = if nu_curr < nu1.value() {
         nu2
-    } else if nu_curr <= nu2.value() {
-        nu2
     } else {
         nu2
     };
 
     let dt = time_between_true_anomalies(elements, mu, elements.true_anomaly(), nu_entry)?;
     Ok(Some((nu_entry, dt)))
+}
+
+pub fn is_in_multibody_regime(
+    position_rel_primary: Position,
+    current_body: &CelestialBodySoi,
+    candidate_soi_bodies: &[CelestialBodySoi],
+) -> bool {
+    let r_mag = position_rel_primary.raw().magnitude();
+    let r_soi = current_body.soi_radius().value();
+
+    if r_soi.is_finite() && r_mag > r_soi * HILL_SPHERE_MULTI_BODY_FRACTION {
+        return true;
+    }
+
+    let cowell_config = build_cowell_config(current_body, candidate_soi_bodies);
+    let pert_ratio = perturbation_to_primary_ratio(position_rel_primary.raw(), &cowell_config);
+    if pert_ratio > N_BODY_PERTURBATION_RATIO_THRESHOLD {
+        return true;
+    }
+
+    for body in candidate_soi_bodies {
+        if body.id() != current_body.id() {
+            let dist_to_body = (position_rel_primary.raw() - body.position().raw()).magnitude();
+            if dist_to_body < body.soi_radius().value() * LAGRANGE_ZONE_RADIUS_RATIO {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+pub fn build_cowell_config(
+    current_body: &CelestialBodySoi,
+    candidate_soi_bodies: &[CelestialBodySoi],
+) -> CowellPerturbationConfig {
+    let primary_sys = NBodySystemBody::new(
+        current_body.id(),
+        current_body.mass(),
+        current_body.position(),
+        VelocityVector::zero(),
+        current_body.body_radius(),
+        None,
+    );
+
+    let mut perturbing = Vec::new();
+    for body in candidate_soi_bodies {
+        if body.id() != current_body.id() {
+            perturbing.push(NBodySystemBody::new(
+                body.id(),
+                body.mass(),
+                body.position(),
+                VelocityVector::zero(),
+                body.body_radius(),
+                None,
+            ));
+        }
+    }
+
+    CowellPerturbationConfig {
+        primary_body: primary_sys,
+        perturbing_bodies: perturbing,
+    }
 }
 
 pub fn compute_conic_patches(
@@ -285,6 +356,50 @@ pub fn compute_conic_patches(
     );
 
     while patches.len() < max_patches && curr_epoch.value() < lookahead_limit.value() {
+        if is_in_multibody_regime(curr_state.0, &curr_body, candidate_soi_bodies) {
+            let cowell_config = build_cowell_config(&curr_body, candidate_soi_bodies);
+            let n_body_duration = Duration::new((lookahead_limit - curr_epoch).value().min(86400.0 * 10.0));
+
+            let n_body_config = NBodyPropagationConfig {
+                initial_position: curr_state.0,
+                initial_velocity: curr_state.1,
+                initial_mass: default_vehicle_props.mass,
+                cowell_config,
+                start_epoch: curr_epoch,
+                duration: n_body_duration,
+                initial_step: Duration::new(COWELL_DEFAULT_INITIAL_STEP_S),
+                absolute_tolerance: COWELL_DEFAULT_ABSOLUTE_TOLERANCE,
+                relative_tolerance: COWELL_DEFAULT_RELATIVE_TOLERANCE,
+            };
+
+            if let Ok(n_body_res) = propagate_n_body(&n_body_config) {
+                if let Ok(chebyshev_data) = n_body_trajectory_to_chebyshev_patch(
+                    &n_body_res,
+                    CHEBYSHEV_DEFAULT_FIT_DEGREE,
+                    default_vehicle_props.mass,
+                ) {
+                    let end_t = n_body_res.final_epoch;
+                    let n_body_patch = TrajectoryPatch::new_low_thrust(
+                        Uuid::new_v4(),
+                        vehicle_id,
+                        curr_body.id(),
+                        curr_epoch,
+                        end_t,
+                        curr_mu,
+                        chebyshev_data,
+                    )?;
+                    patches.push(n_body_patch);
+
+                    if let Some(last_pt) = n_body_res.points.last() {
+                        curr_state = (last_pt.position, last_pt.velocity);
+                        curr_epoch = end_t;
+                    }
+
+                    continue;
+                }
+            }
+        }
+
         let elements = cartesian_to_osculating_elements(curr_state.0, curr_state.1, curr_mu)?;
 
         let exit_event = find_soi_exit_event(&elements, curr_mu, curr_body.soi_radius())?;
@@ -388,7 +503,7 @@ pub fn compute_conic_patches(
                                 Duration::new(0.5),
                             )?;
 
-                            if let Ok(chebyshev_data) = pass_res.to_low_thrust_patch_data(7) {
+                            if let Ok(chebyshev_data) = pass_res.to_low_thrust_patch_data(CHEBYSHEV_DEFAULT_FIT_DEGREE) {
                                 let exit_t = pass_res.exit_epoch.unwrap_or(entry_epoch + Duration::new(600.0));
                                 let aero_patch = TrajectoryPatch::new_low_thrust(
                                     Uuid::new_v4(),
