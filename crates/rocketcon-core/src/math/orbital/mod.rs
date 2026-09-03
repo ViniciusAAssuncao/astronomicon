@@ -1,4 +1,6 @@
+pub mod b_plane;
 pub mod conversions;
+pub mod gravity_assist;
 pub mod hyperbolic;
 pub mod lambert_solver;
 pub mod low_thrust;
@@ -12,7 +14,9 @@ pub mod trajectory_prediction;
 pub mod types;
 pub mod universal;
 
+pub use b_plane::*;
 pub use conversions::*;
+pub use gravity_assist::*;
 pub use hyperbolic::*;
 pub use lambert_solver::*;
 pub use low_thrust::*;
