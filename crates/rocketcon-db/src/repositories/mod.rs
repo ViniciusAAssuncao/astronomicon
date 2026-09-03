@@ -6,6 +6,7 @@ pub mod payload_state_repository;
 pub mod propellant_repository;
 pub mod reaction_wheel_state_repository;
 pub mod save_metadata_repository;
+pub mod trajectory_patch_repository;
 pub mod vehicle_physical_state_repository;
 pub mod vehicle_repository;
 
@@ -16,5 +17,6 @@ pub use payload_state_repository as payload_state;
 pub use propellant_repository as propellant;
 pub use reaction_wheel_state_repository as reaction_wheel_state;
 pub use save_metadata_repository as save_metadata;
+pub use trajectory_patch_repository as trajectory_patch;
 pub use vehicle_physical_state_repository as vehicle_physical_state;
 pub use vehicle_repository as vehicle;

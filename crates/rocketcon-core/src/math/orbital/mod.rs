@@ -6,6 +6,7 @@ pub mod types;
 pub mod universal;
 pub mod sphere_of_influence;
 pub mod orbital_perturbation;
+pub mod trajectory_prediction;
 
 pub use conversions::*;
 pub use hyperbolic::*;
@@ -15,3 +16,4 @@ pub use types::*;
 pub use universal::*;
 pub use sphere_of_influence::*;
 pub use orbital_perturbation::*;
+pub use trajectory_prediction::*;
