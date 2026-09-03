@@ -16,6 +16,7 @@ pub mod rigid_body_state;
 pub mod rocket_equation;
 pub mod solar_power_generation;
 pub mod thermal_budget;
+pub mod thermal_network;
 pub mod vehicle_assembly;
 
 pub use aerothermodynamics::*;
@@ -34,4 +35,5 @@ pub use rigid_body_state::*;
 pub use rocket_equation::*;
 pub use solar_power_generation::*;
 pub use thermal_budget::*;
+pub use thermal_network::*;
 pub use vehicle_assembly::*;

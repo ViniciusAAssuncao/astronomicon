@@ -1,21 +1,16 @@
 use crate::aeroespacial::resolve_vehicle_aerodynamics;
 use crate::error::RocketResult;
-use astronomicon_core::units::{Duration, HeatFlux, Luminosity, Position, Temperature};
+use crate::thermal::network_assembly::assemble_vehicle_thermal_network;
+use crate::thermal::network_tick::advance_vehicle_thermal_network;
+use astronomicon_core::units::{
+    Duration, HeatFlux, Luminosity, Position, Quaternion, Temperature,
+};
 use astronomicon_db::SqlitePool;
-use rocketcon_core::constants::DEFAULT_STRUCTURAL_HULL_EMISSIVITY;
-use rocketcon_core::domain::ComponentDetails;
 use rocketcon_core::environment::EnvironmentSnapshot;
-use rocketcon_core::math::aerothermodynamics::{
-    evaluate_vehicle_aerothermodynamics, vehicle_geometry_thermal_properties,
-};
-use rocketcon_core::math::thermal_budget::{
-    check_material_record_thermal_structural_limits, effective_ga_product_with_hull,
-    vehicle_equilibrium_temperature_with_aero,
-};
-use rocketcon_db::repositories::material as material_repository;
 use rocketcon_db::repositories::vehicle as vehicle_repository;
 use rocketcon_db::repositories::vehicle_physical_state as vehicle_physical_state_repository;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -83,7 +78,7 @@ pub async fn resolve_vehicle_thermal_budget(
     universe_epoch: Duration,
     at_epoch: Duration,
     environment: &EnvironmentSnapshot,
-    _vehicle_position: Position,
+    vehicle_position: Position,
     total_internal_waste_heat: Luminosity,
 ) -> RocketResult<VehicleThermalBudget> {
     let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
@@ -98,122 +93,77 @@ pub async fn resolve_vehicle_thermal_budget(
         stages.push(0);
     }
 
-    let mut radiators = Vec::new();
-    for (entry, record) in &components {
-        if !stages.contains(&entry.stage_index()) {
-            continue;
-        }
-        if let ComponentDetails::Radiator(spec) = record.details() {
-            radiators.push((spec.radiating_area_m2(), spec.emissivity()));
-        }
-    }
-
     let physical_state = vehicle_physical_state_repository::get_by_vehicle_id(
         pool,
         &vehicle_id,
     ).await?;
 
-    let aero_results = match physical_state {
-        Some(ref state) => {
-            let diag_opt = resolve_vehicle_aerodynamics(
-                pool,
-                state,
-                environment.planet.id(),
-                environment.planet_position.raw(),
-                &components,
-                &stages,
-                universe_epoch,
-                at_epoch,
-            ).await?;
-
-            diag_opt.map(|diag| {
-                evaluate_vehicle_aerothermodynamics(
-                    &components,
-                    &stages,
-                    diag.air_density,
-                    diag.relative_airspeed,
-                    diag.mach_number,
-                )
-            })
-        }
+    let aero_diag = match physical_state {
+        Some(ref state) => resolve_vehicle_aerodynamics(
+            pool,
+            state,
+            environment.planet.id(),
+            environment.planet_position.raw(),
+            &components,
+            &stages,
+            universe_epoch,
+            at_epoch,
+        ).await?,
         None => None,
     };
 
-    let (aero_power, stag_flux, skin_flux, hull_area) = match aero_results {
-        Some(res) => (
-            res.total_aerodynamic_heat_power,
-            res.stagnation_heat_flux,
-            res.skin_friction_heat_flux,
-            res.nose_area_m2 + res.side_area_m2,
-        ),
-        None => {
-            let (_, nose_area, side_area) =
-                vehicle_geometry_thermal_properties(&components, &stages);
-            (
-                Luminosity::new(0.0),
-                HeatFlux::new(0.0),
-                HeatFlux::new(0.0),
-                nose_area + side_area,
-            )
-        }
+    let (air_density, relative_airspeed, mach_number) = match aero_diag {
+        Some(d) => (Some(d.air_density), Some(d.relative_airspeed), Some(d.mach_number)),
+        None => (None, None, None),
     };
 
-    let effective_ga = effective_ga_product_with_hull(
-        &radiators,
-        hull_area,
-        DEFAULT_STRUCTURAL_HULL_EMISSIVITY,
-    );
-    let total_heat = Luminosity::new(total_internal_waste_heat.value() + aero_power.value());
-    let eq_temp = vehicle_equilibrium_temperature_with_aero(
-        total_internal_waste_heat,
-        aero_power,
-        effective_ga,
-    );
-
-    let mut min_allowable_temp: Option<Temperature> = None;
-
-    for (entry, record) in &components {
-        if !stages.contains(&entry.stage_index()) {
-            continue;
-        }
-
-        if let ComponentDetails::Hull(hull) = record.details() {
-            if let Some(material_record) =
-                material_repository::get_by_id(pool, &hull.material_id()).await?
-            {
-                let segment_name = entry
-                    .instance_label()
-                    .unwrap_or_else(|| record.component().name());
-                let mat_max_service = material_record.material().max_service_temperature();
-
-                min_allowable_temp = Some(match min_allowable_temp {
-                    Some(cur_min) if mat_max_service.value() < cur_min.value() => mat_max_service,
-                    Some(cur_min) => cur_min,
-                    None => mat_max_service,
-                });
-
-                check_material_record_thermal_structural_limits(
-                    segment_name,
-                    &material_record,
-                    hull.wall_thickness(),
-                    eq_temp,
-                )?;
-            }
-        }
+    let mut waste_heats = HashMap::new();
+    let n_comps = components.len().max(1) as f64;
+    let per_comp_waste = Luminosity::new(total_internal_waste_heat.value() / n_comps);
+    for (entry, _) in &components {
+        waste_heats.insert(entry.id(), per_comp_waste);
     }
 
-    let max_temp = min_allowable_temp.unwrap_or(eq_temp);
-    let is_overheating = eq_temp.value() > max_temp.value();
+    let mut network = assemble_vehicle_thermal_network(
+        pool,
+        vehicle_id,
+        &components,
+        &stages,
+        &waste_heats,
+        air_density,
+        relative_airspeed,
+        mach_number,
+        None,
+    ).await?;
 
-    Ok(VehicleThermalBudget {
-        total_internal_heat_generation: total_internal_waste_heat,
-        aerodynamic_heat_input: aero_power,
-        total_heat_input: total_heat,
-        stagnation_heat_flux: stag_flux,
-        skin_friction_heat_flux: skin_flux,
-        effective_radiator_ga_product: effective_ga,
-        equilibrium_temperature: eq_temp,
-        max_allowable_temperature: max_temp,
-        is_overheating,
-    })
+    let vehicle_orientation = physical_state
+        .as_ref()
+        .map(|s| s.orientation())
+        .unwrap_or_else(Quaternion::identity);
+
+    let tick_report = advance_vehicle_thermal_network(
+        pool,
+        vehicle_id,
+        &mut network,
+        &components,
+        &stages,
+        environment,
+        vehicle_position,
+        vehicle_orientation,
+        None,
+        Duration::new(1.0),
+        universe_epoch,
+        at_epoch,
+    ).await?;
+
+    let (stag_flux, skin_flux) = match aero_diag {
+        Some(d) => (d.stagnation_heat_flux, HeatFlux::new(0.0)),
+        None => (HeatFlux::new(0.0), HeatFlux::new(0.0)),
+    };
+
+    let mut budget = tick_report.budget;
+    budget.stagnation_heat_flux = stag_flux;
+    budget.skin_friction_heat_flux = skin_flux;
+
+    Ok(budget)
 }

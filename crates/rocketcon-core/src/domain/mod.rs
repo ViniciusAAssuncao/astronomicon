@@ -28,6 +28,7 @@ pub mod reaction_wheel_state;
 pub mod rtg_specification;
 pub mod save_metadata;
 pub mod solar_panel_specification;
+pub mod thermal_node_state;
 pub mod thrust_producer;
 pub mod trajectory_patch;
 pub mod vehicle;
@@ -71,6 +72,7 @@ pub use reaction_wheel_state::ReactionWheelState;
 pub use rtg_specification::RtgSpecification;
 pub use save_metadata::SaveMetadata;
 pub use solar_panel_specification::{SolarPanelSpecification, DEFAULT_SOLAR_PANEL_ABSORPTIVITY};
+pub use thermal_node_state::ThermalNodeState;
 pub use thrust_producer::ThrustProducer;
 pub use trajectory_patch::{
     ConicPatchData, LowThrustPatchData, TrajectoryPatch, TrajectoryPatchKind,

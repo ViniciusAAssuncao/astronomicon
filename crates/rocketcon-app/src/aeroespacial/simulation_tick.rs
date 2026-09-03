@@ -7,12 +7,19 @@ use crate::error::{RocketError, RocketResult};
 use crate::orbital::{invalidate_future_trajectory_patches, propagate_coasting_vehicle};
 use crate::power::battery::apply_power_delta;
 use crate::power::budget::resolve_vehicle_power_budget;
+use crate::power::consumption::resolve_component_consumption;
+use crate::power::generation::resolve_component_generation;
+use crate::power::thermal::VehicleThermalBudget;
+use crate::thermal::heat_shield_response::resolve_heat_shield_response;
+use crate::thermal::network_assembly::assemble_vehicle_thermal_network;
+use crate::thermal::network_tick::advance_vehicle_thermal_network;
 use astronomicon_app::ephemeris::resolve_planet_orientation;
 use astronomicon_app::shape::effective_polar_radius_for_planet;
 use astronomicon_core::math::rotation::angular_velocity_from_rotation_period;
 use astronomicon_core::units::constants::STANDARD_GRAVITY;
 use astronomicon_core::units::{
-    Acceleration, AccelerationVector, AngularVelocityVector, Duration, Length, Pressure, Vector3,
+    Acceleration, AccelerationVector, AngularVelocityVector, Duration, Length, Luminosity,
+    Pressure, Vector3,
 };
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::{
@@ -21,9 +28,11 @@ use rocketcon_core::domain::{
 };
 use rocketcon_core::math::collision::{resolve_surface_contact, SurfaceContactState};
 use rocketcon_core::math::power_budget::VehiclePowerBudget;
+use rocketcon_db::repositories::operational_state_repository;
 use rocketcon_db::repositories::vehicle as vehicle_repository;
 use rocketcon_db::repositories::vehicle_physical_state as vehicle_physical_state_repository;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -33,6 +42,7 @@ pub struct VehicleTickReport {
     pub gravitational_acceleration: AccelerationVector,
     pub surface_contact: SurfaceContactState,
     pub power_budget: VehiclePowerBudget,
+    pub thermal_budget: VehicleThermalBudget,
     pub axial_g_load: f64,
     pub lateral_g_load: f64,
     pub total_g_load: f64,
@@ -45,6 +55,7 @@ impl VehicleTickReport {
         gravitational_acceleration: AccelerationVector,
         surface_contact: SurfaceContactState,
         power_budget: VehiclePowerBudget,
+        thermal_budget: VehicleThermalBudget,
         axial_g_load: f64,
         lateral_g_load: f64,
         total_g_load: f64,
@@ -55,6 +66,7 @@ impl VehicleTickReport {
             gravitational_acceleration,
             surface_contact,
             power_budget,
+            thermal_budget,
             axial_g_load,
             lateral_g_load,
             total_g_load,
@@ -87,6 +99,10 @@ impl VehicleTickReport {
 
     pub fn power_budget(&self) -> &VehiclePowerBudget {
         &self.power_budget
+    }
+
+    pub fn thermal_budget(&self) -> &VehicleThermalBudget {
+        &self.thermal_budget
     }
 
     pub fn mach_number(&self) -> Option<f64> {
@@ -232,6 +248,31 @@ pub async fn advance_vehicle_simulation(
 
     let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
 
+    let mut component_waste_heats: HashMap<Uuid, Luminosity> = HashMap::with_capacity(components.len());
+    for (entry, record) in &components {
+        if !vehicle_snapshot.is_stage_active(entry.stage_index()) {
+            continue;
+        }
+
+        let gen_contribution = resolve_component_generation(
+            pool,
+            entry,
+            record,
+            &environment,
+            current_physical_state.position(),
+            current_physical_state.orientation(),
+            universe_epoch,
+            current_at_epoch,
+        )
+        .await?;
+
+        let op_state = operational_state_repository::get_by_vehicle_component_id(pool, &entry.id()).await?;
+        let con_contribution = resolve_component_consumption(entry, record, op_state);
+
+        let total_waste = gen_contribution.waste_heat + con_contribution.waste_heat;
+        component_waste_heats.insert(entry.id(), total_waste);
+    }
+
     let is_propelling =
         is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input);
 
@@ -337,6 +378,58 @@ pub async fn advance_vehicle_simulation(
     )
     .await?;
 
+    let raw_stag_flux = aero_diag
+        .as_ref()
+        .map(|a| a.stagnation_heat_flux)
+        .unwrap_or_else(|| astronomicon_core::units::HeatFlux::new(0.0));
+
+    if raw_stag_flux.value() > 0.0 {
+        let _shield_response = resolve_heat_shield_response(
+            pool,
+            &components,
+            vehicle_snapshot.active_stages(),
+            raw_stag_flux,
+            dt,
+            universe_epoch,
+            current_at_epoch,
+        )
+        .await?;
+    }
+
+    let (air_density, relative_airspeed, mach_number) = match aero_diag {
+        Some(ref d) => (Some(d.air_density), Some(d.relative_airspeed), Some(d.mach_number)),
+        None => (None, None, None),
+    };
+
+    let mut thermal_network = assemble_vehicle_thermal_network(
+        pool,
+        vehicle_id,
+        &components,
+        vehicle_snapshot.active_stages(),
+        &component_waste_heats,
+        air_density,
+        relative_airspeed,
+        mach_number,
+        None,
+    )
+    .await?;
+
+    let thermal_tick_report = advance_vehicle_thermal_network(
+        pool,
+        vehicle_id,
+        &mut thermal_network,
+        &components,
+        vehicle_snapshot.active_stages(),
+        &environment,
+        new_physical_state.position(),
+        new_physical_state.orientation(),
+        None,
+        dt,
+        universe_epoch,
+        current_at_epoch,
+    )
+    .await?;
+
     let grav_acc = resolve_vehicle_gravitational_acceleration(
         pool,
         &environment,
@@ -389,12 +482,18 @@ pub async fn advance_vehicle_simulation(
     let lateral_g_load = (proper_acc_body.0 * proper_acc_body.0 + proper_acc_body.1 * proper_acc_body.1).sqrt() / STANDARD_GRAVITY;
     let total_g_load = proper_acc_body.magnitude() / STANDARD_GRAVITY;
 
+    let mut final_thermal_budget = thermal_tick_report.budget;
+    if let Some(ref d) = aero_diag {
+        final_thermal_budget.stagnation_heat_flux = d.stagnation_heat_flux;
+    }
+
     Ok(VehicleTickReport::new(
         new_physical_state,
         aero_diag,
         grav_acc,
         surface_contact,
         power_budget,
+        final_thermal_budget,
         axial_g_load,
         lateral_g_load,
         total_g_load,
