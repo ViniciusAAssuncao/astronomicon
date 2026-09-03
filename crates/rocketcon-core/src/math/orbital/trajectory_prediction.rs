@@ -1,5 +1,9 @@
-use crate::domain::TrajectoryPatch;
+use crate::domain::{ConicPatchData, TrajectoryPatch, TrajectoryPatchKind};
 use crate::error::{RocketDomainError, RocketDomainResult};
+use crate::math::aerothermodynamics::aerocapture::{
+    simulate_atmospheric_pass, AerocaptureOutcome, AerocaptureVehicleProperties,
+    AtmosphericModelParameters,
+};
 use crate::math::orbital::hyperbolic::{
     hyperbolic_mean_anomaly_from_true_anomaly, hyperbolic_mean_motion,
 };
@@ -13,7 +17,8 @@ use crate::math::orbital::{
 };
 use astronomicon_core::math::kepler::mean_motion;
 use astronomicon_core::units::{
-    Angle, Duration, GravitationalParameter, Length, Position, VelocityVector,
+    Angle, Duration, GravitationalParameter, HeatFlux, Length, Mass, Position,
+    VelocityVector,
 };
 use std::f64::consts::TAU;
 use uuid::Uuid;
@@ -221,6 +226,37 @@ pub fn find_body_encounter(
     Ok(None)
 }
 
+pub fn find_atmospheric_entry_event(
+    elements: &OsculatingElements,
+    mu: GravitationalParameter,
+    entry_interface_radius: Length,
+) -> RocketDomainResult<Option<(Angle, Duration)>> {
+    let r_entry = entry_interface_radius.value();
+    if r_entry <= 0.0 || !r_entry.is_finite() {
+        return Ok(None);
+    }
+
+    if elements.periapsis_distance().value() >= r_entry {
+        return Ok(None);
+    }
+
+    let Some((nu1, nu2)) = true_anomaly_at_radius(elements, entry_interface_radius) else {
+        return Ok(None);
+    };
+
+    let nu_curr = elements.true_anomaly().value().rem_euclid(TAU);
+    let nu_entry = if nu_curr < nu1.value() {
+        nu2
+    } else if nu_curr <= nu2.value() {
+        nu2
+    } else {
+        nu2
+    };
+
+    let dt = time_between_true_anomalies(elements, mu, elements.true_anomaly(), nu_entry)?;
+    Ok(Some((nu_entry, dt)))
+}
+
 pub fn compute_conic_patches(
     vehicle_id: Uuid,
     initial_state: (Position, VelocityVector),
@@ -237,6 +273,16 @@ pub fn compute_conic_patches(
     let mut curr_state = initial_state;
     let mut curr_epoch = current_universe_epoch;
     let lookahead_limit = current_universe_epoch + max_lookahead;
+
+    let default_vehicle_props = AerocaptureVehicleProperties::new(
+        Mass::new(5000.0),
+        10.0,
+        0.5,
+        0.0,
+        Length::new(0.5),
+        HeatFlux::new(5.0e6),
+        10.0,
+    );
 
     while patches.len() < max_patches && curr_epoch.value() < lookahead_limit.value() {
         let elements = cartesian_to_osculating_elements(curr_state.0, curr_state.1, curr_mu)?;
@@ -300,6 +346,93 @@ pub fn compute_conic_patches(
             );
             curr_body = target_body;
             continue;
+        }
+
+        if curr_body.has_atmosphere() {
+            if let Some(r_entry) = curr_body.atmospheric_entry_radius() {
+                let curr_r = curr_state.0.raw().magnitude();
+                if curr_r > r_entry.value() {
+                    if let Some((_, dt_entry)) = find_atmospheric_entry_event(&elements, curr_mu, r_entry)? {
+                        if dt_entry.value() < search_window.value() {
+                            let entry_epoch = curr_epoch + dt_entry;
+                            let pre_entry_patch = TrajectoryPatch::from_osculating_elements(
+                                Uuid::new_v4(),
+                                vehicle_id,
+                                curr_body.id(),
+                                curr_epoch,
+                                Some(entry_epoch),
+                                &elements,
+                                curr_mu,
+                            )?;
+                            patches.push(pre_entry_patch);
+
+                            let (r_entry_pos, v_entry_vel) =
+                                propagate_universal_state_vectors(curr_state.0, curr_state.1, curr_mu, dt_entry)?;
+
+                            let atm_params = AtmosphericModelParameters::new(
+                                curr_body.atmosphere_surface_density.unwrap_or(astronomicon_core::units::Density::new(1.225)),
+                                curr_body.atmosphere_scale_height.unwrap_or(Length::new(8500.0)),
+                                r_entry,
+                                curr_body.body_radius,
+                                curr_mu,
+                                None,
+                            );
+
+                            let pass_res = simulate_atmospheric_pass(
+                                r_entry_pos,
+                                v_entry_vel,
+                                entry_epoch,
+                                &atm_params,
+                                &default_vehicle_props,
+                                Duration::new(7200.0),
+                                Duration::new(0.5),
+                            )?;
+
+                            if let Ok(chebyshev_data) = pass_res.to_low_thrust_patch_data(7) {
+                                let exit_t = pass_res.exit_epoch.unwrap_or(entry_epoch + Duration::new(600.0));
+                                let aero_patch = TrajectoryPatch::new_low_thrust(
+                                    Uuid::new_v4(),
+                                    vehicle_id,
+                                    curr_body.id(),
+                                    entry_epoch,
+                                    exit_t,
+                                    curr_mu,
+                                    chebyshev_data,
+                                )?;
+                                patches.push(aero_patch);
+                            }
+
+                            match pass_res.outcome {
+                                AerocaptureOutcome::Captured { post_pass_elements, exit_epoch }
+                                | AerocaptureOutcome::Escaped { exit_elements: post_pass_elements, exit_epoch } => {
+                                    let conic_data = ConicPatchData::new(
+                                        post_pass_elements.semi_major_axis(),
+                                        post_pass_elements.eccentricity(),
+                                        post_pass_elements.inclination(),
+                                        post_pass_elements.longitude_of_ascending_node(),
+                                        post_pass_elements.argument_of_periapsis(),
+                                        post_pass_elements.true_anomaly(),
+                                    )?;
+                                    let post_patch = TrajectoryPatch::new_with_kind(
+                                        Uuid::new_v4(),
+                                        vehicle_id,
+                                        curr_body.id(),
+                                        exit_epoch,
+                                        None,
+                                        curr_mu,
+                                        TrajectoryPatchKind::Conic(conic_data),
+                                    )?;
+                                    patches.push(post_patch);
+                                    break;
+                                }
+                                _ => {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         if let Some((_, dt_exit)) = exit_event {

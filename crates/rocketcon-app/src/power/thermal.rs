@@ -2,6 +2,9 @@ use crate::aeroespacial::resolve_vehicle_aerodynamics;
 use crate::error::RocketResult;
 use astronomicon_core::units::{ Duration, HeatFlux, Luminosity, Position, Temperature };
 use astronomicon_db::SqlitePool;
+use rocketcon_core::constants::{
+    DEFAULT_MAX_STRUCTURAL_TEMPERATURE_K, DEFAULT_STRUCTURAL_HULL_EMISSIVITY,
+};
 use rocketcon_core::domain::ComponentDetails;
 use rocketcon_core::environment::EnvironmentSnapshot;
 use rocketcon_core::math::aerothermodynamics::{
@@ -12,8 +15,6 @@ use rocketcon_core::math::thermal_budget::{
     check_thermal_structural_limits,
     effective_ga_product_with_hull,
     vehicle_equilibrium_temperature_with_aero,
-    DEFAULT_MAX_STRUCTURAL_TEMPERATURE_K,
-    DEFAULT_STRUCTURAL_HULL_EMISSIVITY,
 };
 use rocketcon_db::repositories::vehicle as vehicle_repository;
 use rocketcon_db::repositories::vehicle_physical_state as vehicle_physical_state_repository;

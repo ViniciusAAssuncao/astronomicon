@@ -1,4 +1,4 @@
-use astronomicon_core::units::{Length, Mass, Position, VelocityVector};
+use astronomicon_core::units::{Density, Length, Mass, Position, VelocityVector};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -66,6 +66,10 @@ pub struct CelestialBodySoi {
     pub position: Position,
     pub mass: Mass,
     pub soi_radius: Length,
+    pub body_radius: Length,
+    pub atmosphere_boundary_altitude: Option<Length>,
+    pub atmosphere_scale_height: Option<Length>,
+    pub atmosphere_surface_density: Option<Density>,
 }
 
 impl CelestialBodySoi {
@@ -82,7 +86,46 @@ impl CelestialBodySoi {
             position,
             mass,
             soi_radius,
+            body_radius: Length::new(0.0),
+            atmosphere_boundary_altitude: None,
+            atmosphere_scale_height: None,
+            atmosphere_surface_density: None,
         }
+    }
+
+    pub fn new_with_geometry(
+        id: Uuid,
+        parent_id: Option<Uuid>,
+        position: Position,
+        mass: Mass,
+        soi_radius: Length,
+        body_radius: Length,
+    ) -> Self {
+        Self {
+            id,
+            parent_id,
+            position,
+            mass,
+            soi_radius,
+            body_radius,
+            atmosphere_boundary_altitude: None,
+            atmosphere_scale_height: None,
+            atmosphere_surface_density: None,
+        }
+    }
+
+    pub fn with_atmosphere(
+        mut self,
+        body_radius: Length,
+        atmosphere_boundary_altitude: Length,
+        atmosphere_scale_height: Length,
+        atmosphere_surface_density: Density,
+    ) -> Self {
+        self.body_radius = body_radius;
+        self.atmosphere_boundary_altitude = Some(atmosphere_boundary_altitude);
+        self.atmosphere_scale_height = Some(atmosphere_scale_height);
+        self.atmosphere_surface_density = Some(atmosphere_surface_density);
+        self
     }
 
     pub fn from_orbital_elements(
@@ -95,13 +138,7 @@ impl CelestialBodySoi {
     ) -> Self {
         let soi_radius =
             laplace_sphere_of_influence_radius(semi_major_axis, body_mass, parent_mass);
-        Self {
-            id,
-            parent_id,
-            position,
-            mass: body_mass,
-            soi_radius,
-        }
+        Self::new(id, parent_id, position, body_mass, soi_radius)
     }
 
     pub fn id(&self) -> Uuid {
@@ -122,6 +159,33 @@ impl CelestialBodySoi {
 
     pub fn soi_radius(&self) -> Length {
         self.soi_radius
+    }
+
+    pub fn body_radius(&self) -> Length {
+        self.body_radius
+    }
+
+    pub fn atmosphere_boundary_altitude(&self) -> Option<Length> {
+        self.atmosphere_boundary_altitude
+    }
+
+    pub fn atmosphere_scale_height(&self) -> Option<Length> {
+        self.atmosphere_scale_height
+    }
+
+    pub fn atmosphere_surface_density(&self) -> Option<Density> {
+        self.atmosphere_surface_density
+    }
+
+    pub fn atmospheric_entry_radius(&self) -> Option<Length> {
+        self.atmosphere_boundary_altitude
+            .map(|h| Length::new(self.body_radius.value() + h.value()))
+    }
+
+    pub fn has_atmosphere(&self) -> bool {
+        self.atmosphere_boundary_altitude.is_some()
+            && self.atmosphere_surface_density.is_some()
+            && self.atmosphere_scale_height.is_some()
     }
 
     pub fn contains_position(&self, position: Position) -> bool {

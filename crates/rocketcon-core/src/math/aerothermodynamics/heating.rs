@@ -1,10 +1,11 @@
+use crate::constants::{
+    DEFAULT_SUTTON_GRAVES_CONSTANT, MIN_LATERAL_AREA_M2, MIN_NOSE_RADIUS_M, STANTON_NUMBER_BASE,
+    STANTON_NUMBER_MACH_COEFF, STANTON_NUMBER_MACH_EXPONENT,
+};
 use crate::domain::{ComponentRecord, VehicleComponentEntry};
+use crate::math::aerothermodynamics::types::AerothermodynamicResults;
 use astronomicon_core::units::{Density, HeatFlux, Length, Luminosity, Speed};
-use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
-
-pub const DEFAULT_SUTTON_GRAVES_CONSTANT: f64 = 1.74153e-4;
-pub const DEFAULT_HULL_EMISSIVITY: f64 = 0.85;
 
 pub fn stagnation_point_heat_flux_with_constant(
     nose_radius: Length,
@@ -63,7 +64,8 @@ pub fn skin_friction_heat_flux(density: Density, speed: Speed, mach: f64) -> Hea
         0.0
     };
 
-    let stanton_number = 0.002 / (1.0 + 0.15 * m * m).powf(0.58);
+    let stanton_number =
+        STANTON_NUMBER_BASE / (1.0 + STANTON_NUMBER_MACH_COEFF * m * m).powf(STANTON_NUMBER_MACH_EXPONENT);
     let q = 0.5 * rho * v.powi(3) * stanton_number;
 
     if !q.is_finite() || q < 0.0 {
@@ -98,9 +100,9 @@ pub fn vehicle_geometry_thermal_properties(
         }
     }
 
-    let nose_r = (max_diameter * 0.5).max(0.05);
+    let nose_r = (max_diameter * 0.5).max(MIN_NOSE_RADIUS_M);
     let nose_area = PI * nose_r * nose_r;
-    let side_area = total_lateral_area.max(0.1);
+    let side_area = total_lateral_area.max(MIN_LATERAL_AREA_M2);
 
     (Length::new(nose_r), nose_area, side_area)
 }
@@ -138,36 +140,6 @@ pub fn total_aerodynamic_heat_power(
     Luminosity::new((p_stag + p_skin).max(0.0))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct AerothermodynamicResults {
-    pub stagnation_heat_flux: HeatFlux,
-    pub skin_friction_heat_flux: HeatFlux,
-    pub nose_radius: Length,
-    pub nose_area_m2: f64,
-    pub side_area_m2: f64,
-    pub total_aerodynamic_heat_power: Luminosity,
-}
-
-impl AerothermodynamicResults {
-    pub fn new(
-        stagnation_heat_flux: HeatFlux,
-        skin_friction_heat_flux: HeatFlux,
-        nose_radius: Length,
-        nose_area_m2: f64,
-        side_area_m2: f64,
-        total_aerodynamic_heat_power: Luminosity,
-    ) -> Self {
-        Self {
-            stagnation_heat_flux,
-            skin_friction_heat_flux,
-            nose_radius,
-            nose_area_m2,
-            side_area_m2,
-            total_aerodynamic_heat_power,
-        }
-    }
-}
-
 pub fn evaluate_vehicle_aerothermodynamics(
     entries: &[(VehicleComponentEntry, ComponentRecord)],
     active_stages: &[u32],
@@ -183,12 +155,12 @@ pub fn evaluate_vehicle_aerothermodynamics(
     let total_power =
         total_aerodynamic_heat_power(stag_flux, nose_area_m2, skin_flux, side_area_m2);
 
-    AerothermodynamicResults {
-        stagnation_heat_flux: stag_flux,
-        skin_friction_heat_flux: skin_flux,
+    AerothermodynamicResults::new(
+        stag_flux,
+        skin_flux,
         nose_radius,
         nose_area_m2,
         side_area_m2,
-        total_aerodynamic_heat_power: total_power,
-    }
+        total_power,
+    )
 }

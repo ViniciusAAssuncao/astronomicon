@@ -17,7 +17,6 @@ pub mod solar_power_generation;
 pub mod thermal_budget;
 pub mod vehicle_assembly;
 
-pub use aerodynamics::*;
 pub use aerothermodynamics::*;
 pub use attitude_control::*;
 pub use battery_dynamics::*;

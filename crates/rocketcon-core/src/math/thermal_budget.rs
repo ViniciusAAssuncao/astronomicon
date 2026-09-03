@@ -1,9 +1,9 @@
+pub use crate::constants::{
+    DEFAULT_MAX_STRUCTURAL_TEMPERATURE_K, DEFAULT_STRUCTURAL_HULL_EMISSIVITY,
+};
 use crate::error::{RocketDomainError, RocketDomainResult};
 use astronomicon_core::math::graybody_equilibrium_temperature;
 use astronomicon_core::units::{Luminosity, Temperature};
-
-pub const DEFAULT_MAX_STRUCTURAL_TEMPERATURE_K: f64 = 1800.0;
-pub const DEFAULT_STRUCTURAL_HULL_EMISSIVITY: f64 = 0.85;
 
 pub fn effective_ga_product(radiators: &[(f64, f64)]) -> f64 {
     radiators

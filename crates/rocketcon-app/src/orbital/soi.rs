@@ -1,8 +1,10 @@
 use crate::error::{RocketError, RocketResult};
 use astronomicon_core::domain::{Planet, Star};
-use astronomicon_core::units::{Duration, Length, Position, VelocityVector};
+use astronomicon_core::math::atmosphere::ideal_gas_density;
+use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
+use astronomicon_core::units::{Duration, Length, Position, Temperature, VelocityVector};
 use astronomicon_db::SqlitePool;
-use astronomicon_db::repositories::{planet_repository, star_repository};
+use astronomicon_db::repositories::{atmosphere_repository, planet_repository, star_repository};
 use rocketcon_core::math::orbital::sphere_of_influence::{
     laplace_sphere_of_influence_radius, CelestialBodySoi,
 };
@@ -48,12 +50,13 @@ pub async fn resolve_system_soi_bodies(
 
     for star in &stars {
         let star_pos = positions.get(&star.id()).copied().unwrap_or_else(Position::zero);
-        result.push(CelestialBodySoi::new(
+        result.push(CelestialBodySoi::new_with_geometry(
             star.id(),
             None,
             star_pos,
             star.mass(),
             Length::new(f64::INFINITY),
+            star.radius().unwrap_or_else(|| Length::new(6.957e8)),
         ));
     }
 
@@ -87,14 +90,35 @@ pub async fn resolve_system_soi_bodies(
 
         let rel_pos = Position::from_raw(planet_pos.raw() - parent_pos.raw());
         let soi_radius = laplace_sphere_of_influence_radius(sma, planet.mass(), parent_mass);
+        let eq_radius = planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3));
 
-        result.push(CelestialBodySoi::new(
+        let mut body_soi = CelestialBodySoi::new_with_geometry(
             planet.id(),
             parent_id,
             rel_pos,
             planet.mass(),
             soi_radius,
-        ));
+            eq_radius,
+        );
+
+        if let Ok(Some(atm)) = atmosphere_repository::get_by_planet_id(pool, &planet.id()).await {
+            let surface_temp = Temperature::new(288.15);
+            let mu = gravitational_parameter(planet.mass());
+            let surface_g = surface_gravity(mu, eq_radius);
+            if let Ok(scale_h) = atm.scale_height(surface_g, surface_temp) {
+                let boundary_h = Length::new(scale_h.value() * 12.0);
+                let molar_mass = atm.mean_molar_mass().unwrap_or(astronomicon_core::units::MolarMass::new(0.02897));
+                let surface_density = ideal_gas_density(atm.surface_pressure(), molar_mass, surface_temp);
+                body_soi = body_soi.with_atmosphere(
+                    eq_radius,
+                    boundary_h,
+                    scale_h,
+                    surface_density,
+                );
+            }
+        }
+
+        result.push(body_soi);
     }
 
     Ok(result)

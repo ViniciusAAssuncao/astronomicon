@@ -2,9 +2,11 @@ use crate::error::{RocketError, RocketResult};
 use crate::orbital::orbit::resolve_relative_state_for_body;
 use crate::orbital::soi::{resolve_body_state_at_epoch, resolve_system_soi_bodies};
 use astronomicon_core::domain::{Planet, Star};
-use astronomicon_core::units::{Duration, Length, Position, VelocityVector};
+use astronomicon_core::math::atmosphere::ideal_gas_density;
+use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
+use astronomicon_core::units::{Duration, Length, Position, Temperature, VelocityVector};
 use astronomicon_db::SqlitePool;
-use astronomicon_db::repositories::{planet_repository, star_repository};
+use astronomicon_db::repositories::{atmosphere_repository, planet_repository, star_repository};
 use rocketcon_core::domain::{TrajectoryPatch, VehiclePhysicalState};
 use rocketcon_core::math::orbital::sphere_of_influence::CelestialBodySoi;
 use rocketcon_core::math::orbital::trajectory_prediction::compute_conic_patches;
@@ -64,15 +66,28 @@ pub async fn generate_and_save_trajectory_patches(
         let sys_id = star.star_system_id().ok_or_else(|| {
             RocketError::Generic(format!("parent star '{}' has no system", star.id()))
         })?;
-        let soi_radius = Length::new(planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3)).value() * 100.0);
-        let cb = CelestialBodySoi::new(planet.id(), Some(star.id()), Position::zero(), planet.mass(), soi_radius);
+        let eq_radius = planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3));
+        let soi_radius = Length::new(eq_radius.value() * 100.0);
+        let mut cb = CelestialBodySoi::new_with_geometry(planet.id(), Some(star.id()), Position::zero(), planet.mass(), soi_radius, eq_radius);
+        if let Some(atm) = atmosphere_repository::get_by_planet_id(pool, &planet.id()).await? {
+            let surface_temp = Temperature::new(288.15);
+            let mu = gravitational_parameter(planet.mass());
+            let surface_g = surface_gravity(mu, eq_radius);
+            if let Ok(scale_h) = atm.scale_height(surface_g, surface_temp) {
+                let boundary_h = Length::new(scale_h.value() * 12.0);
+                let molar_mass = atm.mean_molar_mass().unwrap_or(astronomicon_core::units::MolarMass::new(0.02897));
+                let surface_density = ideal_gas_density(atm.surface_pressure(), molar_mass, surface_temp);
+                cb = cb.with_atmosphere(eq_radius, boundary_h, scale_h, surface_density);
+            }
+        }
         (sys_id, cb)
     } else if let Some(s_row) = star_repository::get_by_id(pool, &ref_id).await? {
         let star = Star::try_from(s_row)?;
         let sys_id = star.star_system_id().ok_or_else(|| {
             RocketError::Generic(format!("star '{}' has no system", star.id()))
         })?;
-        let cb = CelestialBodySoi::new(star.id(), None, Position::zero(), star.mass(), Length::new(f64::INFINITY));
+        let s_radius = star.radius().unwrap_or_else(|| Length::new(6.957e8));
+        let cb = CelestialBodySoi::new_with_geometry(star.id(), None, Position::zero(), star.mass(), Length::new(f64::INFINITY), s_radius);
         (sys_id, cb)
     } else {
         return Err(RocketError::Generic(format!("reference body '{}' not found", ref_id)));
@@ -95,7 +110,7 @@ pub async fn generate_and_save_trajectory_patches(
         mu,
         &soi_bodies,
         total_epoch,
-        5,
+        6,
         max_lookahead,
     )?;
 
