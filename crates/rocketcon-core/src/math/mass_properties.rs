@@ -153,7 +153,7 @@ pub fn resolve_mass_properties(
         let mass = Mass::new(m);
 
         let i_local = match record.details() {
-            ComponentDetails::PropellantTank(_) => {
+            ComponentDetails::PropellantTank(_) | ComponentDetails::Hull(_) => {
                 thin_shell_cylinder_inertia_tensor(mass, radius, length)
             }
             _ => solid_cylinder_inertia_tensor(mass, radius, length),

@@ -5,13 +5,13 @@ use crate::repositories::component_attributes::{
     required_text, required_uuid,
 };
 use astronomicon_core::units::{
-    Angle, AngularMomentum, AngularVelocity, Duration, Energy, Force, Impulse, Luminosity, Mass,
-    Pressure, Speed, Torque, Volume,
+    Angle, AngularMomentum, AngularVelocity, Duration, Energy, Force, Impulse, Length, Luminosity,
+    Mass, Pressure, Speed, Torque, Volume,
 };
 use rocketcon_core::domain::{
     BatterySpecification, Component, ComponentDetails, ComponentKind, ComponentRecord,
-    EngineSpecification, IgnitionType, NuclearReactorSpecification, NuclearReactorType,
-    PayloadSpecification, PropellantTankSpecification, RadiatorSpecification,
+    EngineSpecification, HullSpecification, IgnitionType, NuclearReactorSpecification,
+    NuclearReactorType, PayloadSpecification, PropellantTankSpecification, RadiatorSpecification,
     ReactionControlThrusterSpecification, ReactionWheelSpecification, RtgSpecification,
     SolarPanelSpecification,
 };
@@ -36,6 +36,21 @@ async fn fetch_component_details(
 
     match component.kind() {
         ComponentKind::Cpu => Ok(ComponentDetails::Cpu),
+        ComponentKind::Hull => {
+            let material_id = required_uuid(&attr_map, &id, "material_id")?;
+            let wall_thickness_m = match optional_numeric(&attr_map, &id, "wall_thickness_m")? {
+                Some(v) => v,
+                None => required_numeric(&attr_map, &id, "wall_thickness")?,
+            };
+
+            let spec = HullSpecification::new(
+                id,
+                material_id,
+                Length::new(wall_thickness_m),
+            )?;
+
+            Ok(ComponentDetails::Hull(spec))
+        }
         ComponentKind::Engine => {
             let fuel_propellant_id = required_uuid(&attr_map, &id, "fuel_propellant_id")?;
             let specific_impulse_vacuum_s =

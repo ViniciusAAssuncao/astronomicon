@@ -14,4 +14,5 @@ pub enum ComponentKind {
     Radiator,
     PayloadFairing,
     PayloadDispenser,
+    Hull,
 }
