@@ -61,7 +61,9 @@ pub use rtg_specification::RtgSpecification;
 pub use save_metadata::SaveMetadata;
 pub use solar_panel_specification::{SolarPanelSpecification, DEFAULT_SOLAR_PANEL_ABSORPTIVITY};
 pub use thrust_producer::ThrustProducer;
-pub use trajectory_patch::TrajectoryPatch;
+pub use trajectory_patch::{
+    ConicPatchData, LowThrustPatchData, TrajectoryPatch, TrajectoryPatchKind,
+};
 pub use vehicle::{Vehicle, VehicleBuilder};
 pub use vehicle_component::VehicleComponentEntry;
 pub use vehicle_kind::VehicleKind;
