@@ -5,6 +5,7 @@ pub mod error;
 pub mod orbital;
 pub mod performance;
 pub mod power;
+pub mod thermal;
 pub mod universe;
 
 pub use aeroespacial::*;
@@ -14,4 +15,5 @@ pub use error::{RocketError, RocketResult};
 pub use orbital::*;
 pub use performance::*;
 pub use power::*;
+pub use thermal::*;
 pub use universe::*;

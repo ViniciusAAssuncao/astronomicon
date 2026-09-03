@@ -1,6 +1,7 @@
 use crate::domain::battery_specification::BatterySpecification;
 use crate::domain::component::Component;
 use crate::domain::engine_specification::EngineSpecification;
+use crate::domain::heat_shield_specification::HeatShieldSpecification;
 use crate::domain::hull_specification::HullSpecification;
 use crate::domain::nuclear_reactor_specification::NuclearReactorSpecification;
 use crate::domain::payload_specification::PayloadSpecification;
@@ -26,6 +27,7 @@ pub enum ComponentDetails {
     Radiator(RadiatorSpecification),
     Payload(PayloadSpecification),
     Hull(HullSpecification),
+    HeatShield(HeatShieldSpecification),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

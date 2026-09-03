@@ -15,4 +15,5 @@ pub enum ComponentKind {
     PayloadFairing,
     PayloadDispenser,
     Hull,
+    HeatShield,
 }

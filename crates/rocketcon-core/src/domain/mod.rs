@@ -11,6 +11,8 @@ pub mod energy_reservoir_state;
 pub mod engine_fault;
 pub mod engine_specification;
 pub mod engine_state;
+pub mod heat_shield_specification;
+pub mod heat_shield_state;
 pub mod hull_specification;
 pub mod ignition_type;
 pub mod material;
@@ -47,6 +49,8 @@ pub use energy_reservoir_state::EnergyReservoirState;
 pub use engine_fault::EngineFaultKind;
 pub use engine_specification::{EngineSpecification, EngineSpecificationBuilder};
 pub use engine_state::{is_valid_engine_transition, EngineState};
+pub use heat_shield_specification::HeatShieldSpecification;
+pub use heat_shield_state::HeatShieldState;
 pub use hull_specification::HullSpecification;
 pub use ignition_type::IgnitionType;
 pub use material::{

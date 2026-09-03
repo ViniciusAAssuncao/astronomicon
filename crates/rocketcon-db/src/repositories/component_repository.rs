@@ -10,10 +10,10 @@ use astronomicon_core::units::{
 };
 use rocketcon_core::domain::{
     BatterySpecification, Component, ComponentDetails, ComponentKind, ComponentRecord,
-    EngineSpecification, HullSpecification, IgnitionType, NuclearReactorSpecification,
-    NuclearReactorType, PayloadSpecification, PropellantTankSpecification, RadiatorSpecification,
-    ReactionControlThrusterSpecification, ReactionWheelSpecification, RtgSpecification,
-    SolarPanelSpecification,
+    EngineSpecification, HeatShieldSpecification, HullSpecification, IgnitionType,
+    NuclearReactorSpecification, NuclearReactorType, PayloadSpecification,
+    PropellantTankSpecification, RadiatorSpecification, ReactionControlThrusterSpecification,
+    ReactionWheelSpecification, RtgSpecification, SolarPanelSpecification,
 };
 use rocketcon_core::error::RocketDomainError;
 use rocketcon_core::physics_reference::{NuclearFuelType, RadioisotopeType};
@@ -50,6 +50,21 @@ async fn fetch_component_details(
             )?;
 
             Ok(ComponentDetails::Hull(spec))
+        }
+        ComponentKind::HeatShield => {
+            let material_id = required_uuid(&attr_map, &id, "material_id")?;
+            let shield_thickness_m = match optional_numeric(&attr_map, &id, "shield_thickness_m")? {
+                Some(v) => v,
+                None => required_numeric(&attr_map, &id, "shield_thickness")?,
+            };
+
+            let spec = HeatShieldSpecification::new(
+                id,
+                material_id,
+                Length::new(shield_thickness_m),
+            )?;
+
+            Ok(ComponentDetails::HeatShield(spec))
         }
         ComponentKind::Engine => {
             let fuel_propellant_id = required_uuid(&attr_map, &id, "fuel_propellant_id")?;
