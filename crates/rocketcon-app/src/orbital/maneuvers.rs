@@ -7,15 +7,15 @@ use astronomicon_core::math::atmosphere::ideal_gas_density;
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::rotation::angular_velocity_from_rotation_period;
 use astronomicon_core::units::{
-    Angle, Duration, GravitationalParameter, HeatFlux, Length, Position, Speed,
-    Temperature, Vector3, VelocityVector,
+    Angle, Duration, GravitationalParameter, HeatFlux, Length, Position, Speed, Temperature,
+    Vector3, VelocityVector,
 };
 use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{atmosphere_repository, planet_repository, star_repository};
 use rocketcon_core::constants::{
-    DEFAULT_HULL_EMISSIVITY, DEFAULT_MAX_STRUCTURAL_TEMPERATURE_K,
+    DEFAULT_AEROCAPTURE_MAX_HEAT_FLUX_W_PER_M2, DEFAULT_HULL_EMISSIVITY,
 };
-use rocketcon_core::domain::VehiclePhysicalState;
+use rocketcon_core::domain::{ComponentDetails, VehiclePhysicalState};
 use rocketcon_core::math::aerodynamics::{
     drag_coefficient_estimate, vehicle_reference_cross_section_area,
 };
@@ -33,6 +33,7 @@ use rocketcon_core::math::orbital::orbital_maneuvers::{
     local_to_inertial_delta_v, node_plane_change_delta_v, orbital_insertion_delta_v,
     BiEllipticTransferResult, HohmannTransferResult, ManeuverDeltaV, ManeuverNode,
 };
+use rocketcon_db::repositories::material as material_repository;
 use rocketcon_db::repositories::vehicle as vehicle_repository;
 use rocketcon_db::repositories::vehicle_physical_state as vehicle_physical_state_repository;
 use uuid::Uuid;
@@ -349,12 +350,35 @@ pub async fn plan_vehicle_aerocapture(
     let ref_area = vehicle_reference_cross_section_area(&components, &stages);
     let cd = drag_coefficient_estimate(5.0);
 
-    let max_temp = DEFAULT_MAX_STRUCTURAL_TEMPERATURE_K;
-    let max_heat_flux = max_allowable_heat_flux.unwrap_or_else(|| {
-        let sigma = astronomicon_core::units::constants::STEFAN_BOLTZMANN_CONSTANT;
-        let q = DEFAULT_HULL_EMISSIVITY * sigma * max_temp.powi(4);
-        HeatFlux::new(q)
-    });
+    let max_heat_flux = if let Some(flux) = max_allowable_heat_flux {
+        flux
+    } else {
+        let mut min_max_service_temp = None;
+        for (entry, record) in &components {
+            if !stages.contains(&entry.stage_index()) {
+                continue;
+            }
+            if let ComponentDetails::Hull(hull) = record.details() {
+                if let Ok(Some(mat_rec)) = material_repository::get_by_id(pool, &hull.material_id()).await {
+                    let temp = mat_rec.material().max_service_temperature().value();
+                    min_max_service_temp = Some(match min_max_service_temp {
+                        Some(cur_min) if temp < cur_min => temp,
+                        Some(cur_min) => cur_min,
+                        None => temp,
+                    });
+                }
+            }
+        }
+
+        match min_max_service_temp {
+            Some(t) => {
+                let sigma = astronomicon_core::units::constants::STEFAN_BOLTZMANN_CONSTANT;
+                let q = DEFAULT_HULL_EMISSIVITY * sigma * t.powi(4);
+                HeatFlux::new(q)
+            }
+            None => HeatFlux::new(DEFAULT_AEROCAPTURE_MAX_HEAT_FLUX_W_PER_M2),
+        }
+    };
 
     let max_g = max_allowable_g_load.unwrap_or(12.0);
 
