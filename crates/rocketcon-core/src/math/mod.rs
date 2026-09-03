@@ -23,6 +23,7 @@ pub use collision::*;
 pub use mass_properties::*;
 pub use nuclear_decay::*;
 pub use nuclear_reactor::*;
+pub use numerical_integration::*;
 pub use orbital::*;
 pub use power_budget::*;
 pub use propulsion_dynamics::*;

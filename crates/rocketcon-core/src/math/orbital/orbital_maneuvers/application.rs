@@ -1,4 +1,4 @@
-use super::frames::{local_to_inertial_delta_v, apply_local_maneuver};
+use super::frames::local_to_inertial_delta_v;
 use super::types::ManeuverDeltaV;
 use crate::error::RocketDomainResult;
 use crate::math::orbital::conversions::cartesian_to_osculating_elements;

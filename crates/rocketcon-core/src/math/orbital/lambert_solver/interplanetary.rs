@@ -1,8 +1,13 @@
 use super::solver::solve_lambert;
-use super::types::{LambertSolution, PorkchopPoint, TransferDirection};
-use crate::error::{RocketDomainError, RocketDomainResult};
+use super::types::{ PorkchopPoint, TransferDirection };
+use crate::error::{ RocketDomainError, RocketDomainResult };
 use astronomicon_core::units::{
-    Duration, GravitationalParameter, Length, Position, Speed, VelocityVector,
+    Duration,
+    GravitationalParameter,
+    Length,
+    Position,
+    Speed,
+    VelocityVector,
 };
 
 pub fn compute_porkchop_point(
@@ -12,14 +17,14 @@ pub fn compute_porkchop_point(
     arrival_body_velocity: VelocityVector,
     time_of_flight: Duration,
     mu_central: GravitationalParameter,
-    direction: TransferDirection,
+    direction: TransferDirection
 ) -> RocketDomainResult<PorkchopPoint> {
     let solution = solve_lambert(
         departure_position,
         arrival_position,
         time_of_flight,
         mu_central,
-        direction,
+        direction
     )?;
 
     let v_dep_rel = solution.departure_velocity.raw() - departure_body_velocity.raw();
@@ -43,18 +48,19 @@ pub fn compute_porkchop_point(
 pub fn interplanetary_injection_delta_v(
     departure_body_parking_radius: Length,
     departure_body_mu: GravitationalParameter,
-    v_infinity_departure: Speed,
+    v_infinity_departure: Speed
 ) -> Speed {
     let r_park = departure_body_parking_radius.value();
     let mu = departure_body_mu.value();
     let v_inf = v_infinity_departure.value();
 
-    if r_park <= 0.0
-        || mu <= 0.0
-        || !r_park.is_finite()
-        || !mu.is_finite()
-        || !v_inf.is_finite()
-        || v_inf < 0.0
+    if
+        r_park <= 0.0 ||
+        mu <= 0.0 ||
+        !r_park.is_finite() ||
+        !mu.is_finite() ||
+        !v_inf.is_finite() ||
+        v_inf < 0.0
     {
         return Speed::new(0.0);
     }
@@ -68,18 +74,19 @@ pub fn interplanetary_capture_delta_v(
     arrival_body_target_periapsis: Length,
     arrival_body_target_apoapsis: Option<Length>,
     arrival_body_mu: GravitationalParameter,
-    v_infinity_arrival: Speed,
+    v_infinity_arrival: Speed
 ) -> RocketDomainResult<Speed> {
     let r_p = arrival_body_target_periapsis.value();
     let mu = arrival_body_mu.value();
     let v_inf = v_infinity_arrival.value();
 
-    if r_p <= 0.0
-        || mu <= 0.0
-        || !r_p.is_finite()
-        || !mu.is_finite()
-        || !v_inf.is_finite()
-        || v_inf < 0.0
+    if
+        r_p <= 0.0 ||
+        mu <= 0.0 ||
+        !r_p.is_finite() ||
+        !mu.is_finite() ||
+        !v_inf.is_finite() ||
+        v_inf < 0.0
     {
         return Err(RocketDomainError::InvalidInvariant {
             field: "parameters".to_string(),

@@ -13,10 +13,10 @@ use rocketcon_core::domain::{
     VehicleControlInput,
     VehiclePhysicalState,
 };
+use rocketcon_core::math::numerical_integration::rk4_step;
 use rocketcon_core::math::{
     gimbal_actuator_step,
     reaction_wheel_torque_and_momentum_delta,
-    rk4_step,
     RigidBodyState,
 };
 use rocketcon_db::repositories::{

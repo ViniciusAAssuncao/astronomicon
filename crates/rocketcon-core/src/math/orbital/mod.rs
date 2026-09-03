@@ -1,5 +1,7 @@
 pub mod conversions;
 pub mod hyperbolic;
+pub mod lambert_solver;
+pub mod orbital_maneuvers;
 pub mod orbital_perturbation;
 pub mod parabolic;
 pub mod sphere_of_influence;
@@ -10,6 +12,8 @@ pub mod universal;
 
 pub use conversions::*;
 pub use hyperbolic::*;
+pub use lambert_solver::*;
+pub use orbital_maneuvers::*;
 pub use orbital_perturbation::*;
 pub use parabolic::*;
 pub use sphere_of_influence::*;
