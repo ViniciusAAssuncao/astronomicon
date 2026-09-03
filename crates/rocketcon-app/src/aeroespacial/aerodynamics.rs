@@ -6,33 +6,27 @@ use astronomicon_app::error::AppResult;
 use astronomicon_app::shape::effective_polar_radius_for_planet;
 use astronomicon_core::domain::Planet;
 use astronomicon_core::error::DomainError;
-use astronomicon_core::math::reference_frames::{ geodetic_altitude_and_normal, topocentric_basis };
+use astronomicon_core::math::reference_frames::{geodetic_altitude_and_normal, topocentric_basis};
 use astronomicon_core::math::rotation::angular_velocity_from_rotation_period;
-use astronomicon_core::math::thermodynamics::{ adiabatic_index_of_gas_mixture, speed_of_sound };
+use astronomicon_core::math::thermodynamics::{adiabatic_index_of_gas_mixture, speed_of_sound};
 use astronomicon_core::units::constants::UNIVERSAL_GAS_CONSTANT;
 use astronomicon_core::units::{
-    Angle,
-    AngularVelocityVector,
-    Density,
-    Duration,
-    ForceVector,
-    Length,
-    Pressure,
-    Speed,
-    Vector3,
+    Angle, AngularVelocityVector, Density, Duration, ForceVector, HeatFlux, Length, Pressure,
+    Speed, TorqueVector, Vector3,
 };
 use astronomicon_db::SqlitePool;
-use astronomicon_db::repositories::{ atmosphere_repository, planet_repository };
-use rocketcon_core::domain::{ ComponentRecord, VehicleComponentEntry, VehiclePhysicalState };
+use astronomicon_db::repositories::{atmosphere_repository, planet_repository};
+use rocketcon_core::domain::{ComponentRecord, VehicleComponentEntry, VehiclePhysicalState};
 use rocketcon_core::math::aerodynamics::{
-    aerodynamic_drag_force,
-    drag_coefficient_estimate,
-    dynamic_pressure,
-    local_atmospheric_relative_velocity,
-    mach_number,
+    center_of_pressure, compute_aerodynamic_angles, compute_aerodynamic_forces_and_torque,
+    drag_coefficient_estimate, dynamic_pressure, local_atmospheric_relative_velocity, mach_number,
     vehicle_reference_cross_section_area,
 };
-use serde::{ Deserialize, Serialize };
+use rocketcon_core::math::aerothermodynamics::{
+    stagnation_point_heat_flux, vehicle_geometry_thermal_properties,
+};
+use rocketcon_core::math::resolve_mass_properties_without_payloads;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -47,6 +41,11 @@ pub struct AerodynamicDiagnostic {
     pub relative_airspeed: Speed,
     pub drag_force: ForceVector,
     pub ambient_pressure: Pressure,
+    pub angle_of_attack: Angle,
+    pub sideslip_angle: Angle,
+    pub center_of_pressure: Vector3,
+    pub aerodynamic_torque: TorqueVector,
+    pub stagnation_heat_flux: HeatFlux,
 }
 
 pub async fn resolve_vehicle_aerodynamics(
@@ -57,7 +56,7 @@ pub async fn resolve_vehicle_aerodynamics(
     components: &[(VehicleComponentEntry, ComponentRecord)],
     active_stages: &[u32],
     universe_epoch: Duration,
-    at_epoch: Duration
+    at_epoch: Duration,
 ) -> AppResult<Option<AerodynamicDiagnostic>> {
     let atmosphere = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
         Some(atm) => atm,
@@ -84,14 +83,14 @@ pub async fn resolve_vehicle_aerodynamics(
         pool,
         planet_id,
         universe_epoch,
-        at_epoch
+        at_epoch,
     ).await?;
     let r_body = planet_orientation.inverse().rotate_vector(r_rel_inertial);
 
     let (altitude, normal_body) = geodetic_altitude_and_normal(
         eq_radius,
         pol_radius,
-        astronomicon_core::units::Position::from_raw(r_body)
+        astronomicon_core::units::Position::from_raw(r_body),
     );
 
     if altitude.value() < 0.0 {
@@ -106,14 +105,14 @@ pub async fn resolve_vehicle_aerodynamics(
         planet_id,
         latitude,
         universe_epoch,
-        at_epoch
+        at_epoch,
     ).await?;
 
     let (p_alt, t_alt, rho_alt) = resolve_atmospheric_profile_at_altitude(
         pool,
         planet_id,
         surface_temperature,
-        altitude
+        altitude,
     ).await?;
 
     if rho_alt.value() <= 0.0 {
@@ -125,7 +124,7 @@ pub async fn resolve_vehicle_aerodynamics(
         planet_id,
         latitude,
         universe_epoch,
-        at_epoch
+        at_epoch,
     ).await?;
 
     let normal_inertial = planet_orientation.rotate_vector(normal_body);
@@ -135,13 +134,13 @@ pub async fn resolve_vehicle_aerodynamics(
     let rot_period = planet.rotation_period().unwrap_or_else(|| Duration::new(86400.0));
     let omega_mag = angular_velocity_from_rotation_period(rot_period);
     let planet_omega_inertial = AngularVelocityVector::from_raw(
-        spin_axis_inertial * omega_mag.value()
+        spin_axis_inertial * omega_mag.value(),
     );
 
     let wind_topocentric = Vector3::new(
         wind_diag.surface_wind_u.value(),
         wind_diag.surface_wind_v.value(),
-        0.0
+        0.0,
     );
 
     let v_rel = local_atmospheric_relative_velocity(
@@ -151,7 +150,7 @@ pub async fn resolve_vehicle_aerodynamics(
         wind_topocentric,
         east,
         north,
-        up
+        up,
     );
 
     let v_rel_speed = v_rel.magnitude();
@@ -167,7 +166,23 @@ pub async fn resolve_vehicle_aerodynamics(
     let ref_area = vehicle_reference_cross_section_area(components, active_stages);
 
     let q = dynamic_pressure(rho_alt, v_rel_speed);
-    let drag = aerodynamic_drag_force(q, cd, ref_area, v_rel.raw());
+
+    let angles = compute_aerodynamic_angles(vehicle_physical_state.orientation(), v_rel.raw());
+    let cop = center_of_pressure(components, active_stages, mach);
+    let com = resolve_mass_properties_without_payloads(components, active_stages, 1.0).center_of_mass();
+
+    let (drag_force, aero_torque) = compute_aerodynamic_forces_and_torque(
+        q,
+        ref_area,
+        mach,
+        vehicle_physical_state.orientation(),
+        v_rel.raw(),
+        cop,
+        com,
+    );
+
+    let (nose_radius, _, _) = vehicle_geometry_thermal_properties(components, active_stages);
+    let stag_heat_flux = stagnation_point_heat_flux(nose_radius, rho_alt, v_rel_speed);
 
     Ok(
         Some(AerodynamicDiagnostic {
@@ -179,8 +194,13 @@ pub async fn resolve_vehicle_aerodynamics(
             air_density: rho_alt,
             speed_of_sound: sound_speed,
             relative_airspeed: v_rel_speed,
-            drag_force: drag,
+            drag_force,
             ambient_pressure: p_alt,
-        })
+            angle_of_attack: angles.angle_of_attack,
+            sideslip_angle: angles.sideslip_angle,
+            center_of_pressure: cop,
+            aerodynamic_torque: aero_torque,
+            stagnation_heat_flux: stag_heat_flux,
+        }),
     )
 }

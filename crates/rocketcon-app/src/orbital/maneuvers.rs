@@ -96,7 +96,7 @@ pub async fn execute_impulsive_maneuver(
 
     let new_velocity = apply_impulsive_delta_v(current_physical_state.velocity(), delta_v_inertial);
 
-    let new_state = VehiclePhysicalState::new(
+    let new_state = VehiclePhysicalState::new_with_max_q(
         vehicle_id,
         current_physical_state.position(),
         new_velocity,
@@ -105,6 +105,8 @@ pub async fn execute_impulsive_maneuver(
         current_physical_state.reference_body_id(),
         universe_epoch,
         at_epoch,
+        current_physical_state.max_dynamic_pressure(),
+        current_physical_state.max_dynamic_pressure_epoch(),
     )?;
 
     vehicle_physical_state_repository::upsert(pool, &new_state).await?;

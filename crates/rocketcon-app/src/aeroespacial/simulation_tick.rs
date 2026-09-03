@@ -10,6 +10,7 @@ use crate::power::budget::resolve_vehicle_power_budget;
 use astronomicon_app::ephemeris::resolve_planet_orientation;
 use astronomicon_app::shape::effective_polar_radius_for_planet;
 use astronomicon_core::math::rotation::angular_velocity_from_rotation_period;
+use astronomicon_core::units::constants::STANDARD_GRAVITY;
 use astronomicon_core::units::{
     Acceleration, AccelerationVector, AngularVelocityVector, Duration, Length, Pressure, Vector3,
 };
@@ -32,6 +33,9 @@ pub struct VehicleTickReport {
     pub gravitational_acceleration: AccelerationVector,
     pub surface_contact: SurfaceContactState,
     pub power_budget: VehiclePowerBudget,
+    pub axial_g_load: f64,
+    pub lateral_g_load: f64,
+    pub total_g_load: f64,
 }
 
 impl VehicleTickReport {
@@ -41,6 +45,9 @@ impl VehicleTickReport {
         gravitational_acceleration: AccelerationVector,
         surface_contact: SurfaceContactState,
         power_budget: VehiclePowerBudget,
+        axial_g_load: f64,
+        lateral_g_load: f64,
+        total_g_load: f64,
     ) -> Self {
         Self {
             physical_state,
@@ -48,6 +55,9 @@ impl VehicleTickReport {
             gravitational_acceleration,
             surface_contact,
             power_budget,
+            axial_g_load,
+            lateral_g_load,
+            total_g_load,
         }
     }
 
@@ -85,6 +95,30 @@ impl VehicleTickReport {
 
     pub fn dynamic_pressure(&self) -> Option<Pressure> {
         self.aerodynamics.map(|a| a.dynamic_pressure)
+    }
+
+    pub fn axial_g_load(&self) -> f64 {
+        self.axial_g_load
+    }
+
+    pub fn lateral_g_load(&self) -> f64 {
+        self.lateral_g_load
+    }
+
+    pub fn total_g_load(&self) -> f64 {
+        self.total_g_load
+    }
+
+    pub fn max_dynamic_pressure(&self) -> Option<Pressure> {
+        self.physical_state.max_dynamic_pressure()
+    }
+
+    pub fn max_q(&self) -> Option<Pressure> {
+        self.physical_state.max_q()
+    }
+
+    pub fn max_q_epoch(&self) -> Option<Duration> {
+        self.physical_state.max_q_epoch()
     }
 }
 
@@ -246,7 +280,7 @@ pub async fn advance_vehicle_simulation(
 
     let has_contact = surface_contact_current.has_contact();
 
-    let new_physical_state = if is_propelling || has_drag || has_contact {
+    let mut new_physical_state = if is_propelling || has_drag || has_contact {
         let state = advance_vehicle_physical_state(
             pool,
             vehicle_id,
@@ -312,11 +346,57 @@ pub async fn advance_vehicle_simulation(
     )
     .await?;
 
+    let (max_q, max_q_epoch) = match (new_physical_state.max_dynamic_pressure(), aero_diag) {
+        (Some(prev_q), Some(diag)) => {
+            if diag.dynamic_pressure.value() > prev_q.value() {
+                (Some(diag.dynamic_pressure), Some(total_epoch_new))
+            } else {
+                (Some(prev_q), new_physical_state.max_dynamic_pressure_epoch())
+            }
+        }
+        (None, Some(diag)) => (Some(diag.dynamic_pressure), Some(total_epoch_new)),
+        (Some(prev_q), None) => (Some(prev_q), new_physical_state.max_dynamic_pressure_epoch()),
+        (None, None) => (None, None),
+    };
+
+    if max_q != new_physical_state.max_dynamic_pressure() {
+        new_physical_state = new_physical_state.with_max_dynamic_pressure(max_q, max_q_epoch);
+        vehicle_physical_state_repository::upsert(pool, &new_physical_state).await?;
+    }
+
+    let dt_val = dt.value();
+    let net_linear_acc = if dt_val > 0.0 && dt_val.is_finite() {
+        (new_physical_state.velocity().raw() - current_physical_state.velocity().raw()) / dt_val
+    } else {
+        Vector3::zero()
+    };
+
+    let proper_acc_world = if surface_contact.has_contact() {
+        let n = surface_contact.surface_normal_world();
+        let g_proj = grav_acc.raw().dot(&n);
+        if g_proj < 0.0 {
+            -n * g_proj
+        } else {
+            -grav_acc.raw()
+        }
+    } else {
+        net_linear_acc - grav_acc.raw()
+    };
+
+    let proper_acc_body = new_physical_state.orientation().inverse().rotate_vector(proper_acc_world);
+
+    let axial_g_load = proper_acc_body.2 / STANDARD_GRAVITY;
+    let lateral_g_load = (proper_acc_body.0 * proper_acc_body.0 + proper_acc_body.1 * proper_acc_body.1).sqrt() / STANDARD_GRAVITY;
+    let total_g_load = proper_acc_body.magnitude() / STANDARD_GRAVITY;
+
     Ok(VehicleTickReport::new(
         new_physical_state,
         aero_diag,
         grav_acc,
         surface_contact,
         power_budget,
+        axial_g_load,
+        lateral_g_load,
+        total_g_load,
     ))
 }

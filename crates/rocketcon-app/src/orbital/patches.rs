@@ -175,7 +175,7 @@ pub async fn propagate_coasting_vehicle(
 
     let new_orientation = physical_state.orientation().integrate(physical_state.angular_velocity(), dt);
 
-    let new_physical_state = VehiclePhysicalState::new(
+    let new_physical_state = VehiclePhysicalState::new_with_max_q(
         vehicle_id,
         new_pos,
         new_vel,
@@ -184,6 +184,8 @@ pub async fn propagate_coasting_vehicle(
         ref_id,
         universe_epoch,
         new_at_epoch,
+        physical_state.max_dynamic_pressure(),
+        physical_state.max_dynamic_pressure_epoch(),
     )?;
 
     vehicle_physical_state_repository::upsert(pool, &new_physical_state).await?;

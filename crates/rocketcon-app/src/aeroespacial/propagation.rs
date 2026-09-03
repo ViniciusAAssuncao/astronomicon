@@ -3,28 +3,18 @@ use crate::aeroespacial::dynamics_step::evaluate_rigid_body_derivative_with_ambi
 use crate::aeroespacial::gravity::resolve_vehicle_gravitational_acceleration;
 use crate::aeroespacial::vehicle::resolve_vehicle_snapshot;
 use crate::environment::load_environment_snapshot;
-use crate::error::{ RocketError, RocketResult };
+use crate::error::{RocketError, RocketResult};
 use astronomicon_core::units::{
-    Angle,
-    AngularMomentum,
-    Duration,
-    ForceVector,
-    Pressure,
-    Vector3,
+    Angle, AngularMomentum, Duration, ForceVector, Pressure, Vector3,
 };
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::{
-    ComponentDetails,
-    ComponentOperationalState,
-    ReactionWheelState,
-    VehicleControlInput,
+    ComponentDetails, ComponentOperationalState, ReactionWheelState, VehicleControlInput,
     VehiclePhysicalState,
 };
 use rocketcon_core::math::numerical_integration::rk4_step;
 use rocketcon_core::math::{
-    gimbal_actuator_step,
-    reaction_wheel_torque_and_momentum_delta,
-    RigidBodyState,
+    gimbal_actuator_step, reaction_wheel_torque_and_momentum_delta, RigidBodyState,
 };
 use rocketcon_db::repositories::{
     operational_state as operational_state_repository,
@@ -40,7 +30,7 @@ pub async fn advance_vehicle_physical_state(
     vehicle_id: Uuid,
     dt: Duration,
     universe_epoch: Duration,
-    control_input: &VehicleControlInput
+    control_input: &VehicleControlInput,
 ) -> RocketResult<VehiclePhysicalState> {
     let physical_state = vehicle_physical_state_repository
         ::get_by_vehicle_id(pool, &vehicle_id).await?
@@ -58,29 +48,25 @@ pub async fn advance_vehicle_physical_state(
         pool,
         vehicle_id,
         universe_epoch,
-        current_at_epoch
+        current_at_epoch,
     ).await?;
 
     let mut operational_states = HashMap::new();
     for (entry, _) in &components {
-        if
-            let Some(op) = operational_state_repository::get_by_vehicle_component_id(
-                pool,
-                &entry.id()
-            ).await?
-        {
+        if let Some(op) = operational_state_repository::get_by_vehicle_component_id(
+            pool,
+            &entry.id(),
+        ).await? {
             operational_states.insert(entry.id(), op);
         }
     }
 
     let mut reaction_wheel_states = HashMap::new();
     for (entry, _) in &components {
-        if
-            let Some(rw) = reaction_wheel_state_repository::get_by_vehicle_component_id(
-                pool,
-                &entry.id()
-            ).await?
-        {
+        if let Some(rw) = reaction_wheel_state_repository::get_by_vehicle_component_id(
+            pool,
+            &entry.id(),
+        ).await? {
             reaction_wheel_states.insert(entry.id(), rw);
         }
     }
@@ -91,20 +77,16 @@ pub async fn advance_vehicle_physical_state(
         }
 
         if let ComponentDetails::Engine(engine) = record.details() {
-            if
-                let (Some(slew_rate), Some(cmd)) = (
-                    engine.gimbal_slew_rate(),
-                    control_input
-                        .command_for(&entry.id())
-                        .or_else(|| control_input.command_for(&entry.component_id())),
-                )
-            {
-                if
-                    let (Some(target_pitch), Some(target_yaw)) = (
-                        cmd.target_gimbal_pitch,
-                        cmd.target_gimbal_yaw,
-                    )
-                {
+            if let (Some(slew_rate), Some(cmd)) = (
+                engine.gimbal_slew_rate(),
+                control_input
+                    .command_for(&entry.id())
+                    .or_else(|| control_input.command_for(&entry.component_id())),
+            ) {
+                if let (Some(target_pitch), Some(target_yaw)) = (
+                    cmd.target_gimbal_pitch,
+                    cmd.target_gimbal_yaw,
+                ) {
                     let current_op = operational_states.get(&entry.id()).copied();
                     let current_pitch = current_op
                         .and_then(|s| s.current_gimbal_pitch())
@@ -120,7 +102,7 @@ pub async fn advance_vehicle_physical_state(
                         target_pitch,
                         target_yaw,
                         slew_rate,
-                        dt
+                        dt,
                     );
 
                     let updated_op = ComponentOperationalState::new(
@@ -129,7 +111,7 @@ pub async fn advance_vehicle_physical_state(
                         Some(new_pitch),
                         Some(new_yaw),
                         universe_epoch,
-                        new_at_epoch
+                        new_at_epoch,
                     )?;
                     operational_state_repository::upsert(pool, &updated_op).await?;
                     operational_states.insert(entry.id(), updated_op);
@@ -161,14 +143,14 @@ pub async fn advance_vehicle_physical_state(
                 torque_frac,
                 axis,
                 current_momentum,
-                dt
+                dt,
             );
 
             let updated_rw = ReactionWheelState::new(
                 entry.id(),
                 new_momentum,
                 universe_epoch,
-                new_at_epoch
+                new_at_epoch,
             )?;
             reaction_wheel_state_repository::upsert(pool, &updated_rw).await?;
             reaction_wheel_states.insert(entry.id(), updated_rw);
@@ -179,7 +161,7 @@ pub async fn advance_vehicle_physical_state(
         pool,
         reference_body_id,
         universe_epoch,
-        current_at_epoch
+        current_at_epoch,
     ).await?;
 
     let grav_acc = resolve_vehicle_gravitational_acceleration(
@@ -187,7 +169,7 @@ pub async fn advance_vehicle_physical_state(
         &environment,
         &physical_state,
         universe_epoch,
-        current_at_epoch
+        current_at_epoch,
     ).await?;
 
     let aero_diag = resolve_vehicle_aerodynamics(
@@ -198,7 +180,7 @@ pub async fn advance_vehicle_physical_state(
         &components,
         snapshot.active_stages(),
         universe_epoch,
-        current_at_epoch
+        current_at_epoch,
     ).await?;
 
     let (drag_force, ambient_pressure) = match aero_diag {
@@ -220,11 +202,24 @@ pub async fn advance_vehicle_physical_state(
             grav_acc,
             drag_force,
             dt,
-            ambient_pressure
+            ambient_pressure,
         )
     });
 
-    let new_physical_state = VehiclePhysicalState::new(
+    let (max_q, max_q_epoch) = match (physical_state.max_dynamic_pressure(), aero_diag) {
+        (Some(prev_q), Some(diag)) => {
+            if diag.dynamic_pressure.value() > prev_q.value() {
+                (Some(diag.dynamic_pressure), Some(universe_epoch + current_at_epoch))
+            } else {
+                (Some(prev_q), physical_state.max_dynamic_pressure_epoch())
+            }
+        }
+        (None, Some(diag)) => (Some(diag.dynamic_pressure), Some(universe_epoch + current_at_epoch)),
+        (Some(prev_q), None) => (Some(prev_q), physical_state.max_dynamic_pressure_epoch()),
+        (None, None) => (None, None),
+    };
+
+    let new_physical_state = VehiclePhysicalState::new_with_max_q(
         vehicle_id,
         new_rigid_state.position,
         new_rigid_state.velocity,
@@ -232,7 +227,9 @@ pub async fn advance_vehicle_physical_state(
         new_rigid_state.angular_velocity,
         reference_body_id,
         universe_epoch,
-        new_at_epoch
+        new_at_epoch,
+        max_q,
+        max_q_epoch,
     )?;
 
     vehicle_physical_state_repository::upsert(pool, &new_physical_state).await?;
