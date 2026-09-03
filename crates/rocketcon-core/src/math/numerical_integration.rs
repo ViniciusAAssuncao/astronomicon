@@ -1,4 +1,4 @@
-use crate::math::orbital_perturbation::{
+use crate::orbital::orbital_perturbation::{
     evaluate_powered_flight_state_derivative, PerturbedEnvironment,
 };
 use crate::math::propulsion_dynamics::VehiclePropulsionForces;
