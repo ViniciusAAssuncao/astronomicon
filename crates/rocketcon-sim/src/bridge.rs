@@ -4,20 +4,18 @@ use astronomicon_core::units::{AccelerationVector, Duration, Position};
 use rocketcon_app::error::{RocketError, RocketResult};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct BridgeSmokeTestReport {
     pub tick_count: u32,
     pub total_wall_clock_seconds: f64,
     pub average_tick_nanos: f64,
     pub last_computed_acceleration: AccelerationVector,
     pub final_total_epoch: Duration,
-    pub active_stages: Vec<u32>,
 }
 
 pub async fn run_bridge_smoke_test(
     ctx: &AppContext,
     planet_id: Uuid,
-    active_stages: &[u32],
     tick_count: u32,
     dt_seconds: f64,
 ) -> RocketResult<BridgeSmokeTestReport> {
@@ -65,6 +63,5 @@ pub async fn run_bridge_smoke_test(
         average_tick_nanos,
         last_computed_acceleration: last_acc,
         final_total_epoch: clock.total_epoch(),
-        active_stages: active_stages.to_vec(),
     })
 }
