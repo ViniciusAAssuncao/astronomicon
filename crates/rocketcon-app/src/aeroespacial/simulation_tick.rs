@@ -4,9 +4,7 @@ use crate::aeroespacial::propagation::advance_vehicle_physical_state;
 use crate::aeroespacial::vehicle::resolve_vehicle_snapshot;
 use crate::environment::load_environment_snapshot;
 use crate::error::{RocketError, RocketResult};
-use crate::orbital::{
-    invalidate_future_trajectory_patches, propagate_coasting_vehicle,
-};
+use crate::orbital::{invalidate_future_trajectory_patches, propagate_coasting_vehicle};
 use crate::power::battery::apply_power_delta;
 use crate::power::budget::resolve_vehicle_power_budget;
 use astronomicon_app::ephemeris::resolve_planet_orientation;
@@ -73,7 +71,7 @@ impl VehicleTickReport {
         &self.surface_contact
     }
 
-    pub fn has_surface_contact(&self) -> bool {
+    pub fn has_contact(&self) -> bool {
         self.surface_contact.has_contact()
     }
 
@@ -95,16 +93,36 @@ fn is_propulsion_or_control_active(
     components: &[(VehicleComponentEntry, ComponentRecord)],
     control_input: &VehicleControlInput,
 ) -> bool {
+    if let Some(att) = control_input.attitude_demand_vector() {
+        if att.magnitude() > 1e-4 {
+            return true;
+        }
+    }
+    if let Some(trans) = control_input.target_translation_force {
+        if trans.magnitude() > 1e-4 {
+            return true;
+        }
+    }
+
     for (entry, record) in components {
         if !snapshot.is_stage_active(entry.stage_index()) {
             continue;
         }
 
-        if let Some(cmd) = control_input.command_for(&entry.id()).or_else(|| control_input.command_for(&entry.component_id())) {
-            if cmd.target_reaction_wheel_torque_fraction.map_or(false, |f| f.abs() > 1e-4) {
+        if let Some(cmd) = control_input
+            .command_for(&entry.id())
+            .or_else(|| control_input.command_for(&entry.component_id()))
+        {
+            if cmd
+                .target_reaction_wheel_torque_fraction
+                .map_or(false, |f| f.abs() > 1e-4)
+            {
                 return true;
             }
             if cmd.target_gimbal_pitch.is_some() || cmd.target_gimbal_yaw.is_some() {
+                return true;
+            }
+            if cmd.target_rcs_throttle.map_or(false, |f| f.abs() > 1e-4) {
                 return true;
             }
         }
@@ -137,31 +155,26 @@ pub async fn advance_vehicle_simulation(
     universe_epoch: Duration,
     control_input: &VehicleControlInput,
 ) -> RocketResult<VehicleTickReport> {
-    let current_physical_state = vehicle_physical_state_repository::get_by_vehicle_id(pool, &vehicle_id)
-        .await?
-        .ok_or_else(|| {
-            RocketError::Generic(format!("physical state for vehicle '{}' not found", vehicle_id))
-        })?;
+    let current_physical_state =
+        vehicle_physical_state_repository::get_by_vehicle_id(pool, &vehicle_id)
+            .await?
+            .ok_or_else(|| {
+                RocketError::Generic(format!(
+                    "physical state for vehicle '{}' not found",
+                    vehicle_id
+                ))
+            })?;
 
     let current_at_epoch = current_physical_state.captured_at_epoch();
     let reference_body_id = current_physical_state.reference_body_id();
     let new_at_epoch = current_at_epoch + dt;
 
-    let environment = load_environment_snapshot(
-        pool,
-        reference_body_id,
-        universe_epoch,
-        current_at_epoch,
-    )
-    .await?;
+    let environment =
+        load_environment_snapshot(pool, reference_body_id, universe_epoch, current_at_epoch)
+            .await?;
 
-    let vehicle_snapshot = resolve_vehicle_snapshot(
-        pool,
-        vehicle_id,
-        universe_epoch,
-        current_at_epoch,
-    )
-    .await?;
+    let vehicle_snapshot =
+        resolve_vehicle_snapshot(pool, vehicle_id, universe_epoch, current_at_epoch).await?;
 
     let power_budget = resolve_vehicle_power_budget(
         pool,
@@ -185,7 +198,8 @@ pub async fn advance_vehicle_simulation(
 
     let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
 
-    let is_propelling = is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input);
+    let is_propelling =
+        is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input);
 
     let aero_diag_current = resolve_vehicle_aerodynamics(
         pool,
@@ -199,7 +213,9 @@ pub async fn advance_vehicle_simulation(
     )
     .await?;
 
-    let has_drag = aero_diag_current.as_ref().map_or(false, |a| a.drag_force.magnitude().value() > 1e-4);
+    let has_drag = aero_diag_current
+        .as_ref()
+        .map_or(false, |a| a.drag_force.magnitude().value() > 1e-4);
 
     let planet = &environment.planet;
     let eq_radius = planet
@@ -207,13 +223,8 @@ pub async fn advance_vehicle_simulation(
         .unwrap_or_else(|| Length::new(6371e3));
     let pol_radius = effective_polar_radius_for_planet(planet);
 
-    let planet_orientation_current = resolve_planet_orientation(
-        pool,
-        planet.id(),
-        universe_epoch,
-        current_at_epoch,
-    )
-    .await?;
+    let planet_orientation_current =
+        resolve_planet_orientation(pool, planet.id(), universe_epoch, current_at_epoch).await?;
 
     let rot_period = planet
         .rotation_period()
@@ -244,35 +255,27 @@ pub async fn advance_vehicle_simulation(
             control_input,
         )
         .await?;
-        invalidate_future_trajectory_patches(pool, vehicle_id, universe_epoch + current_at_epoch).await?;
+        invalidate_future_trajectory_patches(pool, vehicle_id, universe_epoch + current_at_epoch)
+            .await?;
         state
     } else {
-        propagate_coasting_vehicle(
-            pool,
-            vehicle_id,
-            dt,
-            universe_epoch,
-            current_at_epoch,
-        )
-        .await?
+        propagate_coasting_vehicle(pool, vehicle_id, dt, universe_epoch, current_at_epoch).await?
     };
 
-    let planet_orientation_new = resolve_planet_orientation(
-        pool,
-        planet.id(),
-        universe_epoch,
-        new_at_epoch,
-    )
-    .await?;
+    let planet_orientation_new =
+        resolve_planet_orientation(pool, planet.id(), universe_epoch, new_at_epoch).await?;
 
     let spin_axis_new = planet_orientation_new.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
     let planet_angular_velocity_new =
         AngularVelocityVector::from_raw(spin_axis_new * omega_mag.value());
 
     let total_epoch_new = universe_epoch + new_at_epoch;
-    let positions_new =
-        astronomicon_app::ephemeris::resolve_system_positions(pool, environment.system_id, total_epoch_new)
-            .await?;
+    let positions_new = astronomicon_app::ephemeris::resolve_system_positions(
+        pool,
+        environment.system_id,
+        total_epoch_new,
+    )
+    .await?;
     let planet_position_new = positions_new
         .get(&planet.id())
         .copied()
