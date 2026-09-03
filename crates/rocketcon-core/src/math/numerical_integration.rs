@@ -1,6 +1,11 @@
+use crate::math::orbital_perturbation::{
+    evaluate_powered_flight_state_derivative, PerturbedEnvironment,
+};
+use crate::math::propulsion_dynamics::VehiclePropulsionForces;
 use crate::math::rigid_body_state::{RigidBodyDerivative, RigidBodyState};
 use astronomicon_core::units::{
-    AngularVelocityVector, Duration, Position, Quaternion, VelocityVector,
+    AngularVelocityVector, Duration, ForceVector, InertiaTensor, Mass, Position, Quaternion,
+    VelocityVector,
 };
 
 pub fn rk4_step<F>(state: &RigidBodyState, dt: Duration, mut derivative_fn: F) -> RigidBodyState
@@ -80,4 +85,57 @@ where
     );
 
     RigidBodyState::new(r_final, v_final, q_final, w_final)
+}
+
+pub fn integrate_substeps<F>(
+    state: &RigidBodyState,
+    total_duration: Duration,
+    substep_duration: Duration,
+    mut derivative_fn: F,
+) -> RigidBodyState
+where
+    F: FnMut(&RigidBodyState) -> RigidBodyDerivative,
+{
+    let total_dt = total_duration.value();
+    let sub_dt = substep_duration.value();
+
+    if total_dt <= 0.0 || !total_dt.is_finite() {
+        return *state;
+    }
+
+    if sub_dt <= 0.0 || !sub_dt.is_finite() || sub_dt >= total_dt {
+        return rk4_step(state, total_duration, derivative_fn);
+    }
+
+    let mut current = *state;
+    let mut remaining = total_dt;
+
+    while remaining > 1e-12 {
+        let step = remaining.min(sub_dt);
+        current = rk4_step(&current, Duration::new(step), &mut derivative_fn);
+        remaining -= step;
+    }
+
+    current
+}
+
+pub fn integrate_powered_flight_step(
+    state: &RigidBodyState,
+    total_mass: Mass,
+    inertia_tensor: &InertiaTensor,
+    environment: &PerturbedEnvironment,
+    propulsion_forces: &VehiclePropulsionForces,
+    aerodynamic_force: ForceVector,
+    dt: Duration,
+) -> RigidBodyState {
+    rk4_step(state, dt, |s| {
+        evaluate_powered_flight_state_derivative(
+            s,
+            total_mass,
+            inertia_tensor,
+            environment,
+            propulsion_forces,
+            aerodynamic_force,
+        )
+    })
 }
