@@ -1,6 +1,8 @@
 pub mod component_attributes;
 pub mod component_repository;
+pub mod eav_attributes;
 pub mod energy_reservoir_repository;
+pub mod material_repository;
 pub mod operational_state_repository;
 pub mod payload_state_repository;
 pub mod propellant_repository;
@@ -12,6 +14,7 @@ pub mod vehicle_repository;
 
 pub use component_repository as component;
 pub use energy_reservoir_repository as energy_reservoir;
+pub use material_repository as material;
 pub use operational_state_repository as operational_state;
 pub use payload_state_repository as payload_state;
 pub use propellant_repository as propellant;

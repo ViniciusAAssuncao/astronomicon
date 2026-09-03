@@ -12,6 +12,7 @@ pub mod engine_fault;
 pub mod engine_specification;
 pub mod engine_state;
 pub mod ignition_type;
+pub mod material;
 pub mod nuclear_reactor_specification;
 pub mod payload_specification;
 pub mod propellant;
@@ -46,6 +47,10 @@ pub use engine_fault::EngineFaultKind;
 pub use engine_specification::{EngineSpecification, EngineSpecificationBuilder};
 pub use engine_state::{is_valid_engine_transition, EngineState};
 pub use ignition_type::IgnitionType;
+pub use material::{
+    AblativeMaterialProperties, AerospaceMaterial, AerospaceMaterialBuilder, MaterialClass,
+    MaterialClassDetails, MaterialRecord,
+};
 pub use nuclear_reactor_specification::{
     NuclearReactorSpecification, NuclearReactorSpecificationBuilder, NuclearReactorType,
 };
