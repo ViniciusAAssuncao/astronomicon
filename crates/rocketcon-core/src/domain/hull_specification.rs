@@ -9,6 +9,7 @@ pub struct HullSpecification {
     component_id: Uuid,
     material_id: Uuid,
     wall_thickness: Length,
+    is_insulated: bool,
 }
 
 impl HullSpecification {
@@ -16,6 +17,7 @@ impl HullSpecification {
         component_id: Uuid,
         material_id: Uuid,
         wall_thickness: Length,
+        is_insulated: bool,
     ) -> RocketDomainResult<Self> {
         validate_positive_finite(wall_thickness.value(), "wall_thickness")?;
 
@@ -23,7 +25,16 @@ impl HullSpecification {
             component_id,
             material_id,
             wall_thickness,
+            is_insulated,
         })
+    }
+
+    pub fn new_simple(
+        component_id: Uuid,
+        material_id: Uuid,
+        wall_thickness: Length,
+    ) -> RocketDomainResult<Self> {
+        Self::new(component_id, material_id, wall_thickness, false)
     }
 
     pub fn component_id(&self) -> Uuid {
@@ -40,5 +51,13 @@ impl HullSpecification {
 
     pub fn wall_thickness_m(&self) -> f64 {
         self.wall_thickness.value()
+    }
+
+    pub fn is_insulated(&self) -> bool {
+        self.is_insulated
+    }
+
+    pub fn has_mli(&self) -> bool {
+        self.is_insulated
     }
 }

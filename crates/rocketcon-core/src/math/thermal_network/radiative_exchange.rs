@@ -1,4 +1,5 @@
 use super::types::ThermalNode;
+use crate::constants::DEFAULT_MLI_HEAT_TRANSFER_FACTOR;
 use astronomicon_core::math::radiometry::graybody_radiation::net_graybody_radiated_power;
 use astronomicon_core::units::{Irradiance, Luminosity, Temperature, Vector3};
 use std::f64::consts::PI;
@@ -39,11 +40,17 @@ pub fn node_solar_heat_gain(
     };
 
     let projected_area = node.exposed_area_m2 / PI;
-    let power = alpha * irr * projected_area * incidence;
+    let incident_solar_power = alpha * irr * projected_area * incidence;
 
-    if !power.is_finite() || power < 0.0 {
+    let effective_power = if node.is_insulated {
+        incident_solar_power * DEFAULT_MLI_HEAT_TRANSFER_FACTOR
+    } else {
+        incident_solar_power
+    };
+
+    if !effective_power.is_finite() || effective_power < 0.0 {
         Luminosity::new(0.0)
     } else {
-        Luminosity::new(power)
+        Luminosity::new(effective_power)
     }
 }

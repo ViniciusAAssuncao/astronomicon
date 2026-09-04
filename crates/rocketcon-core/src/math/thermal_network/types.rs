@@ -20,6 +20,7 @@ pub struct ThermalNode {
     pub internal_heat_generation: Luminosity,
     pub external_aerodynamic_heat: Luminosity,
     pub is_hull_backbone: bool,
+    pub is_insulated: bool,
     pub material_id: Option<Uuid>,
     pub mount_offset: Vector3,
     pub length: Length,
@@ -41,6 +42,7 @@ impl ThermalNode {
         internal_heat_generation: Luminosity,
         external_aerodynamic_heat: Luminosity,
         is_hull_backbone: bool,
+        is_insulated: bool,
         material_id: Option<Uuid>,
         mount_offset: Vector3,
         length: Length,
@@ -60,6 +62,7 @@ impl ThermalNode {
             internal_heat_generation,
             external_aerodynamic_heat,
             is_hull_backbone,
+            is_insulated,
             material_id,
             mount_offset,
             length,
@@ -147,3 +150,4 @@ impl ThermalNetworkDerivative {
         }
     }
 }
+

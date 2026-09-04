@@ -1,8 +1,8 @@
 use crate::error::{RocketDbError, RocketDbResult};
 use crate::models::ComponentRow;
 use crate::repositories::component_attributes::{
-    fetch_attribute_map, optional_numeric, optional_uuid, required_bool, required_numeric,
-    required_text, required_uuid,
+    fetch_attribute_map, optional_numeric, optional_text, optional_uuid, required_bool,
+    required_numeric, required_text, required_uuid,
 };
 use astronomicon_core::units::{
     Angle, AngularMomentum, AngularVelocity, Duration, Energy, Force, Impulse, Length, Luminosity,
@@ -42,11 +42,25 @@ async fn fetch_component_details(
                 Some(v) => v,
                 None => required_numeric(&attr_map, &id, "wall_thickness")?,
             };
+            let is_insulated = match optional_numeric(&attr_map, &id, "is_insulated")? {
+                Some(v) => v == 1.0,
+                None => match optional_numeric(&attr_map, &id, "has_mli")? {
+                    Some(v) => v == 1.0,
+                    None => match optional_text(&attr_map, &id, "is_insulated")? {
+                        Some(t) => t.eq_ignore_ascii_case("true") || t == "1",
+                        None => match optional_text(&attr_map, &id, "has_mli")? {
+                            Some(t) => t.eq_ignore_ascii_case("true") || t == "1",
+                            None => false,
+                        },
+                    },
+                },
+            };
 
             let spec = HullSpecification::new(
                 id,
                 material_id,
                 Length::new(wall_thickness_m),
+                is_insulated,
             )?;
 
             Ok(ComponentDetails::Hull(spec))

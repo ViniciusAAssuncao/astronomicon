@@ -1,12 +1,12 @@
-use super::types::{ ThermalEdge, ThermalNode, ThermalNetworkState };
-use crate::domain::{
-    ComponentDetails,
-    ComponentKind,
-    ComponentRecord,
-    MaterialRecord,
-    VehicleComponentEntry,
+use super::types::{ThermalEdge, ThermalNetworkState, ThermalNode};
+use crate::constants::{
+    DEFAULT_HULL_MLI_ABSORPTIVITY, DEFAULT_HULL_MLI_EMISSIVITY,
+    DEFAULT_STRUCTURAL_HULL_EMISSIVITY,
 };
-use astronomicon_core::units::{ Luminosity, Temperature, ThermalCapacitance };
+use crate::domain::{
+    ComponentDetails, ComponentKind, ComponentRecord, MaterialRecord, VehicleComponentEntry,
+};
+use astronomicon_core::units::{Luminosity, Temperature, ThermalCapacitance};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use uuid::Uuid;
@@ -24,7 +24,7 @@ pub fn build_thermal_network(
     materials: &HashMap<Uuid, MaterialRecord>,
     component_material_overrides: &HashMap<Uuid, Uuid>,
     initial_temperatures: &HashMap<Uuid, Temperature>,
-    default_temperature: Temperature
+    default_temperature: Temperature,
 ) -> ThermalNetworkState {
     let mut nodes = Vec::new();
     let mut node_conductivities = Vec::new();
@@ -58,18 +58,43 @@ pub fn build_thermal_network(
             .map(|m| m.thermal_conductivity_w_per_m_k())
             .unwrap_or(DEFAULT_THERMAL_CONDUCTIVITY);
 
-        let (emissivity, solar_absorptivity) = match record.details() {
-            ComponentDetails::SolarPanel(spec) =>
-                (
-                    material.map(|m| m.emissivity()).unwrap_or(DEFAULT_EMISSIVITY),
-                    spec.effective_solar_absorptivity(),
-                ),
-            ComponentDetails::Radiator(spec) => (spec.emissivity(), spec.solar_absorptivity()),
-            _ =>
-                (
-                    material.map(|m| m.emissivity()).unwrap_or(DEFAULT_EMISSIVITY),
-                    material.map(|m| m.solar_absorptivity()).unwrap_or(DEFAULT_SOLAR_ABSORPTIVITY),
-                ),
+        let (emissivity, solar_absorptivity, is_insulated) = match record.details() {
+            ComponentDetails::SolarPanel(spec) => (
+                material.map(|m| m.emissivity()).unwrap_or(DEFAULT_EMISSIVITY),
+                spec.effective_solar_absorptivity(),
+                false,
+            ),
+            ComponentDetails::Radiator(spec) => (
+                spec.emissivity(),
+                spec.solar_absorptivity(),
+                false,
+            ),
+            ComponentDetails::Hull(spec) => {
+                if spec.is_insulated() {
+                    (
+                        DEFAULT_HULL_MLI_EMISSIVITY,
+                        DEFAULT_HULL_MLI_ABSORPTIVITY,
+                        true,
+                    )
+                } else {
+                    (
+                        material
+                            .map(|m| m.emissivity())
+                            .unwrap_or(DEFAULT_STRUCTURAL_HULL_EMISSIVITY),
+                        material
+                            .map(|m| m.solar_absorptivity())
+                            .unwrap_or(DEFAULT_SOLAR_ABSORPTIVITY),
+                        false,
+                    )
+                }
+            }
+            _ => (
+                material.map(|m| m.emissivity()).unwrap_or(DEFAULT_EMISSIVITY),
+                material
+                    .map(|m| m.solar_absorptivity())
+                    .unwrap_or(DEFAULT_SOLAR_ABSORPTIVITY),
+                false,
+            ),
         };
 
         let exposed_area = match record.details() {
@@ -80,8 +105,9 @@ pub fn build_thermal_network(
             }
             ComponentDetails::SolarPanel(spec) => spec.surface_area_m2(),
             ComponentDetails::Radiator(spec) => spec.radiating_area_m2(),
-            ComponentDetails::Engine(_) =>
-                0.5 * PI * comp.diameter().value() * comp.length().value(),
+            ComponentDetails::Engine(_) => {
+                0.5 * PI * comp.diameter().value() * comp.length().value()
+            }
             _ => 0.0,
         };
 
@@ -109,10 +135,11 @@ pub fn build_thermal_network(
             Luminosity::new(0.0),
             Luminosity::new(0.0),
             is_backbone,
+            is_insulated,
             resolved_material_id,
             entry.mount_offset(),
             comp.length(),
-            comp.diameter()
+            comp.diameter(),
         );
 
         nodes.push(node);
@@ -184,17 +211,18 @@ pub fn build_thermal_network(
         let stg_a = window[0];
         let stg_b = window[1];
 
-        if
-            let (Some(&bb_a), Some(&bb_b)) = (
-                stage_backbone_indices.get(&stg_a),
-                stage_backbone_indices.get(&stg_b),
-            )
-        {
+        if let (Some(&bb_a), Some(&bb_b)) = (
+            stage_backbone_indices.get(&stg_a),
+            stage_backbone_indices.get(&stg_b),
+        ) {
             let dist = (nodes[bb_a].mount_offset - nodes[bb_b].mount_offset)
                 .magnitude()
                 .max(MIN_CONDUCTION_DISTANCE_M);
 
-            let d_eff = nodes[bb_a].diameter.value().min(nodes[bb_b].diameter.value());
+            let d_eff = nodes[bb_a]
+                .diameter
+                .value()
+                .min(nodes[bb_b].diameter.value());
             let r_eff = d_eff * 0.5;
             let area = PI * r_eff * r_eff * CONTACT_AREA_FRACTION;
 
