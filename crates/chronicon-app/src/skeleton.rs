@@ -9,7 +9,8 @@ use chronicon_core::domain::{
     analyze_month_in_year_intercalation, analyze_moon_system, analyze_multi_star_system,
     analyze_planetary_day, analyze_planetary_year_with_hierarchy, analyze_seasons,
     DayConvention, IntercalationAnalysis, MoonSystemAnalysis, MultiStarSystemInfo,
-    PlanetaryDayInfo, PlanetaryYearInfo, SeasonalStructure, YearConvention,
+    PlanetaryDayInfo, PlanetaryYearInfo, PolysolarDayAnalysis, SeasonalStructure,
+    YearConvention,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -24,6 +25,7 @@ pub struct CalendarSkeleton {
     pub seasonal_structure: SeasonalStructure,
     pub moon_system: MoonSystemAnalysis,
     pub multi_star: MultiStarSystemInfo,
+    pub polysolar_day: PolysolarDayAnalysis,
 }
 
 impl CalendarSkeleton {
@@ -72,6 +74,10 @@ impl CalendarSkeleton {
             YearConvention::Tropical => self.year_info.tropical_year(),
             YearConvention::Anomalistic => self.year_info.anomalistic_year(),
         }
+    }
+
+    pub fn polysolar_day(&self) -> &PolysolarDayAnalysis {
+        &self.polysolar_day
     }
 }
 
@@ -146,6 +152,8 @@ pub async fn resolve_calendar_skeleton(
         &barycenters_map,
     )?;
 
+    let polysolar_day = hierarchy.analyze_polysolar_day(None)?;
+
     Ok(CalendarSkeleton {
         planet_id: *planet_id,
         planet_name: hierarchy.target_planet.name().to_string(),
@@ -154,5 +162,6 @@ pub async fn resolve_calendar_skeleton(
         seasonal_structure,
         moon_system,
         multi_star,
+        polysolar_day,
     })
 }

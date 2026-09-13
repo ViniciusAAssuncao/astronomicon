@@ -2,12 +2,15 @@ use crate::error::{AppError, AppResult};
 use astronomicon_core::domain::{
     Barycenter, MinorPlanet, OrbitalElements, OrbitalParent, Planet, Star,
 };
+use astronomicon_core::error::DomainResult;
 use astronomicon_core::units::Mass;
 use astronomicon_db::repositories::{
     barycenter as barycenter_repo, minor_planet as minor_planet_repo, planet as planet_repo,
     star as star_repo,
 };
-use chronicon_core::domain::SatelliteInput;
+use chronicon_core::domain::{
+    analyze_polysolar_day, PolysolarDayAnalysis, SatelliteInput,
+};
 use chronicon_core::math::AxialPerturber;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
@@ -117,6 +120,25 @@ impl LoadedPlanetHierarchy {
                 OrbitalParent::Fixed => return None,
             }
         }
+    }
+
+    pub fn analyze_polysolar_day(
+        &self,
+        max_denominator: Option<u32>,
+    ) -> DomainResult<PolysolarDayAnalysis> {
+        let stars = self.stars_ref_map();
+        let planets = self.planets_ref_map();
+        let barycenters = self.barycenters_ref_map();
+        let minor_planets = self.minor_planets_ref_map();
+
+        analyze_polysolar_day(
+            &self.target_planet,
+            &stars,
+            &planets,
+            &barycenters,
+            &minor_planets,
+            max_denominator,
+        )
     }
 }
 
