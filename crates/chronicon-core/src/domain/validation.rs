@@ -1,8 +1,8 @@
-use crate::error::{DomainError, DomainResult};
+use crate::error::{ChronosError, ChronosResult};
 
-pub fn validate_not_empty(value: &str, field: &str) -> DomainResult<()> {
+pub fn validate_not_empty(value: &str, field: &str) -> ChronosResult<()> {
     if value.trim().is_empty() {
-        return Err(DomainError::InvalidInvariant {
+        return Err(ChronosError::InvalidInvariant {
             field: field.to_string(),
             reason: "cannot be empty".to_string(),
         });
@@ -10,9 +10,9 @@ pub fn validate_not_empty(value: &str, field: &str) -> DomainResult<()> {
     Ok(())
 }
 
-pub fn validate_finite(value: f64, field: &str) -> DomainResult<()> {
+pub fn validate_finite(value: f64, field: &str) -> ChronosResult<()> {
     if !value.is_finite() {
-        return Err(DomainError::InvalidInvariant {
+        return Err(ChronosError::InvalidInvariant {
             field: field.to_string(),
             reason: "must be finite".to_string(),
         });
@@ -20,9 +20,9 @@ pub fn validate_finite(value: f64, field: &str) -> DomainResult<()> {
     Ok(())
 }
 
-pub fn validate_positive_finite(value: f64, field: &str) -> DomainResult<()> {
+pub fn validate_positive_finite(value: f64, field: &str) -> ChronosResult<()> {
     if !value.is_finite() || value <= 0.0 {
-        return Err(DomainError::InvalidInvariant {
+        return Err(ChronosError::InvalidInvariant {
             field: field.to_string(),
             reason: "must be positive and finite".to_string(),
         });
@@ -30,9 +30,9 @@ pub fn validate_positive_finite(value: f64, field: &str) -> DomainResult<()> {
     Ok(())
 }
 
-pub fn validate_non_negative_finite(value: f64, field: &str) -> DomainResult<()> {
+pub fn validate_non_negative_finite(value: f64, field: &str) -> ChronosResult<()> {
     if !value.is_finite() || value < 0.0 {
-        return Err(DomainError::InvalidInvariant {
+        return Err(ChronosError::InvalidInvariant {
             field: field.to_string(),
             reason: "must be non-negative and finite".to_string(),
         });
