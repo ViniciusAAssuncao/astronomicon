@@ -16,6 +16,6 @@ pub use moon_phase::{
 pub use season_tracking::{resolve_season_state, SeasonName, SeasonState};
 pub use skeleton::{resolve_calendar_skeleton, CalendarSkeleton};
 pub use tick::{
-    cumulative_days_to_year, days_in_calendar_year, is_leap_year_for_rule, resolve_calendar_tick,
-    resolve_year_and_day, CalendarTick,
+    cumulative_units_to_container, is_container_leap, resolve_calendar_tick,
+    resolve_container_and_unit, units_in_container, CalendarTick,
 };
