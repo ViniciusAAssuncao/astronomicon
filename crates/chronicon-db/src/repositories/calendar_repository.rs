@@ -2,14 +2,16 @@ use crate::error::DbResult;
 use crate::models::{CalendarDefinitionRow, CalendarTrackedMoonRow};
 use crate::repositories::fetch::{fetch_all, fetch_all_by_param, fetch_optional_by_param};
 use chronicon_core::domain::{
-    CalendarDefinition, CalendarMoonReference, CalendarTrackedMoon, DayConvention, YearConvention,
+    CalendarDefinition, CalendarMoonReference, CalendarStructureKind, CalendarTrackedMoon,
+    DayConvention, YearConvention,
 };
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-const BASE_QUERY: &str = "SELECT id, planet_id, name, epoch_seconds_since_j2000, \
-    day_convention, year_convention, reference_moon_planet_id, \
-    reference_moon_minor_planet_id, founding_event_description FROM calendar_definitions";
+const BASE_QUERY: &str = "SELECT id, planet_id, name, structure_kind, \
+    epoch_seconds_since_j2000, day_convention, year_convention, \
+    reference_moon_planet_id, reference_moon_minor_planet_id, \
+    founding_event_description FROM calendar_definitions";
 
 const TRACKED_MOONS_QUERY: &str = "SELECT id, calendar_id, moon_planet_id, \
     moon_minor_planet_id FROM calendar_tracked_moons";
@@ -82,6 +84,12 @@ pub async fn list_tracked_moons(
 }
 
 pub async fn insert(pool: &SqlitePool, calendar: &CalendarDefinition) -> DbResult<()> {
+    let structure_kind_str = match calendar.structure() {
+        CalendarStructureKind::SolarOnly => "SolarOnly",
+        CalendarStructureKind::LunarOnly => "LunarOnly",
+        CalendarStructureKind::Lunisolar => "Lunisolar",
+    };
+
     let (ref_planet, ref_minor) = match calendar.reference_moon() {
         Some(CalendarMoonReference::Planet(id)) => (Some(id.to_string()), None),
         Some(CalendarMoonReference::MinorPlanet(id)) => (None, Some(id.to_string())),
@@ -103,14 +111,15 @@ pub async fn insert(pool: &SqlitePool, calendar: &CalendarDefinition) -> DbResul
 
     sqlx::query(
         "INSERT INTO calendar_definitions (
-            id, planet_id, name, epoch_seconds_since_j2000,
+            id, planet_id, name, structure_kind, epoch_seconds_since_j2000,
             day_convention, year_convention, reference_moon_planet_id,
             reference_moon_minor_planet_id, founding_event_description
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(calendar.id().to_string())
     .bind(calendar.planet_id().to_string())
     .bind(calendar.name())
+    .bind(structure_kind_str)
     .bind(calendar.epoch().value())
     .bind(day_conv_str)
     .bind(year_conv_str)

@@ -2,7 +2,8 @@ use crate::error::{AppError, AppResult};
 use crate::skeleton::{resolve_calendar_skeleton, CalendarSkeleton};
 use astronomicon_core::units::Duration;
 use chronicon_core::domain::{
-    analyze_intercalation, CalendarDefinition, IntercalationAnalysis, MoonMonthInfo,
+    analyze_day_in_year_intercalation, CalendarDefinition, CalendarStructureKind,
+    IntercalationAnalysis, MoonMonthInfo,
 };
 use chronicon_db::repositories::calendar as calendar_repo;
 use serde::{Deserialize, Serialize};
@@ -15,7 +16,9 @@ pub struct ResolvedCalendar {
     pub skeleton: CalendarSkeleton,
     pub day_duration: Duration,
     pub year_duration: Duration,
-    pub intercalation: Option<IntercalationAnalysis>,
+    pub intercalation_day_in_year: Option<IntercalationAnalysis>,
+    pub intercalation_month_in_year: Option<IntercalationAnalysis>,
+    pub intercalation_day_in_month: Option<IntercalationAnalysis>,
     pub reference_moon: Option<MoonMonthInfo>,
     pub tracked_moons: Vec<MoonMonthInfo>,
 }
@@ -37,8 +40,16 @@ impl ResolvedCalendar {
         self.year_duration
     }
 
-    pub fn intercalation(&self) -> Option<&IntercalationAnalysis> {
-        self.intercalation.as_ref()
+    pub fn intercalation_day_in_year(&self) -> Option<&IntercalationAnalysis> {
+        self.intercalation_day_in_year.as_ref()
+    }
+
+    pub fn intercalation_month_in_year(&self) -> Option<&IntercalationAnalysis> {
+        self.intercalation_month_in_year.as_ref()
+    }
+
+    pub fn intercalation_day_in_month(&self) -> Option<&IntercalationAnalysis> {
+        self.intercalation_day_in_month.as_ref()
     }
 
     pub fn reference_moon(&self) -> Option<&MoonMonthInfo> {
@@ -84,11 +95,6 @@ pub async fn resolve_calendar_definition(
             )
         })?;
 
-    let intercalation = skeleton
-        .intercalation_analysis(definition.day_convention(), definition.year_convention())
-        .cloned()
-        .or_else(|| analyze_intercalation(day_duration, year_duration, None, None));
-
     let reference_moon = definition.reference_moon().and_then(|ref_moon| {
         skeleton
             .moon_system
@@ -97,6 +103,43 @@ pub async fn resolve_calendar_definition(
             .find(|m| m.moon_id() == ref_moon.id())
             .cloned()
     });
+
+    let (intercalation_day_in_year, intercalation_month_in_year, intercalation_day_in_month) =
+        match definition.structure() {
+            CalendarStructureKind::SolarOnly => {
+                let diy = skeleton
+                    .intercalation_day_in_year(
+                        definition.day_convention(),
+                        definition.year_convention(),
+                    )
+                    .or_else(|| {
+                        analyze_day_in_year_intercalation(
+                            day_duration,
+                            year_duration,
+                            None,
+                            None,
+                        )
+                    });
+                (diy, None, None)
+            }
+            CalendarStructureKind::LunarOnly | CalendarStructureKind::Lunisolar => {
+                let (miy, dim) = if let Some(ref ref_moon) = reference_moon {
+                    let moon_id = ref_moon.moon_id();
+                    let miy = skeleton.intercalation_month_in_year(
+                        &moon_id,
+                        definition.year_convention(),
+                    );
+                    let dim = skeleton.intercalation_day_in_month(
+                        definition.day_convention(),
+                        &moon_id,
+                    );
+                    (miy, dim)
+                } else {
+                    (None, None)
+                };
+                (None, miy, dim)
+            }
+        };
 
     let mut tracked_moons = Vec::new();
     for tracked in definition.tracked_moons() {
@@ -115,7 +158,9 @@ pub async fn resolve_calendar_definition(
         skeleton,
         day_duration,
         year_duration,
-        intercalation,
+        intercalation_day_in_year,
+        intercalation_month_in_year,
+        intercalation_day_in_month,
         reference_moon,
         tracked_moons,
     })

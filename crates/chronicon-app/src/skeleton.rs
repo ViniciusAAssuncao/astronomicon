@@ -5,10 +5,11 @@ use astronomicon_core::math::gravity::{
 };
 use astronomicon_core::units::Duration;
 use chronicon_core::domain::{
-    analyze_intercalation, analyze_moon_system, analyze_multi_star_system, analyze_planetary_day,
-    analyze_planetary_year_with_hierarchy, analyze_seasons, DayConvention, IntercalationAnalysis,
-    MoonSystemAnalysis, MultiStarSystemInfo, PlanetaryDayInfo, PlanetaryYearInfo,
-    SeasonalStructure, YearConvention,
+    analyze_day_in_month_intercalation, analyze_day_in_year_intercalation,
+    analyze_month_in_year_intercalation, analyze_moon_system, analyze_multi_star_system,
+    analyze_planetary_day, analyze_planetary_year_with_hierarchy, analyze_seasons,
+    DayConvention, IntercalationAnalysis, MoonSystemAnalysis, MultiStarSystemInfo,
+    PlanetaryDayInfo, PlanetaryYearInfo, SeasonalStructure, YearConvention,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -22,41 +23,40 @@ pub struct CalendarSkeleton {
     pub year_info: PlanetaryYearInfo,
     pub seasonal_structure: SeasonalStructure,
     pub moon_system: MoonSystemAnalysis,
-    pub intercalation_solar_tropical: Option<IntercalationAnalysis>,
-    pub intercalation_solar_sidereal: Option<IntercalationAnalysis>,
-    pub intercalation_solar_anomalistic: Option<IntercalationAnalysis>,
-    pub intercalation_sidereal_tropical: Option<IntercalationAnalysis>,
-    pub intercalation_sidereal_sidereal: Option<IntercalationAnalysis>,
-    pub intercalation_sidereal_anomalistic: Option<IntercalationAnalysis>,
     pub multi_star: MultiStarSystemInfo,
 }
 
 impl CalendarSkeleton {
-    pub fn intercalation_analysis(
+    pub fn intercalation_day_in_year(
         &self,
         day_convention: DayConvention,
         year_convention: YearConvention,
-    ) -> Option<&IntercalationAnalysis> {
-        match (day_convention, year_convention) {
-            (DayConvention::Solar, YearConvention::Tropical) => {
-                self.intercalation_solar_tropical.as_ref()
-            }
-            (DayConvention::Solar, YearConvention::Sidereal) => {
-                self.intercalation_solar_sidereal.as_ref()
-            }
-            (DayConvention::Solar, YearConvention::Anomalistic) => {
-                self.intercalation_solar_anomalistic.as_ref()
-            }
-            (DayConvention::Sidereal, YearConvention::Tropical) => {
-                self.intercalation_sidereal_tropical.as_ref()
-            }
-            (DayConvention::Sidereal, YearConvention::Sidereal) => {
-                self.intercalation_sidereal_sidereal.as_ref()
-            }
-            (DayConvention::Sidereal, YearConvention::Anomalistic) => {
-                self.intercalation_sidereal_anomalistic.as_ref()
-            }
-        }
+    ) -> Option<IntercalationAnalysis> {
+        let day = self.day_duration(day_convention)?;
+        let year = self.year_duration(year_convention)?;
+        analyze_day_in_year_intercalation(day, year, None, None)
+    }
+
+    pub fn intercalation_month_in_year(
+        &self,
+        moon_id: &Uuid,
+        year_convention: YearConvention,
+    ) -> Option<IntercalationAnalysis> {
+        let moon = self.moon_system.moons().iter().find(|m| m.moon_id() == *moon_id)?;
+        let synodic = moon.synodic_month()?;
+        let year = self.year_duration(year_convention)?;
+        analyze_month_in_year_intercalation(synodic, year, None, None)
+    }
+
+    pub fn intercalation_day_in_month(
+        &self,
+        day_convention: DayConvention,
+        moon_id: &Uuid,
+    ) -> Option<IntercalationAnalysis> {
+        let day = self.day_duration(day_convention)?;
+        let moon = self.moon_system.moons().iter().find(|m| m.moon_id() == *moon_id)?;
+        let synodic = moon.synodic_month()?;
+        analyze_day_in_month_intercalation(day, synodic, None, None)
     }
 
     pub fn day_duration(&self, convention: DayConvention) -> Option<Duration> {
@@ -146,43 +146,6 @@ pub async fn resolve_calendar_skeleton(
         &barycenters_map,
     )?;
 
-    let t_solar_day = day_info.solar_day();
-    let t_sidereal_day = day_info.sidereal_day();
-
-    let t_trop_year = year_info.tropical_year();
-    let t_sid_year = year_info.sidereal_year();
-    let t_anom_year = year_info.anomalistic_year();
-
-    let intercalation_solar_tropical = match (t_solar_day, t_trop_year) {
-        (Some(d), Some(y)) => analyze_intercalation(d, y, None, None),
-        _ => None,
-    };
-
-    let intercalation_solar_sidereal = match (t_solar_day, t_sid_year) {
-        (Some(d), Some(y)) => analyze_intercalation(d, y, None, None),
-        _ => None,
-    };
-
-    let intercalation_solar_anomalistic = match (t_solar_day, t_anom_year) {
-        (Some(d), Some(y)) => analyze_intercalation(d, y, None, None),
-        _ => None,
-    };
-
-    let intercalation_sidereal_tropical = match (t_sidereal_day, t_trop_year) {
-        (Some(d), Some(y)) => analyze_intercalation(d, y, None, None),
-        _ => None,
-    };
-
-    let intercalation_sidereal_sidereal = match (t_sidereal_day, t_sid_year) {
-        (Some(d), Some(y)) => analyze_intercalation(d, y, None, None),
-        _ => None,
-    };
-
-    let intercalation_sidereal_anomalistic = match (t_sidereal_day, t_anom_year) {
-        (Some(d), Some(y)) => analyze_intercalation(d, y, None, None),
-        _ => None,
-    };
-
     Ok(CalendarSkeleton {
         planet_id: *planet_id,
         planet_name: hierarchy.target_planet.name().to_string(),
@@ -190,12 +153,6 @@ pub async fn resolve_calendar_skeleton(
         year_info,
         seasonal_structure,
         moon_system,
-        intercalation_solar_tropical,
-        intercalation_solar_sidereal,
-        intercalation_solar_anomalistic,
-        intercalation_sidereal_tropical,
-        intercalation_sidereal_sidereal,
-        intercalation_sidereal_anomalistic,
         multi_star,
     })
 }

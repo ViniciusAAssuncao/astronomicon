@@ -1,7 +1,9 @@
-use crate::domain::calendar_conventions::{CalendarMoonReference, DayConvention, YearConvention};
+use crate::domain::calendar_conventions::{
+    CalendarMoonReference, CalendarStructureKind, DayConvention, YearConvention,
+};
 use crate::domain::calendar_tracked_moon::CalendarTrackedMoon;
 use crate::domain::validation::{validate_finite, validate_not_empty};
-use crate::error::ChronosResult;
+use crate::error::{ChronosError, ChronosResult};
 use astronomicon_core::units::Duration;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -11,6 +13,7 @@ pub struct CalendarDefinition {
     pub id: Uuid,
     pub planet_id: Uuid,
     pub name: String,
+    pub structure: CalendarStructureKind,
     pub epoch: Duration,
     pub day_convention: DayConvention,
     pub year_convention: YearConvention,
@@ -24,6 +27,7 @@ impl CalendarDefinition {
         id: Uuid,
         planet_id: Uuid,
         name: String,
+        structure: CalendarStructureKind,
         epoch: Duration,
         day_convention: DayConvention,
         year_convention: YearConvention,
@@ -34,10 +38,18 @@ impl CalendarDefinition {
         validate_not_empty(&name, "name")?;
         validate_finite(epoch.value(), "epoch")?;
 
+        if structure.requires_reference_moon() && reference_moon.is_none() {
+            return Err(ChronosError::InvalidInvariant {
+                field: "reference_moon".to_string(),
+                reason: "calendar structure requires a reference moon".to_string(),
+            });
+        }
+
         Ok(Self {
             id,
             planet_id,
             name,
+            structure,
             epoch,
             day_convention,
             year_convention,
@@ -66,6 +78,10 @@ impl CalendarDefinition {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn structure(&self) -> CalendarStructureKind {
+        self.structure
     }
 
     pub fn epoch(&self) -> Duration {
@@ -97,6 +113,7 @@ pub struct CalendarDefinitionBuilder {
     id: Uuid,
     planet_id: Uuid,
     name: String,
+    structure: CalendarStructureKind,
     epoch: Duration,
     day_convention: DayConvention,
     year_convention: YearConvention,
@@ -116,6 +133,7 @@ impl CalendarDefinitionBuilder {
             id,
             planet_id,
             name: name.into(),
+            structure: CalendarStructureKind::SolarOnly,
             epoch,
             day_convention: DayConvention::Solar,
             year_convention: YearConvention::Tropical,
@@ -123,6 +141,11 @@ impl CalendarDefinitionBuilder {
             founding_event_description: None,
             tracked_moons: Vec::new(),
         }
+    }
+
+    pub fn with_structure(mut self, structure: CalendarStructureKind) -> Self {
+        self.structure = structure;
+        self
     }
 
     pub fn with_day_convention(mut self, convention: DayConvention) -> Self {
@@ -155,6 +178,7 @@ impl CalendarDefinitionBuilder {
             self.id,
             self.planet_id,
             self.name,
+            self.structure,
             self.epoch,
             self.day_convention,
             self.year_convention,

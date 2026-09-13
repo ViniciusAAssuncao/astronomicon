@@ -2,6 +2,31 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CalendarStructureKind {
+    SolarOnly,
+    LunarOnly,
+    Lunisolar,
+}
+
+impl CalendarStructureKind {
+    pub fn is_solar_only(&self) -> bool {
+        matches!(self, Self::SolarOnly)
+    }
+
+    pub fn is_lunar_only(&self) -> bool {
+        matches!(self, Self::LunarOnly)
+    }
+
+    pub fn is_lunisolar(&self) -> bool {
+        matches!(self, Self::Lunisolar)
+    }
+
+    pub fn requires_reference_moon(&self) -> bool {
+        matches!(self, Self::LunarOnly | Self::Lunisolar)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DayConvention {
     Solar,
     Sidereal,

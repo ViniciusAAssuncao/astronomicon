@@ -26,22 +26,22 @@ pub struct CalendarTick {
 
 pub fn is_leap_year_for_rule(year_index: i64, rule: &RefinedIntercalationRule) -> bool {
     let p_rule = &rule.primary_rule;
-    if p_rule.cycle_years == 0 || p_rule.leap_days == 0 {
+    if p_rule.cycle_containers == 0 || p_rule.leap_units == 0 {
         return false;
     }
 
-    let q1 = p_rule.cycle_years as i64;
-    let p1 = p_rule.leap_days as i64;
+    let q1 = p_rule.cycle_containers as i64;
+    let p1 = p_rule.leap_units as i64;
     let rem1 = year_index.rem_euclid(q1);
     let mut leap = (rem1 * p1) % q1 < p1;
 
     if let Some(sec) = &rule.secondary_correction {
-        if sec.cycle_years > 0 {
-            let q2 = sec.cycle_years as i64;
+        if sec.cycle_containers > 0 {
+            let q2 = sec.cycle_containers as i64;
             if year_index.rem_euclid(q2) == 0 {
                 match sec.direction {
-                    IntercalationAdjustmentDirection::SubtractLeapDays => leap = false,
-                    IntercalationAdjustmentDirection::AddLeapDays => leap = true,
+                    IntercalationAdjustmentDirection::SubtractLeapUnits => leap = false,
+                    IntercalationAdjustmentDirection::AddLeapUnits => leap = true,
                 }
             }
         }
@@ -51,12 +51,12 @@ pub fn is_leap_year_for_rule(year_index: i64, rule: &RefinedIntercalationRule) -
 }
 
 pub fn days_in_calendar_year(year_index: i64, rule: &RefinedIntercalationRule) -> u32 {
-    rule.common_year_days + if is_leap_year_for_rule(year_index, rule) { 1 } else { 0 }
+    rule.base_units_per_container + if is_leap_year_for_rule(year_index, rule) { 1 } else { 0 }
 }
 
 pub fn cumulative_days_to_year(year_index: i64, rule: &RefinedIntercalationRule) -> i64 {
-    let q_tot = (rule.total_cycle_years as i64).max(1);
-    let days_per_cycle = (q_tot * (rule.common_year_days as i64)) + (rule.total_leap_days as i64);
+    let q_tot = (rule.total_cycle_containers as i64).max(1);
+    let days_per_cycle = (q_tot * (rule.base_units_per_container as i64)) + (rule.total_leap_units as i64);
 
     let cycle_count = year_index.div_euclid(q_tot);
     let year_in_cycle = year_index.rem_euclid(q_tot);
@@ -74,7 +74,7 @@ pub fn resolve_year_and_day(
     total_days: f64,
     rule: &RefinedIntercalationRule,
 ) -> (i64, f64, i64, bool, bool) {
-    let mean_days = rule.mean_year_days.max(1.0);
+    let mean_days = rule.mean_units_per_container.max(1.0);
     let mut y = (total_days / mean_days).floor() as i64;
 
     let mut start_day = cumulative_days_to_year(y, rule) as f64;
@@ -95,7 +95,7 @@ pub fn resolve_year_and_day(
     let day_in_year = total_days - start_day;
     let day_index = day_in_year.floor() as i64;
     let is_leap = is_leap_year_for_rule(y, rule);
-    let is_boundary = is_leap && (day_index >= rule.common_year_days as i64);
+    let is_boundary = is_leap && (day_index >= rule.base_units_per_container as i64);
 
     (y, day_in_year, day_index, is_leap, is_boundary)
 }
@@ -110,7 +110,11 @@ pub async fn resolve_calendar_tick(
     let t_day = resolved.day_duration.value();
 
     let (year_index, day_in_year, day_index, is_leap, is_boundary) =
-        if let Some(rule) = resolved.intercalation.as_ref().map(|i| &i.refined_rule) {
+        if let Some(rule) = resolved
+            .intercalation_day_in_year
+            .as_ref()
+            .map(|i| &i.refined_rule)
+        {
             let total_days = t / t_day;
             resolve_year_and_day(total_days, rule)
         } else {

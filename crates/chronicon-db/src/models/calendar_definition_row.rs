@@ -2,7 +2,8 @@ use crate::error::DbError;
 use crate::models::moon_parsing::parse_optional_moon_reference;
 use astronomicon_core::units::Duration;
 use chronicon_core::domain::{
-    CalendarDefinition, CalendarTrackedMoon, DayConvention, YearConvention,
+    CalendarDefinition, CalendarStructureKind, CalendarTrackedMoon, DayConvention,
+    YearConvention,
 };
 use chronicon_core::error::DomainError;
 use sqlx::FromRow;
@@ -13,6 +14,7 @@ pub struct CalendarDefinitionRow {
     pub id: String,
     pub planet_id: String,
     pub name: String,
+    pub structure_kind: String,
     pub epoch_seconds_since_j2000: f64,
     pub day_convention: String,
     pub year_convention: String,
@@ -29,6 +31,18 @@ impl CalendarDefinitionRow {
         let id = Uuid::parse_str(&self.id)?;
         let planet_id = Uuid::parse_str(&self.planet_id)?;
         let epoch = Duration::new(self.epoch_seconds_since_j2000);
+
+        let structure = match self.structure_kind.as_str() {
+            "SolarOnly" | "PureSolar" => CalendarStructureKind::SolarOnly,
+            "LunarOnly" | "PureLunar" => CalendarStructureKind::LunarOnly,
+            "Lunisolar" => CalendarStructureKind::Lunisolar,
+            other => {
+                return Err(DbError::Domain(DomainError::InvalidInvariant {
+                    field: "structure_kind".to_string(),
+                    reason: format!("unknown calendar structure kind: {}", other),
+                }));
+            }
+        };
 
         let day_convention = match self.day_convention.as_str() {
             "Solar" => DayConvention::Solar,
@@ -59,6 +73,7 @@ impl CalendarDefinitionRow {
         )?;
 
         let def = CalendarDefinition::builder(id, planet_id, self.name.clone(), epoch)
+            .with_structure(structure)
             .with_day_convention(day_convention)
             .with_year_convention(year_convention)
             .with_reference_moon(reference_moon)
