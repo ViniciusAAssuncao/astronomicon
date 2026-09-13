@@ -3,6 +3,10 @@ name = "chronicon-app"
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "generate_reports"
+path = "src/bin/generate_reports.rs"
+
 [dependencies]
 chronicon-core = { path = "../chronicon-core" }
 chronicon-db = { path = "../chronicon-db" }
