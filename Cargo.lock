@@ -159,8 +159,10 @@ name = "chronicon-db"
 version = "0.1.0"
 dependencies = [
  "astronomicon-core",
+ "astronomicon-db",
  "chronicon-core",
  "serde",
+ "serde_json",
  "sqlx",
  "thiserror",
  "tokio",
