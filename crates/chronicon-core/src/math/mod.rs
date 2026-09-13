@@ -1,11 +1,19 @@
 pub mod axial_precession;
 pub mod day_length;
+pub mod eclipse_cycle;
+pub mod lunar_cycles;
 pub mod moment_of_inertia;
+pub mod moon_resonance;
 pub mod orbital_year;
 pub mod seasons;
+pub mod synodic;
 
 pub use axial_precession::*;
 pub use day_length::*;
+pub use eclipse_cycle::*;
+pub use lunar_cycles::*;
 pub use moment_of_inertia::*;
+pub use moon_resonance::*;
 pub use orbital_year::*;
 pub use seasons::*;
+pub use synodic::*;
