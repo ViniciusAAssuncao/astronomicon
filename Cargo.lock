@@ -130,6 +130,44 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "chronicon-app"
+version = "0.1.0"
+dependencies = [
+ "astronomicon-core",
+ "astronomicon-db",
+ "chronicon-core",
+ "chronicon-db",
+ "serde",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "chronicon-core"
+version = "0.1.0"
+dependencies = [
+ "astronomicon-core",
+ "serde",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "chronicon-db"
+version = "0.1.0"
+dependencies = [
+ "astronomicon-core",
+ "chronicon-core",
+ "serde",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

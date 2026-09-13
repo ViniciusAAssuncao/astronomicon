@@ -1,0 +1,15 @@
+[package]
+name = "chronicon-app"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chronicon-core = { path = "../chronicon-core" }
+chronicon-db = { path = "../chronicon-db" }
+astronomicon-core = { path = "../astronomicon-core" }
+astronomicon-db = { path = "../astronomicon-db" }
+uuid.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "uuid", "migrate", "macros"] }

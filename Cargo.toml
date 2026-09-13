@@ -9,6 +9,9 @@ members = [
     "crates/rocketcon-db",
     "crates/rocketcon-app",
     "crates/rocketcon-sim",
+    "crates/chronicon-core",
+    "crates/chronicon-db",
+    "crates/chronicon-app",
 ]
 
 [workspace.package]
