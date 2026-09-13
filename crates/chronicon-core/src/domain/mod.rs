@@ -9,6 +9,7 @@ pub mod multi_star_classification;
 pub mod rotation_classification;
 pub mod season_analysis;
 pub mod season_classification;
+pub mod stellar_illumination;
 pub mod validation;
 pub mod year_analysis;
 
@@ -23,5 +24,6 @@ pub use multi_star_classification::*;
 pub use rotation_classification::*;
 pub use season_analysis::*;
 pub use season_classification::*;
+pub use stellar_illumination::*;
 pub use validation::*;
 pub use year_analysis::*;

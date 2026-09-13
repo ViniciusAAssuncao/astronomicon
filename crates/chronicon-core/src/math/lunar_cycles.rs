@@ -1,3 +1,4 @@
+use crate::math::orbital_direction::is_retrograde_inclination;
 use crate::math::synodic::synodic_beat_period;
 use astronomicon_core::math::gravity::combined_gravitational_parameter;
 use astronomicon_core::math::kepler::{mean_motion, orbital_period};
@@ -8,7 +9,7 @@ use astronomicon_core::units::{
     Angle, AngularVelocity, Duration, Length, Mass,
 };
 use serde::{Deserialize, Serialize};
-use std::f64::consts::{FRAC_PI_2, TAU};
+use std::f64::consts::TAU;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct LunarMonths {
@@ -41,11 +42,6 @@ impl LunarMonths {
             is_retrograde_orbit,
         }
     }
-}
-
-pub fn is_retrograde_inclination(inclination: Angle) -> bool {
-    let val = inclination.value();
-    val > FRAC_PI_2 && val.is_finite()
 }
 
 pub fn lunar_sidereal_month(
