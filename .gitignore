@@ -11,6 +11,6 @@ saves/
 /database
 /queries
 
-docs
-
 *.md
+docs/
+//só para não versionar arquivos de documentação

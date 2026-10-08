@@ -1,0 +1,24 @@
+[package]
+name = "rocketcon-ffi"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+rocketcon-sim = { path = "../rocketcon-sim" }
+rocketcon-core = { path = "../rocketcon-core" }
+cxx = "1.0.202"
+tokio.workspace = true
+uuid.workspace = true
+
+[build-dependencies]
+cxx-build = "1.0.202"
+
+[dev-dependencies]
+astronomicon-db = { path = "../astronomicon-db" }
+rocketcon-db = { path = "../rocketcon-db" }
+rocketcon-app = { path = "../rocketcon-app" }
+astronomicon-core = { path = "../astronomicon-core" }
+sqlx.workspace = true

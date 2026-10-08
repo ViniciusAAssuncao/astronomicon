@@ -1,0 +1,33 @@
+use crate::ffi::{FfiVec3, FlightSnapshot};
+use rocketcon_sim::FlightSnapshot as SessionSnapshot;
+
+impl From<&SessionSnapshot> for FlightSnapshot {
+    fn from(snapshot: &SessionSnapshot) -> Self {
+        Self {
+            total_epoch_seconds: snapshot.total_epoch_seconds,
+            position_m: snapshot.position_m.into(),
+            velocity_m_s: snapshot.velocity_m_s.into(),
+            speed_m_s: snapshot.speed_m_s,
+            has_altitude: snapshot.altitude_m.is_some(),
+            altitude_m: snapshot.altitude_m.unwrap_or_default(),
+            has_mach: snapshot.mach.is_some(),
+            mach: snapshot.mach.unwrap_or_default(),
+            has_dynamic_pressure: snapshot.dynamic_pressure_pa.is_some(),
+            dynamic_pressure_pa: snapshot.dynamic_pressure_pa.unwrap_or_default(),
+            has_g_load: snapshot.total_g_load.is_some(),
+            total_g_load: snapshot.total_g_load.unwrap_or_default(),
+            has_surface_contact: snapshot.surface_contact.is_some(),
+            surface_contact: snapshot.surface_contact.unwrap_or_default(),
+        }
+    }
+}
+
+impl From<[f64; 3]> for FfiVec3 {
+    fn from(value: [f64; 3]) -> Self {
+        Self {
+            x: value[0],
+            y: value[1],
+            z: value[2],
+        }
+    }
+}
