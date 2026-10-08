@@ -1,6 +1,6 @@
 use astronomicon_app::climate::atmosphere::resolve_atmospheric_profile_at_altitude;
-use astronomicon_app::climate::circulation::resolve_wind_profile_at_latitude;
-use astronomicon_app::climate::temperature::resolve_advective_surface_temperature;
+use astronomicon_app::climate::circulation::resolve_wind_profile_at_latitude_with_context;
+use astronomicon_app::climate::temperature::{AdvectiveTemperatureContext, ClimateBodyInputs};
 use astronomicon_app::ephemeris::resolve_planet_orientation;
 use astronomicon_app::error::AppResult;
 use astronomicon_app::shape::effective_polar_radius_for_planet;
@@ -28,6 +28,9 @@ use rocketcon_core::math::aerothermodynamics::{
 use rocketcon_core::math::resolve_mass_properties_without_payloads;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+mod profile;
+pub use profile::{AerodynamicsProfile, AerodynamicsStageTiming};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct AerodynamicDiagnostic {
@@ -58,6 +61,96 @@ pub async fn resolve_vehicle_aerodynamics(
     universe_epoch: Duration,
     at_epoch: Duration,
 ) -> AppResult<Option<AerodynamicDiagnostic>> {
+    resolve_vehicle_aerodynamics_inner(
+        pool,
+        vehicle_physical_state,
+        planet_id,
+        planet_inertial_position,
+        components,
+        active_stages,
+        universe_epoch,
+        at_epoch,
+        None,
+        false,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn resolve_vehicle_aerodynamics_in_existing_transaction(
+    pool: &SqlitePool,
+    vehicle_physical_state: &VehiclePhysicalState,
+    planet_id: Uuid,
+    planet_inertial_position: Vector3,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    universe_epoch: Duration,
+    at_epoch: Duration,
+    body: Option<&ClimateBodyInputs>,
+) -> AppResult<Option<AerodynamicDiagnostic>> {
+    resolve_vehicle_aerodynamics_inner(
+        pool,
+        vehicle_physical_state,
+        planet_id,
+        planet_inertial_position,
+        components,
+        active_stages,
+        universe_epoch,
+        at_epoch,
+        body,
+        true,
+        None,
+    )
+    .await
+}
+
+pub async fn resolve_vehicle_aerodynamics_profiled(
+    pool: &SqlitePool,
+    vehicle_physical_state: &VehiclePhysicalState,
+    planet_id: Uuid,
+    planet_inertial_position: Vector3,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> AppResult<(Option<AerodynamicDiagnostic>, AerodynamicsProfile)> {
+    let mut profile = AerodynamicsProfile::new();
+    let result = resolve_vehicle_aerodynamics_inner(
+        pool,
+        vehicle_physical_state,
+        planet_id,
+        planet_inertial_position,
+        components,
+        active_stages,
+        universe_epoch,
+        at_epoch,
+        None,
+        false,
+        Some(&mut profile),
+    )
+    .await?;
+    Ok((result, profile))
+}
+
+fn mark(profile: &mut Option<&mut AerodynamicsProfile>, name: &'static str) {
+    if let Some(profile) = profile.as_deref_mut() {
+        profile.mark(name);
+    }
+}
+
+async fn resolve_vehicle_aerodynamics_inner(
+    pool: &SqlitePool,
+    vehicle_physical_state: &VehiclePhysicalState,
+    planet_id: Uuid,
+    planet_inertial_position: Vector3,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    universe_epoch: Duration,
+    at_epoch: Duration,
+    body: Option<&ClimateBodyInputs>,
+    existing_transaction: bool,
+    mut profile: Option<&mut AerodynamicsProfile>,
+) -> AppResult<Option<AerodynamicDiagnostic>> {
     let atmosphere = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
         Some(atm) => atm,
         None => {
@@ -65,26 +158,24 @@ pub async fn resolve_vehicle_aerodynamics(
         }
     };
 
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
+    let planet_row = planet_repository::get_by_id(pool, &planet_id)
+        .await?
         .ok_or_else(|| DomainError::InvalidInvariant {
             field: "planet_id".to_string(),
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let eq_radius = planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3));
+    let eq_radius = planet
+        .equatorial_radius()
+        .unwrap_or_else(|| Length::new(6371e3));
     let pol_radius = effective_polar_radius_for_planet(&planet);
 
     let vehicle_pos_raw = vehicle_physical_state.position().raw();
     let r_rel_inertial = vehicle_pos_raw - planet_inertial_position;
 
-    let planet_orientation = resolve_planet_orientation(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch,
-    ).await?;
+    let planet_orientation =
+        resolve_planet_orientation(pool, planet_id, universe_epoch, at_epoch).await?;
     let r_body = planet_orientation.inverse().rotate_vector(r_rel_inertial);
 
     let (altitude, normal_body) = geodetic_altitude_and_normal(
@@ -97,45 +188,61 @@ pub async fn resolve_vehicle_aerodynamics(
         return Ok(None);
     }
 
-    let lat_val = r_body.2.atan2((r_body.0 * r_body.0 + r_body.1 * r_body.1).sqrt());
+    let lat_val = r_body
+        .2
+        .atan2((r_body.0 * r_body.0 + r_body.1 * r_body.1).sqrt());
     let latitude = Angle::new(lat_val);
+    mark(&mut profile, "load_atmosphere_planet_orientation");
 
-    let surface_temperature = resolve_advective_surface_temperature(
-        pool,
-        planet_id,
-        latitude,
-        universe_epoch,
-        at_epoch,
-    ).await?;
+    let climate = match body.filter(|body| body.planet_id() == planet_id) {
+        Some(body) => {
+            AdvectiveTemperatureContext::load_with_body(pool, body, universe_epoch, at_epoch)
+                .await?
+        }
+        None if existing_transaction => {
+            AdvectiveTemperatureContext::load_in_existing_transaction(
+                pool,
+                planet_id,
+                universe_epoch,
+                at_epoch,
+            )
+            .await?
+        }
+        None => {
+            AdvectiveTemperatureContext::load(pool, planet_id, universe_epoch, at_epoch).await?
+        }
+    };
+    let surface_temperature = climate.temperature_at_latitude(pool, latitude).await?;
+    mark(&mut profile, "surface_temperature");
 
-    let (p_alt, t_alt, rho_alt) = resolve_atmospheric_profile_at_altitude(
-        pool,
-        planet_id,
-        surface_temperature,
-        altitude,
-    ).await?;
+    let (p_alt, t_alt, rho_alt) =
+        resolve_atmospheric_profile_at_altitude(pool, planet_id, surface_temperature, altitude)
+            .await?;
+    mark(&mut profile, "atmosphere_at_altitude");
 
     if rho_alt.value() <= 0.0 {
         return Ok(None);
     }
 
-    let wind_diag = resolve_wind_profile_at_latitude(
+    let wind_diag = resolve_wind_profile_at_latitude_with_context(
         pool,
-        planet_id,
+        &climate,
         latitude,
-        universe_epoch,
-        at_epoch,
-    ).await?;
+        surface_temperature,
+    )
+    .await?;
+    mark(&mut profile, "wind_profile");
 
     let normal_inertial = planet_orientation.rotate_vector(normal_body);
     let spin_axis_inertial = planet_orientation.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
     let (east, north, up) = topocentric_basis(normal_inertial, spin_axis_inertial);
 
-    let rot_period = planet.rotation_period().unwrap_or_else(|| Duration::new(86400.0));
+    let rot_period = planet
+        .rotation_period()
+        .unwrap_or_else(|| Duration::new(86400.0));
     let omega_mag = angular_velocity_from_rotation_period(rot_period);
-    let planet_omega_inertial = AngularVelocityVector::from_raw(
-        spin_axis_inertial * omega_mag.value(),
-    );
+    let planet_omega_inertial =
+        AngularVelocityVector::from_raw(spin_axis_inertial * omega_mag.value());
 
     let wind_topocentric = Vector3::new(
         wind_diag.surface_wind_u.value(),
@@ -169,7 +276,8 @@ pub async fn resolve_vehicle_aerodynamics(
 
     let angles = compute_aerodynamic_angles(vehicle_physical_state.orientation(), v_rel.raw());
     let cop = center_of_pressure(components, active_stages, mach);
-    let com = resolve_mass_properties_without_payloads(components, active_stages, 1.0).center_of_mass();
+    let com =
+        resolve_mass_properties_without_payloads(components, active_stages, 1.0).center_of_mass();
 
     let (drag_force, aero_torque) = compute_aerodynamic_forces_and_torque(
         q,
@@ -183,24 +291,23 @@ pub async fn resolve_vehicle_aerodynamics(
 
     let (nose_radius, _, _) = vehicle_geometry_thermal_properties(components, active_stages);
     let stag_heat_flux = stagnation_point_heat_flux(nose_radius, rho_alt, v_rel_speed);
+    mark(&mut profile, "local_aero_math");
 
-    Ok(
-        Some(AerodynamicDiagnostic {
-            altitude,
-            dynamic_pressure: q,
-            mach_number: mach,
-            drag_coefficient: cd,
-            reference_area_m2: ref_area,
-            air_density: rho_alt,
-            speed_of_sound: sound_speed,
-            relative_airspeed: v_rel_speed,
-            drag_force,
-            ambient_pressure: p_alt,
-            angle_of_attack: angles.angle_of_attack,
-            sideslip_angle: angles.sideslip_angle,
-            center_of_pressure: cop,
-            aerodynamic_torque: aero_torque,
-            stagnation_heat_flux: stag_heat_flux,
-        }),
-    )
+    Ok(Some(AerodynamicDiagnostic {
+        altitude,
+        dynamic_pressure: q,
+        mach_number: mach,
+        drag_coefficient: cd,
+        reference_area_m2: ref_area,
+        air_density: rho_alt,
+        speed_of_sound: sound_speed,
+        relative_airspeed: v_rel_speed,
+        drag_force,
+        ambient_pressure: p_alt,
+        angle_of_attack: angles.angle_of_attack,
+        sideslip_angle: angles.sideslip_angle,
+        center_of_pressure: cop,
+        aerodynamic_torque: aero_torque,
+        stagnation_heat_flux: stag_heat_flux,
+    }))
 }

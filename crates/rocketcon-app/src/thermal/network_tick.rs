@@ -2,7 +2,9 @@ use crate::error::RocketResult;
 use crate::power::thermal::VehicleThermalBudget;
 use astronomicon_app::climate::resolve_irradiance_at_position;
 use astronomicon_core::math::eclipse::is_in_cylindrical_shadow;
-use astronomicon_core::units::constants::{COSMIC_MICROWAVE_BACKGROUND_TEMPERATURE, STEFAN_BOLTZMANN_CONSTANT};
+use astronomicon_core::units::constants::{
+    COSMIC_MICROWAVE_BACKGROUND_TEMPERATURE, STEFAN_BOLTZMANN_CONSTANT,
+};
 use astronomicon_core::units::{
     Duration, HeatFlux, Length, Luminosity, Position, Quaternion, Temperature,
 };
@@ -13,7 +15,7 @@ use rocketcon_core::domain::{
 use rocketcon_core::environment::EnvironmentSnapshot;
 use rocketcon_core::math::thermal_budget::check_material_record_thermal_structural_limits;
 use rocketcon_core::math::thermal_network::{
-    integrate_thermal_network, node_net_radiation, node_solar_heat_gain, ThermalNetworkState,
+    ThermalNetworkState, integrate_thermal_network, node_net_radiation, node_solar_heat_gain,
 };
 use rocketcon_db::repositories::material as material_repository;
 use rocketcon_db::repositories::thermal_node_state as thermal_node_state_repository;
@@ -55,6 +57,71 @@ pub async fn advance_vehicle_thermal_network(
     universe_epoch: Duration,
     at_epoch: Duration,
 ) -> RocketResult<VehicleThermalTickReport> {
+    advance_vehicle_thermal_network_inner(
+        pool,
+        _vehicle_id,
+        network,
+        components,
+        _active_stages,
+        environment,
+        vehicle_position,
+        vehicle_orientation,
+        local_atmospheric_temperature,
+        dt,
+        universe_epoch,
+        at_epoch,
+        false,
+    )
+    .await
+}
+
+pub(crate) async fn advance_vehicle_thermal_network_in_existing_transaction(
+    pool: &SqlitePool,
+    vehicle_id: Uuid,
+    network: &mut ThermalNetworkState,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    environment: &EnvironmentSnapshot,
+    vehicle_position: Position,
+    vehicle_orientation: Quaternion,
+    local_atmospheric_temperature: Option<Temperature>,
+    dt: Duration,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> RocketResult<VehicleThermalTickReport> {
+    advance_vehicle_thermal_network_inner(
+        pool,
+        vehicle_id,
+        network,
+        components,
+        active_stages,
+        environment,
+        vehicle_position,
+        vehicle_orientation,
+        local_atmospheric_temperature,
+        dt,
+        universe_epoch,
+        at_epoch,
+        true,
+    )
+    .await
+}
+
+async fn advance_vehicle_thermal_network_inner(
+    pool: &SqlitePool,
+    _vehicle_id: Uuid,
+    network: &mut ThermalNetworkState,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    _active_stages: &[u32],
+    environment: &EnvironmentSnapshot,
+    vehicle_position: Position,
+    vehicle_orientation: Quaternion,
+    local_atmospheric_temperature: Option<Temperature>,
+    dt: Duration,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+    existing_transaction: bool,
+) -> RocketResult<VehicleThermalTickReport> {
     let env_temp = local_atmospheric_temperature
         .unwrap_or_else(|| Temperature::new(COSMIC_MICROWAVE_BACKGROUND_TEMPERATURE));
 
@@ -92,17 +159,6 @@ pub async fn advance_vehicle_thermal_network(
         dt,
         substep_dt,
     );
-
-    let new_at_epoch = at_epoch + dt;
-    for node in &network.nodes {
-        let state = ThermalNodeState::new(
-            node.vehicle_component_id,
-            node.temperature,
-            universe_epoch,
-            new_at_epoch,
-        )?;
-        thermal_node_state_repository::upsert(pool, &state).await?;
-    }
 
     let all_materials = material_repository::list_all(pool).await?;
     let mut materials_map: HashMap<Uuid, _> = HashMap::with_capacity(all_materials.len());
@@ -214,6 +270,25 @@ pub async fn advance_vehicle_thermal_network(
         min_max_service_temp.unwrap_or(max_node_temp),
         is_vehicle_overheating,
     );
+
+    let new_at_epoch = at_epoch + dt;
+    let states = network
+        .nodes
+        .iter()
+        .map(|node| {
+            ThermalNodeState::new(
+                node.vehicle_component_id,
+                node.temperature,
+                universe_epoch,
+                new_at_epoch,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if existing_transaction {
+        thermal_node_state_repository::upsert_many_in_existing_transaction(pool, &states).await?;
+    } else {
+        thermal_node_state_repository::upsert_many_atomic(pool, &states).await?;
+    }
 
     Ok(VehicleThermalTickReport {
         budget,

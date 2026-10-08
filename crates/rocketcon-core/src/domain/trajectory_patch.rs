@@ -1,7 +1,7 @@
 use crate::error::{RocketDomainError, RocketDomainResult};
 use crate::math::orbital::low_thrust::evaluate_chebyshev_series;
 use crate::math::orbital::universal::propagate_universal_state_vectors;
-use crate::math::orbital::{osculating_elements_to_cartesian, OrbitType, OsculatingElements};
+use crate::math::orbital::{OrbitType, OsculatingElements, osculating_elements_to_cartesian};
 use astronomicon_core::domain::validation::{
     validate_finite, validate_non_negative_finite, validate_positive_finite,
 };
@@ -92,7 +92,7 @@ impl LowThrustPatchData {
     ) -> RocketDomainResult<Self> {
         validate_positive_finite(initial_mass.value(), "initial_mass")?;
         validate_positive_finite(final_mass.value(), "final_mass")?;
-        validate_positive_finite(thrust.value(), "thrust")?;
+        validate_non_negative_finite(thrust.value(), "thrust")?;
         validate_positive_finite(specific_impulse.value(), "specific_impulse")?;
         validate_non_negative_finite(total_delta_v.value(), "total_delta_v")?;
 
@@ -238,15 +238,13 @@ impl TrajectoryPatch {
             }
         }
 
-        validate_positive_finite(
-            gravitational_parameter.value(),
-            "gravitational_parameter",
-        )?;
+        validate_positive_finite(gravitational_parameter.value(), "gravitational_parameter")?;
 
         if matches!(kind, TrajectoryPatchKind::LowThrust(_)) && end_universe_epoch.is_none() {
             return Err(RocketDomainError::InvalidInvariant {
                 field: "end_universe_epoch".to_string(),
-                reason: "powered low-thrust patch must have a finite end_universe_epoch".to_string(),
+                reason: "powered low-thrust patch must have a finite end_universe_epoch"
+                    .to_string(),
             });
         }
 

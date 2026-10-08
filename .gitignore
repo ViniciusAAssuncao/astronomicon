@@ -10,3 +10,7 @@ saves/
 .idea/
 /database
 /queries
+
+docs
+
+*.md

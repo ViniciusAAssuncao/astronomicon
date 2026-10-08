@@ -991,8 +991,12 @@ version = "0.1.0"
 dependencies = [
  "astronomicon-app",
  "astronomicon-core",
+ "astronomicon-db",
+ "libsqlite3-sys",
  "rocketcon-app",
  "rocketcon-core",
+ "rocketcon-db",
+ "sqlx",
  "tokio",
  "uuid",
 ]

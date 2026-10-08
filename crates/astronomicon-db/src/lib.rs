@@ -4,4 +4,4 @@ pub mod models;
 pub mod repositories;
 pub mod save;
 
-pub use sqlx::SqlitePool;
+pub use sqlx::{SqliteConnection, SqlitePool};

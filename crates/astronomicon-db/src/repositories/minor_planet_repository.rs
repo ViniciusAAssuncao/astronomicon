@@ -1,7 +1,9 @@
 use crate::error::DbResult;
 use crate::models::MinorPlanetRow;
-use crate::repositories::fetch::{fetch_all, fetch_all_by_param, fetch_optional_by_param};
-use sqlx::SqlitePool;
+use crate::repositories::fetch::{
+    fetch_all, fetch_all_by_param, fetch_optional_by_param, fetch_optional_by_param_on_connection,
+};
+use sqlx::{SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 const BASE_QUERY: &str = "SELECT id, star_system_id, parent_star_id, parent_planet_id, \
@@ -14,6 +16,14 @@ const BASE_QUERY: &str = "SELECT id, star_system_id, parent_star_id, parent_plan
 pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> DbResult<Option<MinorPlanetRow>> {
     let query = format!("{BASE_QUERY} WHERE id = ?");
     fetch_optional_by_param(pool, &query, id.to_string()).await
+}
+
+pub async fn get_by_id_on_connection(
+    connection: &mut SqliteConnection,
+    id: &Uuid,
+) -> DbResult<Option<MinorPlanetRow>> {
+    let query = format!("{BASE_QUERY} WHERE id = ?");
+    fetch_optional_by_param_on_connection(connection, &query, id.to_string()).await
 }
 
 pub async fn list_all(pool: &SqlitePool) -> DbResult<Vec<MinorPlanetRow>> {
