@@ -26,6 +26,10 @@ mod climate_snapshot_test;
 #[path = "flight_tick_bench/tick_atomicity_test.rs"]
 mod tick_atomicity_test;
 
+#[cfg(test)]
+#[path = "flight_tick_bench/session_test.rs"]
+mod session_test;
+
 const VEHICLE_ID: &str = "e2897c6a-7d04-4ebc-882c-87984a74a200";
 const COMPONENT_ID: &str = "56c1b894-4718-4f0c-94a0-bc22a6053180";
 const BATTERY_ID: &str = "56c1b894-4718-4f0c-94a0-bc22a6053181";

@@ -1,9 +1,11 @@
 pub mod bridge;
 pub mod clock;
+pub mod session;
 
 pub use bridge::*;
 pub use clock::*;
 pub use rocketcon_app::{RocketError, RocketResult};
+pub use session::*;
 
 use uuid::Uuid;
 
