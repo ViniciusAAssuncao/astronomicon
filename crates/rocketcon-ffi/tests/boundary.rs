@@ -19,6 +19,8 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     engine.load_save(path.to_str().ok_or("invalid path")?, VEHICLE_ID)?;
     let initial = engine.snapshot()?;
     assert!(!initial.has_altitude);
+    assert!(initial.has_reference_body);
+    assert!(initial.reference_body_radius_m > 0.0);
     engine.set_control(0.0, 0.0, 0.0)?;
     assert_eq!(
         engine.step(0.0).unwrap_err(),
@@ -29,6 +31,7 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(next.total_epoch_seconds > initial.total_epoch_seconds);
     assert!(next.speed_m_s.is_finite());
     assert!(next.has_g_load);
+    assert!(next.has_reference_body);
     assert!(engine.load_save("missing-save.db", VEHICLE_ID).is_err());
     assert_eq!(engine.snapshot()?.position_m.x, next.position_m.x);
     engine.save()?;

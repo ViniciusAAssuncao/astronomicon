@@ -17,6 +17,8 @@ pub struct VehicleTickReport {
     pub axial_g_load: f64,
     pub lateral_g_load: f64,
     pub total_g_load: f64,
+    pub reference_body_position_m: [f64; 3],
+    pub reference_body_radius_m: f64,
 }
 
 impl VehicleTickReport {
@@ -30,6 +32,8 @@ impl VehicleTickReport {
         axial_g_load: f64,
         lateral_g_load: f64,
         total_g_load: f64,
+        reference_body_position_m: [f64; 3],
+        reference_body_radius_m: f64,
     ) -> Self {
         Self {
             physical_state,
@@ -41,6 +45,8 @@ impl VehicleTickReport {
             axial_g_load,
             lateral_g_load,
             total_g_load,
+            reference_body_position_m,
+            reference_body_radius_m,
         }
     }
 

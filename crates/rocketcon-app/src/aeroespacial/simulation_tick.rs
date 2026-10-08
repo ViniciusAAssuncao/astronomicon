@@ -391,5 +391,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
         axial_g_load,
         lateral_g_load,
         total_g_load,
+        [planet_position_new.raw().0, planet_position_new.raw().1, planet_position_new.raw().2],
+        eq_radius.value(),
     ))
 }

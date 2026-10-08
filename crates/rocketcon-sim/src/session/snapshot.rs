@@ -8,6 +8,8 @@ pub struct FlightSnapshot {
     pub reference_body_id: Uuid,
     pub total_epoch_seconds: f64,
     pub position_m: [f64; 3],
+    pub reference_body_position_m: Option<[f64; 3]>,
+    pub reference_body_radius_m: Option<f64>,
     pub velocity_m_s: [f64; 3],
     pub speed_m_s: f64,
     pub altitude_m: Option<f64>,
@@ -26,6 +28,8 @@ impl FlightSnapshot {
             reference_body_id: state.reference_body_id(),
             total_epoch_seconds: state.captured_total_epoch().value(),
             position_m: [position.0, position.1, position.2],
+            reference_body_position_m: None,
+            reference_body_radius_m: None,
             velocity_m_s: [velocity.0, velocity.1, velocity.2],
             speed_m_s: state.speed().value(),
             altitude_m: None,
@@ -38,6 +42,8 @@ impl FlightSnapshot {
 
     pub fn from_report(report: &VehicleTickReport) -> Self {
         let mut snapshot = Self::from_state(report.physical_state());
+        snapshot.reference_body_position_m = Some(report.reference_body_position_m);
+        snapshot.reference_body_radius_m = Some(report.reference_body_radius_m);
         snapshot.altitude_m = report.aerodynamics().map(|a| a.altitude.value());
         snapshot.mach = report.mach_number();
         snapshot.dynamic_pressure_pa = report.dynamic_pressure().map(|q| q.value());

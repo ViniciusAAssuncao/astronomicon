@@ -56,7 +56,17 @@ impl RocketconSession {
                 ))
             })?;
         let universe_epoch = rocketcon_app::universe::resolve_universe_epoch(&pool).await?;
-        let snapshot = FlightSnapshot::from_state(&state);
+        let environment = rocketcon_app::environment::load_environment_snapshot(
+            &pool,
+            state.reference_body_id(),
+            universe_epoch,
+            state.captured_at_epoch(),
+        )
+        .await?;
+        let mut snapshot = FlightSnapshot::from_state(&state);
+        let body_position = environment.planet_position.raw();
+        snapshot.reference_body_position_m = Some([body_position.0, body_position.1, body_position.2]);
+        snapshot.reference_body_radius_m = environment.planet.equatorial_radius().map(|radius| radius.value());
         let tick_session = TickTransactionSession::new(&pool).await?;
         Ok(Self {
             pool,

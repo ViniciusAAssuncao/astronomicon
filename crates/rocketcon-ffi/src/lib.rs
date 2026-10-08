@@ -16,6 +16,9 @@ pub mod ffi {
     struct FlightSnapshot {
         total_epoch_seconds: f64,
         position_m: FfiVec3,
+        has_reference_body: bool,
+        reference_body_position_m: FfiVec3,
+        reference_body_radius_m: f64,
         velocity_m_s: FfiVec3,
         speed_m_s: f64,
         has_altitude: bool,
