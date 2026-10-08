@@ -11,6 +11,7 @@ pub struct FlightSnapshot {
     pub reference_body_position_m: Option<[f64; 3]>,
     pub reference_body_radius_m: Option<f64>,
     pub velocity_m_s: [f64; 3],
+    pub angular_velocity_rad_s: [f64; 3],
     pub speed_m_s: f64,
     pub altitude_m: Option<f64>,
     pub mach: Option<f64>,
@@ -23,6 +24,7 @@ impl FlightSnapshot {
     pub fn from_state(state: &VehiclePhysicalState) -> Self {
         let position = state.position().raw();
         let velocity = state.velocity().raw();
+        let angular_velocity = state.angular_velocity().raw();
         Self {
             vehicle_id: state.vehicle_id(),
             reference_body_id: state.reference_body_id(),
@@ -31,6 +33,7 @@ impl FlightSnapshot {
             reference_body_position_m: None,
             reference_body_radius_m: None,
             velocity_m_s: [velocity.0, velocity.1, velocity.2],
+            angular_velocity_rad_s: [angular_velocity.0, angular_velocity.1, angular_velocity.2],
             speed_m_s: state.speed().value(),
             altitude_m: None,
             mach: None,

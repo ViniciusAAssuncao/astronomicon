@@ -1,4 +1,4 @@
-use crate::ffi::FlightSnapshot;
+use crate::ffi::{FlightSnapshot, VisualComponent};
 use rocketcon_core::domain::VehicleControlInput;
 use rocketcon_sim::RocketconSession;
 use tokio::runtime::Runtime;
@@ -65,6 +65,17 @@ impl Engine {
             .ok_or("no vehicle loaded")?
             .snapshot()
             .into())
+    }
+
+    pub fn vehicle_components(&self) -> Result<Vec<VisualComponent>, String> {
+        Ok(self
+            .session
+            .as_ref()
+            .ok_or("no vehicle loaded")?
+            .vehicle_components()
+            .iter()
+            .map(VisualComponent::from)
+            .collect())
     }
 
     pub fn save(&self) -> Result<(), String> {

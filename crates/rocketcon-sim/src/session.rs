@@ -1,6 +1,8 @@
 mod snapshot;
+mod vehicle_visual;
 
 pub use snapshot::{FlightEvent, FlightEventKind, FlightSnapshot};
+pub use vehicle_visual::VehicleVisualComponent;
 
 use crate::{RocketError, RocketResult};
 use astronomicon_core::units::Duration;
@@ -8,6 +10,7 @@ use astronomicon_db::SqlitePool;
 use rocketcon_app::aeroespacial::advance_vehicle_simulation_in_session;
 use rocketcon_core::domain::VehicleControlInput;
 use rocketcon_db::repositories::vehicle_physical_state;
+use rocketcon_db::repositories::vehicle_repository;
 use rocketcon_db::tick_transaction::TickTransactionSession;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -20,6 +23,7 @@ pub struct RocketconSession {
     universe_epoch: Duration,
     control: VehicleControlInput,
     snapshot: FlightSnapshot,
+    vehicle_components: Vec<VehicleVisualComponent>,
     trajectory: Vec<FlightSnapshot>,
     events: Vec<FlightEvent>,
 }
@@ -64,6 +68,11 @@ impl RocketconSession {
         )
         .await?;
         let mut snapshot = FlightSnapshot::from_state(&state);
+        let vehicle_components = vehicle_repository::list_components_for_vehicle(&pool, &vehicle_id)
+            .await?
+            .iter()
+            .map(|(entry, record)| VehicleVisualComponent::from_assembly(entry, record))
+            .collect();
         let body_position = environment.planet_position.raw();
         snapshot.reference_body_position_m = Some([body_position.0, body_position.1, body_position.2]);
         snapshot.reference_body_radius_m = environment.planet.equatorial_radius().map(|radius| radius.value());
@@ -76,6 +85,7 @@ impl RocketconSession {
             universe_epoch,
             control: VehicleControlInput::new(),
             snapshot: snapshot.clone(),
+            vehicle_components,
             trajectory: vec![snapshot],
             events: Vec::new(),
         })
@@ -109,6 +119,10 @@ impl RocketconSession {
 
     pub fn snapshot(&self) -> &FlightSnapshot {
         &self.snapshot
+    }
+
+    pub fn vehicle_components(&self) -> &[VehicleVisualComponent] {
+        &self.vehicle_components
     }
 
     pub fn trajectory(&self) -> &[FlightSnapshot] {

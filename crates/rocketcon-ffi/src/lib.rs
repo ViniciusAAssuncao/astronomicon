@@ -1,5 +1,6 @@
 mod engine;
 mod snapshot;
+mod vehicle;
 
 pub use engine::Engine;
 
@@ -20,6 +21,7 @@ pub mod ffi {
         reference_body_position_m: FfiVec3,
         reference_body_radius_m: f64,
         velocity_m_s: FfiVec3,
+        angular_velocity_rad_s: FfiVec3,
         speed_m_s: f64,
         has_altitude: bool,
         altitude_m: f64,
@@ -33,6 +35,19 @@ pub mod ffi {
         surface_contact: bool,
     }
 
+    #[derive(Debug)]
+    struct VisualComponent {
+        instance_id: String,
+        name: String,
+        kind: u8,
+        stage_index: u32,
+        offset_x_m: f64,
+        offset_y_m: f64,
+        offset_z_m: f64,
+        length_m: f64,
+        diameter_m: f64,
+    }
+
     extern "Rust" {
         type Engine;
 
@@ -41,6 +56,7 @@ pub mod ffi {
         fn set_control(self: &mut Engine, pitch: f64, yaw: f64, roll: f64) -> Result<()>;
         fn step(self: &mut Engine, dt_seconds: f64) -> Result<()>;
         fn snapshot(self: &Engine) -> Result<FlightSnapshot>;
+        fn vehicle_components(self: &Engine) -> Result<Vec<VisualComponent>>;
         fn save(self: &Engine) -> Result<()>;
     }
 }

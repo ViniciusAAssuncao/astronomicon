@@ -10,6 +10,7 @@ impl From<&SessionSnapshot> for FlightSnapshot {
             reference_body_position_m: snapshot.reference_body_position_m.unwrap_or_default().into(),
             reference_body_radius_m: snapshot.reference_body_radius_m.unwrap_or_default(),
             velocity_m_s: snapshot.velocity_m_s.into(),
+            angular_velocity_rad_s: snapshot.angular_velocity_rad_s.into(),
             speed_m_s: snapshot.speed_m_s,
             has_altitude: snapshot.altitude_m.is_some(),
             altitude_m: snapshot.altitude_m.unwrap_or_default(),
