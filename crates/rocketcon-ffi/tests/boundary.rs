@@ -33,6 +33,10 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(engine.take_events()?.is_empty());
     assert!((initial.altitude_m - 200_000.0).abs() < 1.0);
     assert!(initial.has_reference_speed);
+    assert!(initial.has_reference_vertical_speed);
+    assert!(initial.has_reference_horizontal_speed);
+    assert!(initial.reference_horizontal_speed_m_s.is_finite());
+    assert!(initial.reference_vertical_speed_m_s.is_finite());
     assert!(initial.reference_speed_m_s.is_finite());
     assert!(initial.has_reference_body);
     assert!(initial.reference_body_radius_m > 0.0);
@@ -55,6 +59,10 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(next.has_reference_body);
     assert!(next.has_altitude);
     assert!(next.has_reference_speed);
+    assert!(next.has_reference_vertical_speed);
+    assert!(next.has_reference_horizontal_speed);
+    assert!(next.reference_horizontal_speed_m_s.is_finite());
+    assert!(next.reference_vertical_speed_m_s.is_finite());
     assert!(engine.take_events()?.is_empty());
     assert!(next.reference_speed_m_s.is_finite());
     assert!(engine.load_save("missing-save.db", VEHICLE_ID).is_err());

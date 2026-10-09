@@ -14,6 +14,8 @@ pub struct FlightSnapshot {
     pub angular_velocity_rad_s: [f64; 3],
     pub speed_m_s: f64,
     pub reference_speed_m_s: Option<f64>,
+    pub reference_vertical_speed_m_s: Option<f64>,
+    pub reference_horizontal_speed_m_s: Option<f64>,
     pub altitude_m: Option<f64>,
     pub mach: Option<f64>,
     pub dynamic_pressure_pa: Option<f64>,
@@ -37,6 +39,8 @@ impl FlightSnapshot {
             angular_velocity_rad_s: [angular_velocity.0, angular_velocity.1, angular_velocity.2],
             speed_m_s: state.speed().value(),
             reference_speed_m_s: None,
+            reference_vertical_speed_m_s: None,
+            reference_horizontal_speed_m_s: None,
             altitude_m: None,
             mach: None,
             dynamic_pressure_pa: None,
@@ -52,6 +56,16 @@ impl FlightSnapshot {
         snapshot.reference_speed_m_s = relative_speed(
             snapshot.velocity_m_s,
             report.reference_body_velocity_m_s,
+        );
+        snapshot.reference_vertical_speed_m_s = reference_vertical_speed(
+            snapshot.position_m,
+            report.reference_body_position_m,
+            snapshot.velocity_m_s,
+            report.reference_body_velocity_m_s,
+        );
+        snapshot.reference_horizontal_speed_m_s = reference_horizontal_speed(
+            snapshot.reference_speed_m_s,
+            snapshot.reference_vertical_speed_m_s,
         );
         snapshot.altitude_m = report.aerodynamics().map(|a| a.altitude.value()).or_else(|| {
             geometric_altitude(
@@ -86,6 +100,48 @@ pub(crate) fn relative_speed(velocity: [f64; 3], body_velocity: [f64; 3]) -> Opt
         velocity[2] - body_velocity[2],
     ];
     Some(delta[0].hypot(delta[1]).hypot(delta[2]))
+}
+
+pub(crate) fn reference_vertical_speed(
+    position: [f64; 3],
+    body_position: [f64; 3],
+    velocity: [f64; 3],
+    body_velocity: [f64; 3],
+) -> Option<f64> {
+    if !position.iter().chain(body_position.iter()).chain(velocity.iter())
+        .chain(body_velocity.iter()).all(|value| value.is_finite()) {
+        return None;
+    }
+    let radial = [
+        position[0] - body_position[0],
+        position[1] - body_position[1],
+        position[2] - body_position[2],
+    ];
+    let distance = radial[0].hypot(radial[1]).hypot(radial[2]);
+    if distance <= 0.0 || !distance.is_finite() {
+        return None;
+    }
+    let relative_velocity = [
+        velocity[0] - body_velocity[0],
+        velocity[1] - body_velocity[1],
+        velocity[2] - body_velocity[2],
+    ];
+    let projection = radial.iter().zip(relative_velocity.iter())
+        .map(|(radius, speed)| radius * speed / distance)
+        .sum::<f64>();
+    projection.is_finite().then_some(projection)
+}
+
+pub(crate) fn reference_horizontal_speed(
+    reference_speed: Option<f64>,
+    vertical_speed: Option<f64>,
+) -> Option<f64> {
+    let speed = reference_speed?;
+    let vertical = vertical_speed?;
+    if !speed.is_finite() || !vertical.is_finite() || speed < 0.0 {
+        return None;
+    }
+    Some(((speed - vertical.abs()).max(0.0) * (speed + vertical.abs())).sqrt())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +206,8 @@ mod tests {
             angular_velocity_rad_s: [0.0; 3],
             speed_m_s: 0.0,
             reference_speed_m_s: None,
+            reference_vertical_speed_m_s: None,
+            reference_horizontal_speed_m_s: None,
             altitude_m: None,
             mach: None,
             dynamic_pressure_pa: None,
@@ -170,5 +228,26 @@ mod tests {
         assert_eq!(events[1].kind, FlightEventKind::SurfaceContact);
         assert!(events.iter().all(|event| event.total_epoch_seconds == 4.02));
         assert!(FlightEvent::between(&current, &current).is_empty());
+    }
+
+    #[test]
+    fn vertical_speed_has_sign_relative_to_moving_body() {
+        use super::reference_vertical_speed;
+        let position = [110.0, 20.0, 0.0];
+        let body = [10.0, 20.0, 0.0];
+        let body_velocity = [3.0, 5.0, 0.0];
+        assert_eq!(reference_vertical_speed(position, body, [8.0, 5.0, 0.0], body_velocity), Some(5.0));
+        assert_eq!(reference_vertical_speed(position, body, [-2.0, 5.0, 0.0], body_velocity), Some(-5.0));
+        assert_eq!(reference_vertical_speed(position, body, [3.0, 12.0, 0.0], body_velocity), Some(0.0));
+        assert_eq!(reference_vertical_speed(body, body, [8.0, 5.0, 0.0], body_velocity), None);
+    }
+
+    #[test]
+    fn horizontal_speed_uses_the_tangential_component() {
+        use super::reference_horizontal_speed;
+        assert_eq!(reference_horizontal_speed(Some(5.0), Some(3.0)), Some(4.0));
+        assert_eq!(reference_horizontal_speed(Some(5.0), Some(-3.0)), Some(4.0));
+        assert_eq!(reference_horizontal_speed(Some(5.0), Some(5.0)), Some(0.0));
+        assert_eq!(reference_horizontal_speed(None, Some(3.0)), None);
     }
 }

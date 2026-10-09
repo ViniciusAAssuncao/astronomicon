@@ -94,6 +94,16 @@ impl RocketconSession {
             snapshot.velocity_m_s,
             [body_velocity.0, body_velocity.1, body_velocity.2],
         );
+        snapshot.reference_vertical_speed_m_s = snapshot::reference_vertical_speed(
+            snapshot.position_m,
+            [body_position.0, body_position.1, body_position.2],
+            snapshot.velocity_m_s,
+            [body_velocity.0, body_velocity.1, body_velocity.2],
+        );
+        snapshot.reference_horizontal_speed_m_s = snapshot::reference_horizontal_speed(
+            snapshot.reference_speed_m_s,
+            snapshot.reference_vertical_speed_m_s,
+        );
         let tick_session = TickTransactionSession::new(&pool).await?;
         Ok(Self {
             pool,
