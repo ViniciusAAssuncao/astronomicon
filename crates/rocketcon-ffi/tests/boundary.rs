@@ -36,6 +36,8 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(initial.has_reference_vertical_speed);
     assert!(initial.has_reference_horizontal_speed);
     assert!(initial.reference_horizontal_speed_m_s.is_finite());
+    assert!(initial.has_local_up_body);
+    assert!((initial.local_up_body.x.hypot(initial.local_up_body.y).hypot(initial.local_up_body.z) - 1.0).abs() < 1e-10);
     assert!(initial.reference_vertical_speed_m_s.is_finite());
     assert!(initial.reference_speed_m_s.is_finite());
     assert!(initial.has_reference_body);
@@ -62,6 +64,7 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(next.has_reference_vertical_speed);
     assert!(next.has_reference_horizontal_speed);
     assert!(next.reference_horizontal_speed_m_s.is_finite());
+    assert!(next.has_local_up_body);
     assert!(next.reference_vertical_speed_m_s.is_finite());
     assert!(engine.take_events()?.is_empty());
     assert!(next.reference_speed_m_s.is_finite());

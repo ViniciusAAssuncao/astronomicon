@@ -18,6 +18,8 @@ impl From<&SessionSnapshot> for FlightSnapshot {
             reference_vertical_speed_m_s: snapshot.reference_vertical_speed_m_s.unwrap_or_default(),
             has_reference_horizontal_speed: snapshot.reference_horizontal_speed_m_s.is_some(),
             reference_horizontal_speed_m_s: snapshot.reference_horizontal_speed_m_s.unwrap_or_default(),
+            has_local_up_body: snapshot.local_up_body.is_some(),
+            local_up_body: snapshot.local_up_body.unwrap_or_default().into(),
             has_altitude: snapshot.altitude_m.is_some(),
             altitude_m: snapshot.altitude_m.unwrap_or_default(),
             has_mach: snapshot.mach.is_some(),

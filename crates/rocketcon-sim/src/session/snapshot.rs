@@ -1,4 +1,5 @@
 use rocketcon_app::aeroespacial::VehicleTickReport;
+use astronomicon_core::units::{Quaternion, Vector3};
 use rocketcon_core::domain::VehiclePhysicalState;
 use uuid::Uuid;
 
@@ -16,6 +17,7 @@ pub struct FlightSnapshot {
     pub reference_speed_m_s: Option<f64>,
     pub reference_vertical_speed_m_s: Option<f64>,
     pub reference_horizontal_speed_m_s: Option<f64>,
+    pub local_up_body: Option<[f64; 3]>,
     pub altitude_m: Option<f64>,
     pub mach: Option<f64>,
     pub dynamic_pressure_pa: Option<f64>,
@@ -41,6 +43,7 @@ impl FlightSnapshot {
             reference_speed_m_s: None,
             reference_vertical_speed_m_s: None,
             reference_horizontal_speed_m_s: None,
+            local_up_body: None,
             altitude_m: None,
             mach: None,
             dynamic_pressure_pa: None,
@@ -66,6 +69,11 @@ impl FlightSnapshot {
         snapshot.reference_horizontal_speed_m_s = reference_horizontal_speed(
             snapshot.reference_speed_m_s,
             snapshot.reference_vertical_speed_m_s,
+        );
+        snapshot.local_up_body = local_up_body(
+            snapshot.position_m,
+            report.reference_body_position_m,
+            report.physical_state().orientation(),
         );
         snapshot.altitude_m = report.aerodynamics().map(|a| a.altitude.value()).or_else(|| {
             geometric_altitude(
@@ -144,6 +152,28 @@ pub(crate) fn reference_horizontal_speed(
     Some(((speed - vertical.abs()).max(0.0) * (speed + vertical.abs())).sqrt())
 }
 
+pub(crate) fn local_up_body(
+    position: [f64; 3],
+    body_position: [f64; 3],
+    orientation: Quaternion,
+) -> Option<[f64; 3]> {
+    if !position.iter().chain(body_position.iter()).all(|value| value.is_finite()) {
+        return None;
+    }
+    let radial = Vector3::new(
+        position[0] - body_position[0],
+        position[1] - body_position[1],
+        position[2] - body_position[2],
+    );
+    let distance = radial.magnitude();
+    if distance <= 0.0 || !distance.is_finite() {
+        return None;
+    }
+    let up = orientation.inverse().rotate_vector(radial / distance).normalized();
+    let result = [up.0, up.1, up.2];
+    result.iter().all(|value| value.is_finite()).then_some(result)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlightEventKind {
     AtmosphericEntry,
@@ -208,6 +238,7 @@ mod tests {
             reference_speed_m_s: None,
             reference_vertical_speed_m_s: None,
             reference_horizontal_speed_m_s: None,
+            local_up_body: None,
             altitude_m: None,
             mach: None,
             dynamic_pressure_pa: None,
@@ -249,5 +280,23 @@ mod tests {
         assert_eq!(reference_horizontal_speed(Some(5.0), Some(-3.0)), Some(4.0));
         assert_eq!(reference_horizontal_speed(Some(5.0), Some(5.0)), Some(0.0));
         assert_eq!(reference_horizontal_speed(None, Some(3.0)), None);
+    }
+
+    #[test]
+    fn local_up_uses_the_vehicle_body_frame() {
+        use super::local_up_body;
+        use astronomicon_core::units::{Angle, Quaternion, Vector3};
+        let position = [110.0, 20.0, 0.0];
+        let body = [10.0, 20.0, 0.0];
+        assert_eq!(local_up_body(position, body, Quaternion::identity()), Some([1.0, 0.0, 0.0]));
+        let orientation = Quaternion::from_axis_angle(
+            Vector3::new(0.0, 1.0, 0.0),
+            Angle::new(std::f64::consts::FRAC_PI_2),
+        );
+        let up = local_up_body(position, body, orientation).ok_or("missing local up").unwrap();
+        assert!(up[0].abs() < 1e-12);
+        assert!(up[1].abs() < 1e-12);
+        assert!((up[2] - 1.0).abs() < 1e-12);
+        assert_eq!(local_up_body(body, body, orientation), None);
     }
 }

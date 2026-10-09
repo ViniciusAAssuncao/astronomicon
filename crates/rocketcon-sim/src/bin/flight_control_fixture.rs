@@ -308,9 +308,13 @@ mod tests {
         let coast = session.step(0.02).await?;
         assert!(coast.angular_velocity_rad_s[0].is_finite());
         assert!(coast.altitude_m.is_some());
+        let before_roll = coast.local_up_body.ok_or("missing local up")?;
         session.apply_control(VehicleControlInput::new().with_pitch_yaw_roll(0.0, 0.0, -1.0));
         let roll = session.step(0.02).await?;
         assert!(roll.angular_velocity_rad_s[2] < 0.0);
+        let after_roll = roll.local_up_body.ok_or("missing local up")?;
+        assert!(before_roll.iter().zip(after_roll.iter())
+            .map(|(before, after)| (after - before).abs()).sum::<f64>() > 1e-6);
         session.close().await;
         std::fs::remove_file(path)?;
         std::env::set_current_dir(previous_directory)?;

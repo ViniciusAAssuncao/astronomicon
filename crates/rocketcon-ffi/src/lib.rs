@@ -29,6 +29,8 @@ pub mod ffi {
         reference_vertical_speed_m_s: f64,
         has_reference_horizontal_speed: bool,
         reference_horizontal_speed_m_s: f64,
+        has_local_up_body: bool,
+        local_up_body: FfiVec3,
         has_altitude: bool,
         altitude_m: f64,
         has_mach: bool,
