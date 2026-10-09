@@ -17,6 +17,7 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     let mut engine = create_engine()?;
     assert_eq!(engine.snapshot().unwrap_err(), "no vehicle loaded");
     assert_eq!(engine.vehicle_components().unwrap_err(), "no vehicle loaded");
+    assert_eq!(engine.take_events().unwrap_err(), "no vehicle loaded");
     engine.load_save(path.to_str().ok_or("invalid path")?, VEHICLE_ID)?;
     let components = engine.vehicle_components()?;
     assert_eq!(components.len(), 2);
@@ -29,6 +30,7 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert_eq!(mounted.diameter_m, 1.0);
     let initial = engine.snapshot()?;
     assert!(initial.has_altitude);
+    assert!(engine.take_events()?.is_empty());
     assert!((initial.altitude_m - 200_000.0).abs() < 1.0);
     assert!(initial.has_reference_speed);
     assert!(initial.reference_speed_m_s.is_finite());
@@ -53,6 +55,7 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(next.has_reference_body);
     assert!(next.has_altitude);
     assert!(next.has_reference_speed);
+    assert!(engine.take_events()?.is_empty());
     assert!(next.reference_speed_m_s.is_finite());
     assert!(engine.load_save("missing-save.db", VEHICLE_ID).is_err());
     assert_eq!(engine.snapshot()?.position_m.x, next.position_m.x);

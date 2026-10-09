@@ -132,3 +132,43 @@ impl FlightEvent {
         events
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{FlightEvent, FlightEventKind, FlightSnapshot};
+    use uuid::Uuid;
+
+    fn snapshot(epoch: f64) -> FlightSnapshot {
+        FlightSnapshot {
+            vehicle_id: Uuid::nil(),
+            reference_body_id: Uuid::nil(),
+            total_epoch_seconds: epoch,
+            position_m: [0.0; 3],
+            reference_body_position_m: None,
+            reference_body_radius_m: None,
+            velocity_m_s: [0.0; 3],
+            angular_velocity_rad_s: [0.0; 3],
+            speed_m_s: 0.0,
+            reference_speed_m_s: None,
+            altitude_m: None,
+            mach: None,
+            dynamic_pressure_pa: None,
+            total_g_load: Some(0.0),
+            surface_contact: Some(false),
+        }
+    }
+
+    #[test]
+    fn records_only_observed_transitions_at_current_epoch() {
+        let previous = snapshot(4.0);
+        let mut current = snapshot(4.02);
+        current.mach = Some(0.8);
+        current.surface_contact = Some(true);
+        let events = FlightEvent::between(&previous, &current);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, FlightEventKind::AtmosphericEntry);
+        assert_eq!(events[1].kind, FlightEventKind::SurfaceContact);
+        assert!(events.iter().all(|event| event.total_epoch_seconds == 4.02));
+        assert!(FlightEvent::between(&current, &current).is_empty());
+    }
+}

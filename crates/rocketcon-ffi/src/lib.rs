@@ -50,6 +50,12 @@ pub mod ffi {
         diameter_m: f64,
     }
 
+    #[derive(Debug)]
+    struct FlightEvent {
+        kind: u8,
+        total_epoch_seconds: f64,
+    }
+
     extern "Rust" {
         type Engine;
 
@@ -59,6 +65,7 @@ pub mod ffi {
         fn step(self: &mut Engine, dt_seconds: f64) -> Result<()>;
         fn snapshot(self: &Engine) -> Result<FlightSnapshot>;
         fn vehicle_components(self: &Engine) -> Result<Vec<VisualComponent>>;
+        fn take_events(self: &mut Engine) -> Result<Vec<FlightEvent>>;
         fn save(self: &Engine) -> Result<()>;
     }
 }
