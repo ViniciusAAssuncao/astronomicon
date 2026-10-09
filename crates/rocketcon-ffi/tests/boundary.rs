@@ -28,7 +28,10 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert_eq!(mounted.length_m, 1.0);
     assert_eq!(mounted.diameter_m, 1.0);
     let initial = engine.snapshot()?;
-    assert!(!initial.has_altitude);
+    assert!(initial.has_altitude);
+    assert!((initial.altitude_m - 200_000.0).abs() < 1.0);
+    assert!(initial.has_reference_speed);
+    assert!(initial.reference_speed_m_s.is_finite());
     assert!(initial.has_reference_body);
     assert!(initial.reference_body_radius_m > 0.0);
     assert_eq!(initial.angular_velocity_rad_s.x, 0.01);
@@ -48,6 +51,9 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(next.angular_velocity_rad_s.z.is_finite());
     assert!(next.has_g_load);
     assert!(next.has_reference_body);
+    assert!(next.has_altitude);
+    assert!(next.has_reference_speed);
+    assert!(next.reference_speed_m_s.is_finite());
     assert!(engine.load_save("missing-save.db", VEHICLE_ID).is_err());
     assert_eq!(engine.snapshot()?.position_m.x, next.position_m.x);
     engine.save()?;

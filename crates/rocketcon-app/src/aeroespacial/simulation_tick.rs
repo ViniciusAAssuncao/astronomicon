@@ -392,6 +392,11 @@ pub(super) async fn advance_vehicle_simulation_inner(
         lateral_g_load,
         total_g_load,
         [planet_position_new.raw().0, planet_position_new.raw().1, planet_position_new.raw().2],
+        [
+            (planet_position_new.raw().0 - environment.planet_position.raw().0) / dt.value(),
+            (planet_position_new.raw().1 - environment.planet_position.raw().1) / dt.value(),
+            (planet_position_new.raw().2 - environment.planet_position.raw().2) / dt.value(),
+        ],
         eq_radius.value(),
     ))
 }

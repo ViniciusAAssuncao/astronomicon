@@ -76,6 +76,24 @@ impl RocketconSession {
         let body_position = environment.planet_position.raw();
         snapshot.reference_body_position_m = Some([body_position.0, body_position.1, body_position.2]);
         snapshot.reference_body_radius_m = environment.planet.equatorial_radius().map(|radius| radius.value());
+        if let Some(radius) = snapshot.reference_body_radius_m {
+            snapshot.altitude_m = snapshot::geometric_altitude(
+                snapshot.position_m,
+                [body_position.0, body_position.1, body_position.2],
+                radius,
+            );
+        }
+        let (_, body_velocity) = rocketcon_app::orbital::soi::resolve_body_state_at_epoch(
+            &pool,
+            state.reference_body_id(),
+            environment.system_id,
+            state.captured_total_epoch(),
+        ).await?;
+        let body_velocity = body_velocity.raw();
+        snapshot.reference_speed_m_s = snapshot::relative_speed(
+            snapshot.velocity_m_s,
+            [body_velocity.0, body_velocity.1, body_velocity.2],
+        );
         let tick_session = TickTransactionSession::new(&pool).await?;
         Ok(Self {
             pool,

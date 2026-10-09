@@ -13,6 +13,7 @@ pub struct FlightSnapshot {
     pub velocity_m_s: [f64; 3],
     pub angular_velocity_rad_s: [f64; 3],
     pub speed_m_s: f64,
+    pub reference_speed_m_s: Option<f64>,
     pub altitude_m: Option<f64>,
     pub mach: Option<f64>,
     pub dynamic_pressure_pa: Option<f64>,
@@ -35,6 +36,7 @@ impl FlightSnapshot {
             velocity_m_s: [velocity.0, velocity.1, velocity.2],
             angular_velocity_rad_s: [angular_velocity.0, angular_velocity.1, angular_velocity.2],
             speed_m_s: state.speed().value(),
+            reference_speed_m_s: None,
             altitude_m: None,
             mach: None,
             dynamic_pressure_pa: None,
@@ -47,13 +49,43 @@ impl FlightSnapshot {
         let mut snapshot = Self::from_state(report.physical_state());
         snapshot.reference_body_position_m = Some(report.reference_body_position_m);
         snapshot.reference_body_radius_m = Some(report.reference_body_radius_m);
-        snapshot.altitude_m = report.aerodynamics().map(|a| a.altitude.value());
+        snapshot.reference_speed_m_s = relative_speed(
+            snapshot.velocity_m_s,
+            report.reference_body_velocity_m_s,
+        );
+        snapshot.altitude_m = report.aerodynamics().map(|a| a.altitude.value()).or_else(|| {
+            geometric_altitude(
+                snapshot.position_m,
+                report.reference_body_position_m,
+                report.reference_body_radius_m,
+            )
+        });
         snapshot.mach = report.mach_number();
         snapshot.dynamic_pressure_pa = report.dynamic_pressure().map(|q| q.value());
         snapshot.total_g_load = Some(report.total_g_load());
         snapshot.surface_contact = Some(report.has_contact());
         snapshot
     }
+}
+
+pub(crate) fn geometric_altitude(position: [f64; 3], body: [f64; 3], radius: f64) -> Option<f64> {
+    if !position.iter().chain(body.iter()).all(|v| v.is_finite()) || !radius.is_finite() || radius <= 0.0 {
+        return None;
+    }
+    let delta = [position[0] - body[0], position[1] - body[1], position[2] - body[2]];
+    Some(delta[0].hypot(delta[1]).hypot(delta[2]) - radius)
+}
+
+pub(crate) fn relative_speed(velocity: [f64; 3], body_velocity: [f64; 3]) -> Option<f64> {
+    if !velocity.iter().chain(body_velocity.iter()).all(|v| v.is_finite()) {
+        return None;
+    }
+    let delta = [
+        velocity[0] - body_velocity[0],
+        velocity[1] - body_velocity[1],
+        velocity[2] - body_velocity[2],
+    ];
+    Some(delta[0].hypot(delta[1]).hypot(delta[2]))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

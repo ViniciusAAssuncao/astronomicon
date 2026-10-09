@@ -12,6 +12,8 @@ impl From<&SessionSnapshot> for FlightSnapshot {
             velocity_m_s: snapshot.velocity_m_s.into(),
             angular_velocity_rad_s: snapshot.angular_velocity_rad_s.into(),
             speed_m_s: snapshot.speed_m_s,
+            has_reference_speed: snapshot.reference_speed_m_s.is_some(),
+            reference_speed_m_s: snapshot.reference_speed_m_s.unwrap_or_default(),
             has_altitude: snapshot.altitude_m.is_some(),
             altitude_m: snapshot.altitude_m.unwrap_or_default(),
             has_mach: snapshot.mach.is_some(),

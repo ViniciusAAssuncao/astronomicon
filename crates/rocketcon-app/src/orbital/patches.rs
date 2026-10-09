@@ -16,6 +16,8 @@ use rocketcon_db::repositories::{
 };
 use uuid::Uuid;
 
+const COASTING_PATCH_LOOKAHEAD_S: f64 = 10.0;
+
 pub async fn resolve_active_trajectory_patch(
     pool: &SqlitePool,
     vehicle_id: Uuid,
@@ -102,7 +104,7 @@ pub async fn generate_and_save_trajectory_patches(
 
     let (rel_pos, rel_vel, mu) = resolve_relative_state_for_body(pool, &physical_state, ref_id, system_id, total_epoch).await?;
 
-    let max_lookahead = Duration::new(86400.0 * 365.25 * 3.0);
+    let max_lookahead = Duration::new(COASTING_PATCH_LOOKAHEAD_S);
     let patches = compute_conic_patches(
         vehicle_id,
         (rel_pos, rel_vel),

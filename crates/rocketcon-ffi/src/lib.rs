@@ -23,6 +23,8 @@ pub mod ffi {
         velocity_m_s: FfiVec3,
         angular_velocity_rad_s: FfiVec3,
         speed_m_s: f64,
+        has_reference_speed: bool,
+        reference_speed_m_s: f64,
         has_altitude: bool,
         altitude_m: f64,
         has_mach: bool,
