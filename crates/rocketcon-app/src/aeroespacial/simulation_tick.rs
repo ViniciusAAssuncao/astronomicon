@@ -21,7 +21,7 @@ use astronomicon_core::math::rotation::angular_velocity_from_rotation_period;
 use astronomicon_core::units::constants::STANDARD_GRAVITY;
 use astronomicon_core::units::{AngularVelocityVector, Duration, Length, Luminosity, Vector3};
 use astronomicon_db::SqlitePool;
-use rocketcon_core::domain::VehicleControlInput;
+use rocketcon_core::domain::{ComponentDetails, VehicleControlInput};
 use rocketcon_core::math::collision::resolve_surface_contact;
 use rocketcon_db::repositories::operational_state_repository;
 use rocketcon_db::repositories::vehicle as vehicle_repository;
@@ -107,6 +107,12 @@ pub(super) async fn advance_vehicle_simulation_inner(
     mark(&mut profile, "power_and_battery");
 
     let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
+    let main_engine_loads = components.iter()
+        .filter(|(entry, record)| vehicle_snapshot.is_stage_active(entry.stage_index()) &&
+            matches!(record.details(), ComponentDetails::Engine(_)))
+        .map(|(entry, _)| (entry.id(), vehicle_snapshot.engine_operational_states()
+            .get(&entry.id()).map_or(1.0, |state| state.load_fraction())))
+        .collect();
 
     let mut component_waste_heats: HashMap<Uuid, Luminosity> =
         HashMap::with_capacity(components.len());
@@ -398,5 +404,6 @@ pub(super) async fn advance_vehicle_simulation_inner(
             (planet_position_new.raw().2 - environment.planet_position.raw().2) / dt.value(),
         ],
         eq_radius.value(),
+        main_engine_loads,
     ))
 }

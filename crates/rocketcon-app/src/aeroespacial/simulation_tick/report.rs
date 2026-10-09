@@ -5,6 +5,7 @@ use rocketcon_core::domain::VehiclePhysicalState;
 use rocketcon_core::math::collision::SurfaceContactState;
 use rocketcon_core::math::power_budget::VehiclePowerBudget;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VehicleTickReport {
@@ -20,6 +21,7 @@ pub struct VehicleTickReport {
     pub reference_body_position_m: [f64; 3],
     pub reference_body_velocity_m_s: [f64; 3],
     pub reference_body_radius_m: f64,
+    pub main_engine_loads: Vec<(Uuid, f64)>,
 }
 
 impl VehicleTickReport {
@@ -36,6 +38,7 @@ impl VehicleTickReport {
         reference_body_position_m: [f64; 3],
         reference_body_velocity_m_s: [f64; 3],
         reference_body_radius_m: f64,
+        main_engine_loads: Vec<(Uuid, f64)>,
     ) -> Self {
         Self {
             physical_state,
@@ -50,6 +53,7 @@ impl VehicleTickReport {
             reference_body_position_m,
             reference_body_velocity_m_s,
             reference_body_radius_m,
+            main_engine_loads,
         }
     }
 

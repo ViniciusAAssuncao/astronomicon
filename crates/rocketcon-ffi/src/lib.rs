@@ -31,6 +31,11 @@ pub mod ffi {
         reference_horizontal_speed_m_s: f64,
         has_local_up_body: bool,
         local_up_body: FfiVec3,
+        main_engine_loads: Vec<MainEngineLoad>,
+        has_battery: bool,
+        battery_stored_j: f64,
+        battery_capacity_j: f64,
+        fuel_reserves: Vec<FuelReserve>,
         has_altitude: bool,
         altitude_m: f64,
         has_mach: bool,
@@ -41,6 +46,19 @@ pub mod ffi {
         total_g_load: f64,
         has_surface_contact: bool,
         surface_contact: bool,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct MainEngineLoad {
+        instance_id: String,
+        load_fraction: f64,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FuelReserve {
+        name: String,
+        stored_kg: f64,
+        capacity_kg: f64,
     }
 
     #[derive(Debug)]
@@ -54,6 +72,8 @@ pub mod ffi {
         offset_z_m: f64,
         length_m: f64,
         diameter_m: f64,
+        has_min_throttle: bool,
+        min_throttle_fraction: f64,
     }
 
     #[derive(Debug)]
@@ -68,6 +88,7 @@ pub mod ffi {
         fn create_engine() -> Result<Box<Engine>>;
         fn load_save(self: &mut Engine, save_path_utf8: &str, vehicle_uuid: &str) -> Result<()>;
         fn set_control(self: &mut Engine, pitch: f64, yaw: f64, roll: f64) -> Result<()>;
+        fn set_main_engine_load(self: &mut Engine, instance_id: &str, load_fraction: f64) -> Result<()>;
         fn step(self: &mut Engine, dt_seconds: f64) -> Result<()>;
         fn snapshot(self: &Engine) -> Result<FlightSnapshot>;
         fn vehicle_components(self: &Engine) -> Result<Vec<VisualComponent>>;

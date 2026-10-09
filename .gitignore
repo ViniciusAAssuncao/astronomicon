@@ -10,6 +10,5 @@ saves/
 .idea/
 /database
 /queries
-
 *.md
 docs/

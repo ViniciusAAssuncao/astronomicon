@@ -1,5 +1,6 @@
 mod snapshot;
 mod vehicle_visual;
+mod engine_control;
 
 pub use snapshot::{FlightEvent, FlightEventKind, FlightSnapshot};
 pub use vehicle_visual::VehicleVisualComponent;
@@ -8,9 +9,13 @@ use crate::{RocketError, RocketResult};
 use astronomicon_core::units::Duration;
 use astronomicon_db::SqlitePool;
 use rocketcon_app::aeroespacial::advance_vehicle_simulation_in_session;
-use rocketcon_core::domain::VehicleControlInput;
+use rocketcon_app::aeroespacial::vehicle::resolve_vehicle_snapshot;
+use rocketcon_core::domain::{ComponentDetails, VehicleControlInput};
+use engine_control::MainEngineCapability;
+use rocketcon_db::repositories::operational_state as operational_state_repository;
 use rocketcon_db::repositories::vehicle_physical_state;
 use rocketcon_db::repositories::vehicle_repository;
+use rocketcon_db::repositories::propellant_repository;
 use rocketcon_db::tick_transaction::TickTransactionSession;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -24,6 +29,7 @@ pub struct RocketconSession {
     control: VehicleControlInput,
     snapshot: FlightSnapshot,
     vehicle_components: Vec<VehicleVisualComponent>,
+    main_engines: Vec<MainEngineCapability>,
     trajectory: Vec<FlightSnapshot>,
     events: Vec<FlightEvent>,
 }
@@ -68,9 +74,37 @@ impl RocketconSession {
         )
         .await?;
         let mut snapshot = FlightSnapshot::from_state(&state);
-        let vehicle_components = vehicle_repository::list_components_for_vehicle(&pool, &vehicle_id)
-            .await?
-            .iter()
+        let components = vehicle_repository::list_components_for_vehicle(&pool, &vehicle_id).await?;
+        let vehicle_state = resolve_vehicle_snapshot(
+            &pool, vehicle_id, universe_epoch, state.captured_at_epoch()).await?;
+        snapshot.battery_stored_j = Some(vehicle_state.total_stored_energy().value());
+        snapshot.battery_capacity_j = Some(vehicle_state.total_battery_capacity().value());
+        for (entry, record) in &components {
+            if let ComponentDetails::PropellantTank(tank) = record.details() {
+                let name = propellant_repository::get_by_id(&pool, &tank.propellant_id()).await?
+                    .map_or_else(|| tank.propellant_id().to_string(), |fuel| fuel.name().to_owned());
+                let load = operational_state_repository::get_by_vehicle_component_id(
+                    &pool, &entry.id()).await?.map_or(1.0, |state| state.load_fraction());
+                let capacity = tank.max_propellant_mass().value();
+                snapshot.fuel_reserves.push((name, capacity * load, capacity));
+            }
+        }
+        let main_engines = components.iter().filter_map(|(entry, record)| match record.details() {
+            ComponentDetails::Engine(spec) => Some(MainEngineCapability {
+                id: entry.id(), ignition_type: spec.ignition_type(),
+                min_throttle_fraction: spec.min_throttle_fraction(),
+            }),
+            _ => None,
+        }).collect();
+        for (entry, record) in &components {
+            if matches!(record.details(), ComponentDetails::Engine(_)) {
+                let load = operational_state_repository::get_by_vehicle_component_id(
+                    &pool, &entry.id()).await?
+                    .map_or(1.0, |state| state.load_fraction());
+                snapshot.main_engine_loads.push((entry.id().to_string(), load));
+            }
+        }
+        let vehicle_components = components.iter()
             .map(|(entry, record)| VehicleVisualComponent::from_assembly(entry, record))
             .collect();
         let body_position = environment.planet_position.raw();
@@ -119,6 +153,7 @@ impl RocketconSession {
             control: VehicleControlInput::new(),
             snapshot: snapshot.clone(),
             vehicle_components,
+            main_engines,
             trajectory: vec![snapshot],
             events: Vec::new(),
         })
@@ -142,7 +177,8 @@ impl RocketconSession {
             &self.control,
         )
         .await?;
-        let next = FlightSnapshot::from_report(&report);
+        let mut next = FlightSnapshot::from_report(&report);
+        next.fuel_reserves = self.snapshot.fuel_reserves.clone();
         self.events
             .extend(FlightEvent::between(&self.snapshot, &next));
         self.snapshot = next.clone();

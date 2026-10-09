@@ -1,4 +1,4 @@
-use crate::ffi::{FfiVec3, FlightSnapshot};
+use crate::ffi::{FfiVec3, FlightSnapshot, FuelReserve, MainEngineLoad};
 use rocketcon_sim::FlightSnapshot as SessionSnapshot;
 
 impl From<&SessionSnapshot> for FlightSnapshot {
@@ -20,6 +20,15 @@ impl From<&SessionSnapshot> for FlightSnapshot {
             reference_horizontal_speed_m_s: snapshot.reference_horizontal_speed_m_s.unwrap_or_default(),
             has_local_up_body: snapshot.local_up_body.is_some(),
             local_up_body: snapshot.local_up_body.unwrap_or_default().into(),
+            main_engine_loads: snapshot.main_engine_loads.iter().map(|(id, load)| MainEngineLoad {
+                instance_id: id.clone(), load_fraction: *load,
+            }).collect(),
+            has_battery: snapshot.battery_stored_j.is_some() && snapshot.battery_capacity_j.is_some(),
+            battery_stored_j: snapshot.battery_stored_j.unwrap_or_default(),
+            battery_capacity_j: snapshot.battery_capacity_j.unwrap_or_default(),
+            fuel_reserves: snapshot.fuel_reserves.iter().map(|(name, stored, capacity)| FuelReserve {
+                name: name.clone(), stored_kg: *stored, capacity_kg: *capacity,
+            }).collect(),
             has_altitude: snapshot.altitude_m.is_some(),
             altitude_m: snapshot.altitude_m.unwrap_or_default(),
             has_mach: snapshot.mach.is_some(),

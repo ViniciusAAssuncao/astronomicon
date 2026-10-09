@@ -49,6 +49,12 @@ impl Engine {
         Ok(())
     }
 
+    pub fn set_main_engine_load(&mut self, instance_id: &str, load_fraction: f64) -> Result<(), String> {
+        let id = instance_id.parse::<Uuid>().map_err(|error| error.to_string())?;
+        self.runtime.block_on(self.session.as_mut().ok_or("no vehicle loaded")?
+            .set_main_engine_load(id, load_fraction)).map_err(|error| error.to_string())
+    }
+
     pub fn step(&mut self, dt_seconds: f64) -> Result<(), String> {
         self.runtime
             .block_on(
@@ -91,6 +97,9 @@ impl Engine {
                     FlightEventKind::AtmosphericExit => 1,
                     FlightEventKind::SurfaceContact => 2,
                     FlightEventKind::Liftoff => 3,
+                    FlightEventKind::EngineIgnition => 4,
+                    FlightEventKind::EngineCutoff => 5,
+                    FlightEventKind::EngineThrottle => 6,
                 },
                 total_epoch_seconds: event.total_epoch_seconds,
             })

@@ -1,4 +1,4 @@
-use rocketcon_core::domain::{ComponentKind, ComponentRecord, VehicleComponentEntry};
+use rocketcon_core::domain::{ComponentDetails, ComponentKind, ComponentRecord, VehicleComponentEntry};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VehicleVisualComponent {
@@ -9,6 +9,7 @@ pub struct VehicleVisualComponent {
     pub mount_offset_m: [f64; 3],
     pub length_m: f64,
     pub diameter_m: f64,
+    pub min_throttle_fraction: Option<f64>,
 }
 
 impl VehicleVisualComponent {
@@ -26,6 +27,10 @@ impl VehicleVisualComponent {
             mount_offset_m: [offset.0, offset.1, offset.2],
             length_m: component.length().value(),
             diameter_m: component.diameter().value(),
+            min_throttle_fraction: match record.details() {
+                ComponentDetails::Engine(spec) => spec.min_throttle_fraction(),
+                _ => None,
+            },
         }
     }
 }

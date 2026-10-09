@@ -18,6 +18,10 @@ pub struct FlightSnapshot {
     pub reference_vertical_speed_m_s: Option<f64>,
     pub reference_horizontal_speed_m_s: Option<f64>,
     pub local_up_body: Option<[f64; 3]>,
+    pub main_engine_loads: Vec<(String, f64)>,
+    pub battery_stored_j: Option<f64>,
+    pub battery_capacity_j: Option<f64>,
+    pub fuel_reserves: Vec<(String, f64, f64)>,
     pub altitude_m: Option<f64>,
     pub mach: Option<f64>,
     pub dynamic_pressure_pa: Option<f64>,
@@ -44,6 +48,10 @@ impl FlightSnapshot {
             reference_vertical_speed_m_s: None,
             reference_horizontal_speed_m_s: None,
             local_up_body: None,
+            main_engine_loads: Vec::new(),
+            battery_stored_j: None,
+            battery_capacity_j: None,
+            fuel_reserves: Vec::new(),
             altitude_m: None,
             mach: None,
             dynamic_pressure_pa: None,
@@ -75,6 +83,10 @@ impl FlightSnapshot {
             report.reference_body_position_m,
             report.physical_state().orientation(),
         );
+        snapshot.main_engine_loads = report.main_engine_loads.iter()
+            .map(|(id, load)| (id.to_string(), *load)).collect();
+        snapshot.battery_stored_j = Some(report.power_budget.total_stored_energy.value());
+        snapshot.battery_capacity_j = Some(report.power_budget.total_battery_capacity.value());
         snapshot.altitude_m = report.aerodynamics().map(|a| a.altitude.value()).or_else(|| {
             geometric_altitude(
                 snapshot.position_m,
@@ -180,6 +192,9 @@ pub enum FlightEventKind {
     AtmosphericExit,
     SurfaceContact,
     Liftoff,
+    EngineIgnition,
+    EngineCutoff,
+    EngineThrottle,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -239,6 +254,10 @@ mod tests {
             reference_vertical_speed_m_s: None,
             reference_horizontal_speed_m_s: None,
             local_up_body: None,
+            main_engine_loads: Vec::new(),
+            battery_stored_j: None,
+            battery_capacity_j: None,
+            fuel_reserves: Vec::new(),
             altitude_m: None,
             mach: None,
             dynamic_pressure_pa: None,

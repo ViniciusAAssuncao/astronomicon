@@ -14,6 +14,8 @@ impl From<&VehicleVisualComponent> for VisualComponent {
             offset_z_m: source.mount_offset_m[2],
             length_m: source.length_m,
             diameter_m: source.diameter_m,
+            has_min_throttle: source.min_throttle_fraction.is_some(),
+            min_throttle_fraction: source.min_throttle_fraction.unwrap_or_default(),
         }
     }
 }

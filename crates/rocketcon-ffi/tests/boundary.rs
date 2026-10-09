@@ -29,6 +29,10 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert_eq!(mounted.length_m, 1.0);
     assert_eq!(mounted.diameter_m, 1.0);
     let initial = engine.snapshot()?;
+    assert!(initial.main_engine_loads.is_empty());
+    assert!(initial.has_battery);
+    assert_eq!(initial.battery_capacity_j, 0.0);
+    assert!(initial.fuel_reserves.is_empty());
     assert!(initial.has_altitude);
     assert!(engine.take_events()?.is_empty());
     assert!((initial.altitude_m - 200_000.0).abs() < 1.0);
@@ -45,6 +49,7 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert_eq!(initial.angular_velocity_rad_s.x, 0.01);
     assert_eq!(initial.angular_velocity_rad_s.y, -0.02);
     assert_eq!(initial.angular_velocity_rad_s.z, 0.03);
+    assert!(engine.set_main_engine_load(VEHICLE_ID, 1.0).is_err());
     engine.set_control(0.0, 0.0, 0.0)?;
     assert_eq!(
         engine.step(0.0).unwrap_err(),
@@ -58,6 +63,7 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(next.angular_velocity_rad_s.y.is_finite());
     assert!(next.angular_velocity_rad_s.z.is_finite());
     assert!(next.has_g_load);
+    assert!(next.has_battery);
     assert!(next.has_reference_body);
     assert!(next.has_altitude);
     assert!(next.has_reference_speed);
