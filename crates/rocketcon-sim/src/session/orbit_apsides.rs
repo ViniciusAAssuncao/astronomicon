@@ -23,9 +23,11 @@ pub fn next_apsis(
     let dt = time_between_true_anomalies(elements, mu, elements.true_anomaly, anomaly)
         .ok()?
         .value();
-    if !dt.is_finite() || dt < 0.0 || dt > horizon_seconds {
+    let boundary_tolerance = horizon_seconds * 1e-8;
+    if !dt.is_finite() || dt < 0.0 || dt > horizon_seconds + boundary_tolerance {
         return None;
     }
+    let dt = dt.min(horizon_seconds);
     let (apsis_position, _) =
         propagate_universal_state_vectors(position, velocity, mu, Duration::new(dt)).ok()?;
     let point = apsis_position.raw();
@@ -110,5 +112,29 @@ mod tests {
         ));
         let circular = cartesian_to_osculating_elements(position, circular_velocity, mu).unwrap();
         assert!(next_periapsis(&circular, position, circular_velocity, mu, period).is_none());
+    }
+
+    #[test]
+    fn periapsis_remains_visible_across_the_horizon_boundary() {
+        let mu = GravitationalParameter::new(3.986004418e14);
+        let radius = 7.0e6;
+        let position = Position::from_raw(Vector3::new(radius, 0.0, 0.0));
+        let velocity = VelocityVector::from_raw(Vector3::new(
+            0.0,
+            (mu.value() * 1.2 / radius).sqrt(),
+            0.0,
+        ));
+        let elements = cartesian_to_osculating_elements(position, velocity, mu).unwrap();
+        let period = 2.0 * PI * (elements.semi_major_axis.value().powi(3) / mu.value()).sqrt();
+        for offset in [-1e-6, 0.0, 1e-6] {
+            let (at_position, at_velocity) = propagate_universal_state_vectors(
+                position, velocity, mu, Duration::new(offset),
+            ).unwrap();
+            let at_elements = cartesian_to_osculating_elements(at_position, at_velocity, mu).unwrap();
+            let next = next_periapsis(
+                &at_elements, at_position, at_velocity, mu, period,
+            );
+            assert!(next.is_some(), "periapsis marker missing at {offset}");
+        }
     }
 }

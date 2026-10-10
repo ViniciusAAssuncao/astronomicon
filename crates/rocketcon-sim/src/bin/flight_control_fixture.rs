@@ -118,7 +118,7 @@ async fn populate(
     text_attribute(pool, ENGINE_ID, "ignition_type",
         if throttleable { "Restartable" } else { "SingleBurn" }).await?;
     numeric_attribute(pool, ENGINE_ID, "specific_impulse_vacuum_s", 300.0).await?;
-    numeric_attribute(pool, ENGINE_ID, "max_thrust_n", 10_000.0).await?;
+    numeric_attribute(pool, ENGINE_ID, "max_thrust_n", if eccentric { 30_000.0 } else { 10_000.0 }).await?;
     if throttleable {
         numeric_attribute(pool, ENGINE_ID, "min_throttle_fraction",
             if fine_throttle { 0.01 } else { 0.25 }).await?;
@@ -245,9 +245,11 @@ async fn populate(
         .await?;
     }
 
-    sqlx::query("INSERT INTO vehicle_physical_states (vehicle_id, position_x_m, position_y_m, position_z_m, velocity_x_m_s, velocity_y_m_s, velocity_z_m_s, orientation_q_w, orientation_q_x, orientation_q_y, orientation_q_z, angular_velocity_x_rad_s, angular_velocity_y_rad_s, angular_velocity_z_rad_s, reference_body_id, captured_universe_epoch_s, captured_at_epoch_s) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, 0, 0, 0, ?, ?, ?)")
+    sqlx::query("INSERT INTO vehicle_physical_states (vehicle_id, position_x_m, position_y_m, position_z_m, velocity_x_m_s, velocity_y_m_s, velocity_z_m_s, orientation_q_w, orientation_q_x, orientation_q_y, orientation_q_z, angular_velocity_x_rad_s, angular_velocity_y_rad_s, angular_velocity_z_rad_s, reference_body_id, captured_universe_epoch_s, captured_at_epoch_s) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?)")
         .bind(VEHICLE_ID).bind(position.0 + orbital_radius).bind(position.1).bind(position.2)
         .bind(velocity.0).bind(velocity.1 + (mu / orbital_radius).sqrt() * if eccentric { 1.05 } else { 1.0 }).bind(velocity.2)
+        .bind(if eccentric { std::f64::consts::FRAC_1_SQRT_2 } else { 1.0 })
+        .bind(if eccentric { -std::f64::consts::FRAC_1_SQRT_2 } else { 0.0 })
         .bind(MEROS_ID).bind(epoch.value()).bind(AT_EPOCH).execute(pool).await?;
     Ok(())
 }
