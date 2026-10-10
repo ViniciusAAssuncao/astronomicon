@@ -1,3 +1,4 @@
+use super::orbit_apsides::{next_apoapsis, next_periapsis, OrbitApsis};
 use super::RocketconSession;
 use crate::{RocketError, RocketResult};
 use astronomicon_core::units::Duration;
@@ -23,6 +24,8 @@ pub struct OrbitPreview {
     pub periapsis_altitude_m: Option<f64>,
     pub apoapsis_altitude_m: Option<f64>,
     pub period_seconds: Option<f64>,
+    pub next_periapsis: Option<OrbitApsis>,
+    pub next_apoapsis: Option<OrbitApsis>,
     pub relative_points_m: Vec<[f64; 3]>,
 }
 
@@ -101,6 +104,9 @@ impl RocketconSession {
                 break;
             }
         }
+        let visible_horizon = impact_epoch_seconds
+            .map(|impact| impact - epoch.value())
+            .unwrap_or(horizon_seconds);
         Ok(OrbitPreview {
             reference_body_id,
             source_epoch_seconds: epoch.value(),
@@ -114,6 +120,8 @@ impl RocketconSession {
             periapsis_altitude_m,
             apoapsis_altitude_m,
             period_seconds,
+            next_periapsis: next_periapsis(&elements, position, velocity, mu, visible_horizon),
+            next_apoapsis: next_apoapsis(&elements, position, velocity, mu, visible_horizon),
             relative_points_m,
         })
     }

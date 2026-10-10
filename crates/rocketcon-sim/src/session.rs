@@ -2,10 +2,12 @@ mod snapshot;
 mod vehicle_visual;
 mod engine_control;
 mod orbit_preview;
+mod orbit_apsides;
 
 pub use snapshot::{FlightEvent, FlightEventKind, FlightSnapshot};
 pub use vehicle_visual::VehicleVisualComponent;
 pub use orbit_preview::OrbitPreview;
+pub use orbit_apsides::OrbitApsis;
 
 use crate::{RocketError, RocketResult};
 use astronomicon_core::units::Duration;

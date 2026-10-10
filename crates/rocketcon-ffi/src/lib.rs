@@ -98,6 +98,12 @@ pub mod ffi {
         apoapsis_altitude_m: f64,
         has_period: bool,
         period_seconds: f64,
+        has_next_periapsis: bool,
+        next_periapsis_seconds: f64,
+        next_periapsis_position_m: FfiVec3,
+        has_next_apoapsis: bool,
+        next_apoapsis_seconds: f64,
+        next_apoapsis_position_m: FfiVec3,
         relative_points_m: Vec<FfiVec3>,
     }
 

@@ -23,17 +23,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .nth(1)
         .unwrap_or_else(|| "saves/flight-control-demo.db".to_string());
     let mode = std::env::args().nth(2);
-    let fine_throttle = mode.as_deref() == Some("--fine-throttle");
+    let eccentric = mode.as_deref() == Some("--eccentric");
+    let fine_throttle = mode.as_deref() == Some("--fine-throttle") || eccentric;
     let throttleable = fine_throttle || mode.as_deref() == Some("--throttleable");
     let path = Path::new(&destination);
-    create_fixture(path, throttleable, fine_throttle).await?;
+    create_fixture(path, throttleable, fine_throttle, eccentric).await?;
     println!("save: {}", path.canonicalize()?.display());
     println!("vehicle: {VEHICLE_ID}");
     Ok(())
 }
 
 async fn create_fixture(
-    path: &Path, throttleable: bool, fine_throttle: bool,
+    path: &Path, throttleable: bool, fine_throttle: bool, eccentric: bool,
 ) -> Result<(), Box<dyn Error>> {
     if path.exists() {
         return Err(format!("save already exists: {}", path.display()).into());
@@ -46,10 +47,16 @@ async fn create_fixture(
     create_save_copy(path).await?;
     let pool = astronomicon_db::connection::open_pool_path(path).await?;
     run_rocketcon_migrations(&pool).await?;
-    populate(&pool, throttleable, fine_throttle).await?;
+    populate(&pool, throttleable, fine_throttle, eccentric).await?;
     let session = RocketconSession::load(path, Uuid::parse_str(VEHICLE_ID)?).await?;
     if session.vehicle_components().len() != 16 {
         return Err("test vehicle assembly is incomplete".into());
+    }
+    if eccentric {
+        let preview = session.orbit_preview().await?;
+        if preview.next_periapsis.is_none() || preview.next_apoapsis.is_none() {
+            return Err("eccentric test orbit is missing an apsis marker".into());
+        }
     }
     session.close().await;
     let (busy, _, _): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -63,7 +70,7 @@ async fn create_fixture(
 }
 
 async fn populate(
-    pool: &SqlitePool, throttleable: bool, fine_throttle: bool,
+    pool: &SqlitePool, throttleable: bool, fine_throttle: bool, eccentric: bool,
 ) -> Result<(), Box<dyn Error>> {
     let planet_id = Uuid::parse_str(MEROS_ID)?;
     let epoch = rocketcon_app::universe::resolve_universe_epoch(pool).await?;
@@ -240,7 +247,7 @@ async fn populate(
 
     sqlx::query("INSERT INTO vehicle_physical_states (vehicle_id, position_x_m, position_y_m, position_z_m, velocity_x_m_s, velocity_y_m_s, velocity_z_m_s, orientation_q_w, orientation_q_x, orientation_q_y, orientation_q_z, angular_velocity_x_rad_s, angular_velocity_y_rad_s, angular_velocity_z_rad_s, reference_body_id, captured_universe_epoch_s, captured_at_epoch_s) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, 0, 0, 0, ?, ?, ?)")
         .bind(VEHICLE_ID).bind(position.0 + orbital_radius).bind(position.1).bind(position.2)
-        .bind(velocity.0).bind(velocity.1 + (mu / orbital_radius).sqrt()).bind(velocity.2)
+        .bind(velocity.0).bind(velocity.1 + (mu / orbital_radius).sqrt() * if eccentric { 1.05 } else { 1.0 }).bind(velocity.2)
         .bind(MEROS_ID).bind(epoch.value()).bind(AT_EPOCH).execute(pool).await?;
     Ok(())
 }
@@ -312,7 +319,7 @@ mod tests {
     async fn unpowered_orbit_has_continuous_telemetry() -> Result<(), Box<dyn Error>> {
         std::env::set_current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))?;
         let path = Path::new("target").join(format!("flight-coast-{}.db", Uuid::new_v4()));
-        create_fixture(&path, true, true).await?;
+        create_fixture(&path, true, true, false).await?;
         let mut session = RocketconSession::load(&path, Uuid::parse_str(VEHICLE_ID)?).await?;
         let mut previous = session.snapshot().clone();
         assert!(previous.main_engine_loads.iter().all(|(_, load)| *load == 0.0));
