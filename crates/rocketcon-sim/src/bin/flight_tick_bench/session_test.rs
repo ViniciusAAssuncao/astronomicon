@@ -69,6 +69,10 @@ async fn throttle_ramp_advances_with_ticks_and_stops_on_release() -> Result<(), 
     let engine = Uuid::from_u128(0xe2897c6a7d044ebc882c87984a740102);
     let mut session = RocketconSession::load(&path, vehicle_id).await?;
     let load = |session: &RocketconSession| session.snapshot().main_engine_loads[0].1;
+    let powered_preview = session.orbit_preview().await?;
+    assert!(powered_preview.under_thrust);
+    assert!(powered_preview.relative_points_m.len() > 2);
+    assert!(powered_preview.periapsis_altitude_m.is_some());
     assert!(session.set_main_engine_ramp(engine, 2).await.is_err());
     session.set_main_engine_ramp(engine, 1).await?;
     assert!((load(&session) - 0.51).abs() < 1e-9);
@@ -82,6 +86,9 @@ async fn throttle_ramp_advances_with_ticks_and_stops_on_release() -> Result<(), 
     session.step(0.02).await?;
     assert!((load(&session) - 0.50).abs() < 1e-9);
     session.set_main_engine_load(engine, 0.0).await?;
+    let coast_preview = session.orbit_preview().await?;
+    assert!(!coast_preview.under_thrust);
+    assert!(!coast_preview.relative_points_m.is_empty());
     assert!(session.set_main_engine_ramp(engine, 1).await.is_err());
     session.step(0.02).await?;
     assert_eq!(load(&session), 0.0);
@@ -115,6 +122,10 @@ async fn orbital_preview_is_sampled_without_advancing_the_save() -> Result<(), B
     assert_eq!(preview.reference_body_id, before.reference_body_id);
     assert_eq!(preview.source_epoch_seconds, before.total_epoch_seconds);
     assert_eq!(preview.relative_points_m.len(), 193);
+    assert!(!preview.under_thrust);
+    assert!((preview.periapsis_altitude_m.ok_or("periapsis missing")? - 200_000.0).abs() < 1.0);
+    assert!((preview.apoapsis_altitude_m.ok_or("apoapsis missing")? - 200_000.0).abs() < 1.0);
+    assert!(preview.period_seconds.ok_or("period missing")? > 0.0);
     assert!(preview.horizon_seconds >= 600.0 && preview.horizon_seconds <= 21_600.0);
     assert!(preview.relative_points_m.iter().flatten().all(|value| value.is_finite()));
     for pair in preview.relative_points_m.windows(2) {

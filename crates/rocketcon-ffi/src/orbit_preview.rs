@@ -10,6 +10,12 @@ impl From<SessionPreview> for OrbitPreview {
             has_impact: source.impact_epoch_seconds.is_some(),
             impact_epoch_seconds: source.impact_epoch_seconds.unwrap_or_default(),
             under_thrust: source.under_thrust,
+            has_periapsis: source.periapsis_altitude_m.is_some(),
+            periapsis_altitude_m: source.periapsis_altitude_m.unwrap_or_default(),
+            has_apoapsis: source.apoapsis_altitude_m.is_some(),
+            apoapsis_altitude_m: source.apoapsis_altitude_m.unwrap_or_default(),
+            has_period: source.period_seconds.is_some(),
+            period_seconds: source.period_seconds.unwrap_or_default(),
             relative_points_m: source
                 .relative_points_m
                 .into_iter()

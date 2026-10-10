@@ -92,6 +92,12 @@ pub mod ffi {
         has_impact: bool,
         impact_epoch_seconds: f64,
         under_thrust: bool,
+        has_periapsis: bool,
+        periapsis_altitude_m: f64,
+        has_apoapsis: bool,
+        apoapsis_altitude_m: f64,
+        has_period: bool,
+        period_seconds: f64,
         relative_points_m: Vec<FfiVec3>,
     }
 

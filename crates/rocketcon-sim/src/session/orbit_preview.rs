@@ -2,7 +2,10 @@ use super::RocketconSession;
 use crate::{RocketError, RocketResult};
 use astronomicon_core::units::Duration;
 use rocketcon_app::orbital::resolve_relative_state_for_body;
-use rocketcon_core::math::orbital::propagate_universal_state_vectors;
+use rocketcon_core::math::orbital::state_properties::orbital_period_if_bound;
+use rocketcon_core::math::orbital::{
+    cartesian_to_osculating_elements, propagate_universal_state_vectors,
+};
 use rocketcon_db::repositories::vehicle_physical_state;
 use uuid::Uuid;
 
@@ -17,6 +20,9 @@ pub struct OrbitPreview {
     pub horizon_seconds: f64,
     pub impact_epoch_seconds: Option<f64>,
     pub under_thrust: bool,
+    pub periapsis_altitude_m: Option<f64>,
+    pub apoapsis_altitude_m: Option<f64>,
+    pub period_seconds: Option<f64>,
     pub relative_points_m: Vec<[f64; 3]>,
 }
 
@@ -42,22 +48,30 @@ impl RocketconSession {
             epoch,
         )
         .await?;
-        let radius_m = position.raw().magnitude();
-        let speed_m_s = velocity.raw().magnitude();
-        let energy = speed_m_s.powi(2) * 0.5 - mu.value() / radius_m;
-        let horizon_seconds = if energy < 0.0 {
-            let axis = -mu.value() / (2.0 * energy);
-            (2.0 * std::f64::consts::PI * (axis.powi(3) / mu.value()).sqrt())
-                .clamp(MIN_HORIZON_S, MAX_HORIZON_S)
-        } else {
-            3_600.0
-        };
+        let body_radius = self
+            .snapshot
+            .reference_body_radius_m
+            .filter(|radius| radius.is_finite() && *radius > 0.0);
+        let body_radius_m = body_radius.unwrap_or(0.0);
+        let elements = cartesian_to_osculating_elements(position, velocity, mu)?;
+        let periapsis_altitude = elements.periapsis_distance.value() - body_radius_m;
+        let periapsis_altitude_m =
+            body_radius.and_then(|_| periapsis_altitude.is_finite().then_some(periapsis_altitude));
+        let apoapsis_altitude_m = elements
+            .apoapsis_distance
+            .map(|distance| distance.value() - body_radius_m)
+            .filter(|value| body_radius.is_some() && value.is_finite());
+        let period_seconds = orbital_period_if_bound(&elements, mu)
+            .map(|period| period.value())
+            .filter(|value| value.is_finite());
+        let horizon_seconds =
+            period_seconds.map_or(3_600.0, |period| period.clamp(MIN_HORIZON_S, MAX_HORIZON_S));
         if !horizon_seconds.is_finite() {
             return Err(RocketError::Generic(
                 "orbital preview horizon is not finite".into(),
             ));
         }
-        let radius = self.snapshot.reference_body_radius_m.unwrap_or(0.0);
+        let radius = body_radius_m;
         let mut relative_points_m = Vec::with_capacity(SAMPLE_INTERVALS + 1);
         let mut impact_epoch_seconds = None;
         let mut sample_position = position;
@@ -97,6 +111,9 @@ impl RocketconSession {
                 .main_engine_loads
                 .iter()
                 .any(|(_, load)| *load > 0.0),
+            periapsis_altitude_m,
+            apoapsis_altitude_m,
+            period_seconds,
             relative_points_m,
         })
     }

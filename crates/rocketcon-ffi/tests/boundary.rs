@@ -37,6 +37,10 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(preview.relative_points_m.len() >= 2);
     assert!(preview.relative_points_m.len() <= 193);
     assert!(preview.has_impact);
+    assert!(preview.has_periapsis);
+    assert!(preview.periapsis_altitude_m.is_finite());
+    assert!(!preview.has_apoapsis);
+    assert!(!preview.has_period);
     assert!(initial.main_engine_loads.is_empty());
     assert!(initial.has_battery);
     assert_eq!(initial.battery_capacity_j, 0.0);
