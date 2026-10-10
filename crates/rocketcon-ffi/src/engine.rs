@@ -1,4 +1,4 @@
-use crate::ffi::{FlightEvent, FlightSnapshot, VisualComponent};
+use crate::ffi::{FlightEvent, FlightSnapshot, OrbitPreview, VisualComponent};
 use rocketcon_core::domain::VehicleControlInput;
 use rocketcon_sim::{FlightEventKind, RocketconSession};
 use tokio::runtime::Runtime;
@@ -91,6 +91,12 @@ impl Engine {
             .iter()
             .map(VisualComponent::from)
             .collect())
+    }
+
+    pub fn orbit_preview(&self) -> Result<OrbitPreview, String> {
+        let session = self.session.as_ref().ok_or("no vehicle loaded")?;
+        self.runtime.block_on(session.orbit_preview())
+            .map(OrbitPreview::from).map_err(|error| error.to_string())
     }
 
     pub fn take_events(&mut self) -> Result<Vec<FlightEvent>, String> {

@@ -76,11 +76,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Err("tick count must be positive".into());
     }
     let mode = std::env::var("ROCKETCON_PROFILE").unwrap_or_default();
+    let requested_scenario = std::env::var("ROCKETCON_SCENARIO").ok();
+    if requested_scenario.as_deref().is_some_and(|name| !matches!(name,
+        "coast" | "atmosphere" | "powered")) {
+        return Err("ROCKETCON_SCENARIO must be coast, atmosphere, or powered".into());
+    }
     let aero_only = matches!(mode.as_str(), "aero-stages" | "aero-sql");
     let profiling = matches!(mode.as_str(), "stages" | "sql");
     let sql_count = matches!(mode.as_str(), "sql" | "aero-sql");
 
     for scenario in [Scenario::Coast, Scenario::Atmosphere, Scenario::Powered] {
+        if requested_scenario.as_deref().is_some_and(|name| name != scenario.name()) {
+            continue;
+        }
         if aero_only && matches!(scenario, Scenario::Coast) {
             continue;
         }

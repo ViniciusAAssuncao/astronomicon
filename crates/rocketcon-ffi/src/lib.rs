@@ -1,6 +1,7 @@
 mod engine;
 mod snapshot;
 mod vehicle;
+mod orbit_preview;
 
 pub use engine::Engine;
 
@@ -16,6 +17,7 @@ pub mod ffi {
     #[derive(Debug, PartialEq)]
     struct FlightSnapshot {
         total_epoch_seconds: f64,
+        reference_body_id: String,
         position_m: FfiVec3,
         has_reference_body: bool,
         reference_body_position_m: FfiVec3,
@@ -82,6 +84,17 @@ pub mod ffi {
         total_epoch_seconds: f64,
     }
 
+    #[derive(Debug, PartialEq)]
+    struct OrbitPreview {
+        reference_body_id: String,
+        source_epoch_seconds: f64,
+        horizon_seconds: f64,
+        has_impact: bool,
+        impact_epoch_seconds: f64,
+        under_thrust: bool,
+        relative_points_m: Vec<FfiVec3>,
+    }
+
     extern "Rust" {
         type Engine;
 
@@ -93,6 +106,7 @@ pub mod ffi {
         fn step(self: &mut Engine, dt_seconds: f64) -> Result<()>;
         fn snapshot(self: &Engine) -> Result<FlightSnapshot>;
         fn vehicle_components(self: &Engine) -> Result<Vec<VisualComponent>>;
+        fn orbit_preview(self: &Engine) -> Result<OrbitPreview>;
         fn take_events(self: &mut Engine) -> Result<Vec<FlightEvent>>;
         fn save(self: &Engine) -> Result<()>;
     }

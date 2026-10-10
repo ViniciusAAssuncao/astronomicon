@@ -16,6 +16,7 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     prepare_save(&path)?;
     let mut engine = create_engine()?;
     assert_eq!(engine.snapshot().unwrap_err(), "no vehicle loaded");
+    assert_eq!(engine.orbit_preview().unwrap_err(), "no vehicle loaded");
     assert_eq!(engine.vehicle_components().unwrap_err(), "no vehicle loaded");
     assert_eq!(engine.take_events().unwrap_err(), "no vehicle loaded");
     engine.load_save(path.to_str().ok_or("invalid path")?, VEHICLE_ID)?;
@@ -29,6 +30,13 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert_eq!(mounted.length_m, 1.0);
     assert_eq!(mounted.diameter_m, 1.0);
     let initial = engine.snapshot()?;
+    assert_eq!(initial.reference_body_id, PLANET_ID);
+    let preview = engine.orbit_preview()?;
+    assert_eq!(preview.reference_body_id, PLANET_ID);
+    assert_eq!(preview.source_epoch_seconds, initial.total_epoch_seconds);
+    assert!(preview.relative_points_m.len() >= 2);
+    assert!(preview.relative_points_m.len() <= 193);
+    assert!(preview.has_impact);
     assert!(initial.main_engine_loads.is_empty());
     assert!(initial.has_battery);
     assert_eq!(initial.battery_capacity_j, 0.0);

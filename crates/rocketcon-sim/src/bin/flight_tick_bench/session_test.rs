@@ -93,3 +93,42 @@ async fn throttle_ramp_advances_with_ticks_and_stops_on_release() -> Result<(), 
     reopened.close().await;
     Ok(())
 }
+
+#[tokio::test]
+async fn orbital_preview_is_sampled_without_advancing_the_save() -> Result<(), Box<dyn Error>> {
+    let path = std::env::temp_dir().join(format!("rocketcon-orbit-preview-{}.db", Uuid::new_v4()));
+    let template = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../database/astronomicon.db");
+    let options = SqliteConnectOptions::new().filename(template).read_only(true);
+    let mut source = SqliteConnection::connect_with(&options).await?;
+    sqlx::query("VACUUM INTO ?")
+        .bind(path.to_str().ok_or("invalid temporary database path")?)
+        .execute(&mut source).await?;
+    source.close().await?;
+    let pool = open_pool_path(&path).await?;
+    rocketcon_db::save::migrations::run_rocketcon_migrations(&pool).await?;
+    let (vehicle_id, _) = super::create_fixture(&pool, super::Scenario::Coast).await?;
+    pool.close().await;
+
+    let session = RocketconSession::load(&path, vehicle_id).await?;
+    let before = session.snapshot().clone();
+    let preview = session.orbit_preview().await?;
+    assert_eq!(preview.reference_body_id, before.reference_body_id);
+    assert_eq!(preview.source_epoch_seconds, before.total_epoch_seconds);
+    assert_eq!(preview.relative_points_m.len(), 193);
+    assert!(preview.horizon_seconds >= 600.0 && preview.horizon_seconds <= 21_600.0);
+    assert!(preview.relative_points_m.iter().flatten().all(|value| value.is_finite()));
+    for pair in preview.relative_points_m.windows(2) {
+        let jump = (0..3).map(|axis| (pair[1][axis] - pair[0][axis]).powi(2)).sum::<f64>().sqrt();
+        assert!(jump < 500_000.0, "discontinuous orbital preview: {jump} m");
+    }
+    let body = before.reference_body_position_m.ok_or("missing body position")?;
+    for axis in 0..3 {
+        assert!((preview.relative_points_m[0][axis] - (before.position_m[axis] - body[axis])).abs() < 1.0);
+    }
+    assert_eq!(session.snapshot(), &before);
+    session.close().await;
+    let reopened = RocketconSession::load(&path, vehicle_id).await?;
+    assert_eq!(reopened.snapshot().total_epoch_seconds, before.total_epoch_seconds);
+    reopened.close().await;
+    Ok(())
+}

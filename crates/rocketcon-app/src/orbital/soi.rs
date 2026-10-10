@@ -16,15 +16,35 @@ pub async fn resolve_body_state_at_epoch(
     system_id: Uuid,
     total_epoch: Duration,
 ) -> RocketResult<(Position, VelocityVector)> {
-    let eps = 0.1;
-    let pos1 = astronomicon_app::ephemeris::resolve_system_positions(pool, system_id, total_epoch).await?;
-    let pos2 = astronomicon_app::ephemeris::resolve_system_positions(pool, system_id, total_epoch + Duration::new(eps)).await?;
-    let p1 = pos1.get(&body_id).copied().ok_or_else(|| {
+    let positions = astronomicon_app::ephemeris::resolve_system_positions(pool, system_id, total_epoch).await?;
+    let position = positions.get(&body_id).copied().ok_or_else(|| {
         RocketError::Generic(format!("position for body '{}' not found in system '{}'", body_id, system_id))
     })?;
-    let p2 = pos2.get(&body_id).copied().unwrap_or(p1);
-    let vel = VelocityVector::from_raw((p2.raw() - p1.raw()) / eps);
-    Ok((p1, vel))
+    let velocity = resolve_body_velocity_at_epoch(pool, body_id, system_id, total_epoch).await?;
+    Ok((position, velocity))
+}
+
+pub async fn resolve_body_velocity_at_epoch(
+    pool: &SqlitePool,
+    body_id: Uuid,
+    system_id: Uuid,
+    total_epoch: Duration,
+) -> RocketResult<VelocityVector> {
+    let interval = 10.0;
+    let before = astronomicon_app::ephemeris::resolve_system_positions(
+        pool, system_id, total_epoch - Duration::new(interval),
+    ).await?;
+    let after = astronomicon_app::ephemeris::resolve_system_positions(
+        pool, system_id, total_epoch + Duration::new(interval),
+    ).await?;
+    let earlier = before.get(&body_id).copied().ok_or_else(|| {
+        RocketError::Generic(format!("earlier position for body '{}' not found", body_id))
+    })?;
+    let later = after.get(&body_id).copied().ok_or_else(|| {
+        RocketError::Generic(format!("later position for body '{}' not found", body_id))
+    })?;
+    let velocity = VelocityVector::from_raw((later.raw() - earlier.raw()) / (2.0 * interval));
+    Ok(velocity)
 }
 
 pub async fn resolve_system_soi_bodies(

@@ -5,6 +5,7 @@ impl From<&SessionSnapshot> for FlightSnapshot {
     fn from(snapshot: &SessionSnapshot) -> Self {
         Self {
             total_epoch_seconds: snapshot.total_epoch_seconds,
+            reference_body_id: snapshot.reference_body_id.to_string(),
             position_m: snapshot.position_m.into(),
             has_reference_body: snapshot.reference_body_position_m.is_some() && snapshot.reference_body_radius_m.is_some(),
             reference_body_position_m: snapshot.reference_body_position_m.unwrap_or_default().into(),

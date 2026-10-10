@@ -190,7 +190,8 @@ pub(super) async fn advance_vehicle_simulation_inner(
     let has_contact = surface_contact_current.has_contact();
     mark(&mut profile, "initial_aero_and_contact");
 
-    let mut new_physical_state = if is_propelling || has_drag || has_contact {
+    let uses_force_integration = is_propelling || has_drag || has_contact;
+    let mut new_physical_state = if uses_force_integration {
         let initial_aerodynamics = InitialAerodynamics::new(
             current_physical_state,
             environment.planet_position.raw(),
@@ -358,7 +359,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
         Vector3::zero()
     };
 
-    let proper_acc_world = if surface_contact.has_contact() {
+    let proper_acc_world = if !uses_force_integration && !surface_contact.has_contact() {
+        Vector3::zero()
+    } else if surface_contact.has_contact() {
         let n = surface_contact.surface_normal_world();
         let g_proj = grav_acc.raw().dot(&n);
         if g_proj < 0.0 {
@@ -387,6 +390,11 @@ pub(super) async fn advance_vehicle_simulation_inner(
     }
     mark(&mut profile, "gravity_maxq_and_report");
 
+    let reference_body_velocity = crate::orbital::soi::resolve_body_velocity_at_epoch(
+        pool, planet.id(), environment.system_id, total_epoch_new,
+    ).await?;
+    let reference_body_velocity = reference_body_velocity.raw();
+
     Ok(VehicleTickReport::new(
         new_physical_state,
         aero_diag,
@@ -398,11 +406,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
         lateral_g_load,
         total_g_load,
         [planet_position_new.raw().0, planet_position_new.raw().1, planet_position_new.raw().2],
-        [
-            (planet_position_new.raw().0 - environment.planet_position.raw().0) / dt.value(),
-            (planet_position_new.raw().1 - environment.planet_position.raw().1) / dt.value(),
-            (planet_position_new.raw().2 - environment.planet_position.raw().2) / dt.value(),
-        ],
+        [reference_body_velocity.0, reference_body_velocity.1, reference_body_velocity.2],
         eq_radius.value(),
         propellant_tick.main_engine_loads(),
         propellant_tick.tank_stored_kg(),

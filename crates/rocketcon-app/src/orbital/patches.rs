@@ -136,8 +136,8 @@ pub async fn propagate_coasting_vehicle(
         })?;
 
     let current_total_epoch = universe_epoch + current_at_epoch;
-    let target_total_epoch = current_total_epoch + dt;
     let new_at_epoch = current_at_epoch + dt;
+    let target_total_epoch = universe_epoch + new_at_epoch;
 
     let patch = match resolve_active_trajectory_patch(pool, vehicle_id, universe_epoch, current_at_epoch).await? {
         Some(p) => p,

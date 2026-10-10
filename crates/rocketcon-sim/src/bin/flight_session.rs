@@ -74,9 +74,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for tick in 1..=args.ticks {
         let snapshot = session.step(args.dt_seconds).await?;
         println!(
-            "tick={tick} epoch_s={:.3} speed_m_s={:.3} altitude_m={:?} mach={:?} g={:?} position_m={:?}",
+            "tick={tick} epoch_s={:.3} speed_m_s={:.3} relative_speed_m_s={:?} vertical_speed_m_s={:?} altitude_m={:?} mach={:?} g={:?} position_m={:?}",
             snapshot.total_epoch_seconds,
             snapshot.speed_m_s,
+            snapshot.reference_speed_m_s,
+            snapshot.reference_vertical_speed_m_s,
             snapshot.altitude_m,
             snapshot.mach,
             snapshot.total_g_load,
