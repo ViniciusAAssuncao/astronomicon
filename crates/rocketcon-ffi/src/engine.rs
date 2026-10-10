@@ -55,6 +55,12 @@ impl Engine {
             .set_main_engine_load(id, load_fraction)).map_err(|error| error.to_string())
     }
 
+    pub fn set_main_engine_ramp(&mut self, instance_id: &str, direction: i8) -> Result<(), String> {
+        let id = instance_id.parse::<Uuid>().map_err(|error| error.to_string())?;
+        self.runtime.block_on(self.session.as_mut().ok_or("no vehicle loaded")?
+            .set_main_engine_ramp(id, direction)).map_err(|error| error.to_string())
+    }
+
     pub fn step(&mut self, dt_seconds: f64) -> Result<(), String> {
         self.runtime
             .block_on(

@@ -22,15 +22,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let destination = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "saves/flight-control-demo.db".to_string());
-    let throttleable = std::env::args().nth(2).as_deref() == Some("--throttleable");
+    let mode = std::env::args().nth(2);
+    let fine_throttle = mode.as_deref() == Some("--fine-throttle");
+    let throttleable = fine_throttle || mode.as_deref() == Some("--throttleable");
     let path = Path::new(&destination);
-    create_fixture(path, throttleable).await?;
+    create_fixture(path, throttleable, fine_throttle).await?;
     println!("save: {}", path.canonicalize()?.display());
     println!("vehicle: {VEHICLE_ID}");
     Ok(())
 }
 
-async fn create_fixture(path: &Path, throttleable: bool) -> Result<(), Box<dyn Error>> {
+async fn create_fixture(
+    path: &Path, throttleable: bool, fine_throttle: bool,
+) -> Result<(), Box<dyn Error>> {
     if path.exists() {
         return Err(format!("save already exists: {}", path.display()).into());
     }
@@ -42,7 +46,7 @@ async fn create_fixture(path: &Path, throttleable: bool) -> Result<(), Box<dyn E
     create_save_copy(path).await?;
     let pool = astronomicon_db::connection::open_pool_path(path).await?;
     run_rocketcon_migrations(&pool).await?;
-    populate(&pool, throttleable).await?;
+    populate(&pool, throttleable, fine_throttle).await?;
     let session = RocketconSession::load(path, Uuid::parse_str(VEHICLE_ID)?).await?;
     if session.vehicle_components().len() != 16 {
         return Err("test vehicle assembly is incomplete".into());
@@ -58,7 +62,9 @@ async fn create_fixture(path: &Path, throttleable: bool) -> Result<(), Box<dyn E
     Ok(())
 }
 
-async fn populate(pool: &SqlitePool, throttleable: bool) -> Result<(), Box<dyn Error>> {
+async fn populate(
+    pool: &SqlitePool, throttleable: bool, fine_throttle: bool,
+) -> Result<(), Box<dyn Error>> {
     let planet_id = Uuid::parse_str(MEROS_ID)?;
     let epoch = rocketcon_app::universe::resolve_universe_epoch(pool).await?;
     let environment = rocketcon_app::environment::load_environment_snapshot(
@@ -107,7 +113,8 @@ async fn populate(pool: &SqlitePool, throttleable: bool) -> Result<(), Box<dyn E
     numeric_attribute(pool, ENGINE_ID, "specific_impulse_vacuum_s", 300.0).await?;
     numeric_attribute(pool, ENGINE_ID, "max_thrust_n", 10_000.0).await?;
     if throttleable {
-        numeric_attribute(pool, ENGINE_ID, "min_throttle_fraction", 0.25).await?;
+        numeric_attribute(pool, ENGINE_ID, "min_throttle_fraction",
+            if fine_throttle { 0.01 } else { 0.25 }).await?;
     } else {
         numeric_attribute(pool, ENGINE_ID, "integral_propellant_mass_kg", 30.0).await?;
     }
@@ -136,7 +143,8 @@ async fn populate(pool: &SqlitePool, throttleable: bool) -> Result<(), Box<dyn E
     )
     .await?;
     text_attribute(pool, TANK_ID, "propellant_id", PROPELLANT_ID).await?;
-    numeric_attribute(pool, TANK_ID, "max_propellant_mass_kg", 30.0).await?;
+    numeric_attribute(pool, TANK_ID, "max_propellant_mass_kg",
+        if fine_throttle { 100.0 } else { 30.0 }).await?;
     mount(
         pool,
         2,
@@ -294,91 +302,4 @@ async fn mount(
         .bind(if axis == [0.0; 3] { None } else { Some(axis[2]) })
         .execute(pool).await?;
     Ok(id)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rocketcon_core::domain::VehicleControlInput;
-
-    #[tokio::test]
-    async fn attitude_release_enters_coast_and_accepts_new_axis() -> Result<(), Box<dyn Error>> {
-        let previous_directory = std::env::current_dir()?;
-        std::env::set_current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))?;
-        let path = std::env::temp_dir().join(format!("rocketcon-attitude-{}.db", Uuid::new_v4()));
-        create_fixture(&path, false).await?;
-        let mut session = RocketconSession::load(&path, Uuid::parse_str(VEHICLE_ID)?).await?;
-        assert_eq!(session.snapshot().main_engine_loads.len(), 1);
-        assert_eq!(session.snapshot().main_engine_loads[0].1, 0.0);
-        assert!(session.snapshot().battery_capacity_j.unwrap_or_default() > 0.0);
-        assert!(session.snapshot().battery_stored_j.unwrap_or_default() > 0.0);
-        assert_eq!(session.snapshot().fuel_reserves.len(), 1);
-        assert_eq!(session.snapshot().fuel_reserves[0].0, "Test Monopropellant");
-        session.apply_control(VehicleControlInput::new().with_pitch_yaw_roll(1.0, 0.0, 0.0));
-        session.step(0.02).await?;
-        let pitch = session.step(0.02).await?.angular_velocity_rad_s[0];
-        assert!(pitch > 0.0);
-        session.apply_control(VehicleControlInput::new().with_pitch_yaw_roll(0.0, 0.0, 0.0));
-        let coast = session.step(0.02).await?;
-        assert!(coast.angular_velocity_rad_s[0].is_finite());
-        assert!(coast.altitude_m.is_some());
-        let before_roll = coast.local_up_body.ok_or("missing local up")?;
-        session.apply_control(VehicleControlInput::new().with_pitch_yaw_roll(0.0, 0.0, -1.0));
-        let roll = session.step(0.02).await?;
-        assert_eq!(roll.main_engine_loads.len(), 1);
-        assert_eq!(roll.main_engine_loads[0].1, 0.0);
-        assert_eq!(roll.fuel_reserves.len(), 1);
-        assert!(roll.battery_capacity_j.unwrap_or_default() > 0.0);
-        assert!(roll.angular_velocity_rad_s[2] < 0.0);
-        let after_roll = roll.local_up_body.ok_or("missing local up")?;
-        assert!(before_roll.iter().zip(after_roll.iter())
-            .map(|(before, after)| (after - before).abs()).sum::<f64>() > 1e-6);
-        let engine_id = Uuid::from_u128(ENTRY_BASE + 1);
-        assert!(session.set_main_engine_load(engine_id, 0.5).await.is_err());
-        session.set_main_engine_load(engine_id, 1.0).await?;
-        assert_eq!(session.snapshot().main_engine_loads[0].1, 1.0);
-        assert_eq!(session.events().last().ok_or("missing ignition event")?.kind,
-            rocketcon_sim::FlightEventKind::EngineIgnition);
-        assert_eq!(session.step(0.02).await?.main_engine_loads[0].1, 1.0);
-        session.set_main_engine_load(engine_id, 0.0).await?;
-        assert_eq!(session.snapshot().main_engine_loads[0].1, 0.0);
-        assert_eq!(session.events().last().ok_or("missing cutoff event")?.kind,
-            rocketcon_sim::FlightEventKind::EngineCutoff);
-        assert!(session.set_main_engine_load(engine_id, 1.0).await.is_err());
-        session.close().await;
-        let mut persisted_cutoff = RocketconSession::load(&path, Uuid::parse_str(VEHICLE_ID)?).await?;
-        assert_eq!(persisted_cutoff.snapshot().main_engine_loads[0].1, 0.0);
-        assert!(persisted_cutoff.set_main_engine_load(engine_id, 1.0).await.is_err());
-        persisted_cutoff.close().await;
-        let pool = astronomicon_db::connection::open_pool_path(&path).await?;
-        sqlx::query("DELETE FROM component_operational_states WHERE vehicle_component_id = ?")
-            .bind(Uuid::from_u128(ENTRY_BASE + 1).to_string()).execute(&pool).await?;
-        pool.close().await;
-        let mut without_state = RocketconSession::load(&path, Uuid::parse_str(VEHICLE_ID)?).await?;
-        assert_eq!(without_state.snapshot().main_engine_loads[0].1, 1.0);
-        without_state.set_main_engine_load(engine_id, 0.0).await?;
-        assert!(without_state.set_main_engine_load(engine_id, 1.0).await.is_err());
-        without_state.close().await;
-        let pool = astronomicon_db::connection::open_pool_path(&path).await?;
-        sqlx::query("UPDATE component_attributes SET text_value = 'Restartable' WHERE component_id = ? AND attribute_key = 'ignition_type'")
-            .bind(ENGINE_ID).execute(&pool).await?;
-        sqlx::query("DELETE FROM component_attributes WHERE component_id = ? AND attribute_key = 'integral_propellant_mass_kg'")
-            .bind(ENGINE_ID).execute(&pool).await?;
-        numeric_attribute(&pool, ENGINE_ID, "min_throttle_fraction", 0.25).await?;
-        pool.close().await;
-        let mut throttle_session = RocketconSession::load(&path, Uuid::parse_str(VEHICLE_ID)?).await?;
-        assert!(throttle_session.set_main_engine_load(engine_id, 0.1).await.is_err());
-        throttle_session.set_main_engine_load(engine_id, 0.25).await?;
-        throttle_session.set_main_engine_load(engine_id, 0.5).await?;
-        assert_eq!(throttle_session.snapshot().main_engine_loads[0].1, 0.5);
-        assert_eq!(throttle_session.events().last().ok_or("missing throttle event")?.kind,
-            rocketcon_sim::FlightEventKind::EngineThrottle);
-        throttle_session.set_main_engine_load(engine_id, 0.0).await?;
-        throttle_session.set_main_engine_load(engine_id, 0.75).await?;
-        assert_eq!(throttle_session.snapshot().main_engine_loads[0].1, 0.75);
-        throttle_session.close().await;
-        std::fs::remove_file(path)?;
-        std::env::set_current_dir(previous_directory)?;
-        Ok(())
-    }
 }

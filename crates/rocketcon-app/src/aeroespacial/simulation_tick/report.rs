@@ -22,6 +22,7 @@ pub struct VehicleTickReport {
     pub reference_body_velocity_m_s: [f64; 3],
     pub reference_body_radius_m: f64,
     pub main_engine_loads: Vec<(Uuid, f64)>,
+    pub tank_stored_kg: Vec<(Uuid, f64)>,
 }
 
 impl VehicleTickReport {
@@ -39,6 +40,7 @@ impl VehicleTickReport {
         reference_body_velocity_m_s: [f64; 3],
         reference_body_radius_m: f64,
         main_engine_loads: Vec<(Uuid, f64)>,
+        tank_stored_kg: Vec<(Uuid, f64)>,
     ) -> Self {
         Self {
             physical_state,
@@ -54,6 +56,7 @@ impl VehicleTickReport {
             reference_body_velocity_m_s,
             reference_body_radius_m,
             main_engine_loads,
+            tank_stored_kg,
         }
     }
 

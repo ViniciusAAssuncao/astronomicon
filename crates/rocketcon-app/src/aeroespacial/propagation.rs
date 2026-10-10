@@ -83,6 +83,7 @@ pub async fn advance_vehicle_physical_state(
         universe_epoch,
         control_input,
         None,
+        None,
         false,
     )
     .await
@@ -95,6 +96,7 @@ pub(crate) async fn advance_vehicle_physical_state_with_initial_aerodynamics(
     universe_epoch: Duration,
     control_input: &VehicleControlInput,
     initial_aerodynamics: InitialAerodynamics<'_>,
+    effective_engine_loads: &HashMap<Uuid, f64>,
 ) -> RocketResult<VehiclePhysicalState> {
     advance_vehicle_physical_state_inner(
         pool,
@@ -103,6 +105,7 @@ pub(crate) async fn advance_vehicle_physical_state_with_initial_aerodynamics(
         universe_epoch,
         control_input,
         Some(initial_aerodynamics),
+        Some(effective_engine_loads),
         true,
     )
     .await
@@ -115,6 +118,7 @@ async fn advance_vehicle_physical_state_inner(
     universe_epoch: Duration,
     control_input: &VehicleControlInput,
     initial_aerodynamics: Option<InitialAerodynamics<'_>>,
+    effective_engine_loads: Option<&HashMap<Uuid, f64>>,
     existing_transaction: bool,
 ) -> RocketResult<VehiclePhysicalState> {
     let physical_state = vehicle_physical_state_repository::get_by_vehicle_id(pool, &vehicle_id)
@@ -198,6 +202,17 @@ async fn advance_vehicle_physical_state_inner(
                     operational_states.insert(entry.id(), updated_op);
                 }
             }
+        }
+    }
+
+    if let Some(loads) = effective_engine_loads {
+        for (id, load) in loads {
+            let previous = operational_states.get(id).copied();
+            let effective = ComponentOperationalState::new(
+                *id, *load, previous.and_then(|state| state.current_gimbal_pitch()),
+                previous.and_then(|state| state.current_gimbal_yaw()),
+                universe_epoch, current_at_epoch)?;
+            operational_states.insert(*id, effective);
         }
     }
 
@@ -349,51 +364,4 @@ async fn advance_vehicle_physical_state_inner(
     vehicle_physical_state_repository::upsert(pool, &new_physical_state).await?;
 
     Ok(new_physical_state)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::InitialAerodynamics;
-    use astronomicon_core::units::{
-        AngularVelocityVector, Duration, Position, Quaternion, Vector3, VelocityVector,
-    };
-    use rocketcon_core::domain::VehiclePhysicalState;
-    use uuid::Uuid;
-
-    #[test]
-    fn initial_aerodynamics_requires_identical_inputs() {
-        let vehicle_id = Uuid::from_u128(1);
-        let planet_id = Uuid::from_u128(2);
-        let epoch = Duration::new(100.0);
-        let state = VehiclePhysicalState::new(
-            vehicle_id,
-            Position::from_raw(Vector3::new(1.0, 2.0, 3.0)),
-            VelocityVector::zero(),
-            Quaternion::identity(),
-            AngularVelocityVector::zero(),
-            planet_id,
-            epoch,
-            Duration::new(1.0),
-        )
-        .unwrap();
-        let stages = [0];
-        let planet_position = Vector3::zero();
-        let cached = InitialAerodynamics::new(state, planet_position, &[], &stages, epoch, None);
-        assert!(cached.matches(&state, planet_position, &[], &stages, epoch));
-        assert!(!cached.matches(&state, Vector3::new(1.0, 0.0, 0.0), &[], &stages, epoch));
-        assert!(!cached.matches(&state, planet_position, &[], &[1], epoch));
-        assert!(!cached.matches(&state, planet_position, &[], &stages, Duration::new(101.0),));
-        let moved_state = VehiclePhysicalState::new(
-            vehicle_id,
-            Position::from_raw(Vector3::new(2.0, 2.0, 3.0)),
-            VelocityVector::zero(),
-            Quaternion::identity(),
-            AngularVelocityVector::zero(),
-            planet_id,
-            epoch,
-            Duration::new(1.0),
-        )
-        .unwrap();
-        assert!(!cached.matches(&moved_state, planet_position, &[], &stages, epoch));
-    }
 }

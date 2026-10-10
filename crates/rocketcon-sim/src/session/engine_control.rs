@@ -13,6 +13,63 @@ pub(super) struct MainEngineCapability {
 
 impl RocketconSession {
     pub async fn set_main_engine_load(&mut self, id: Uuid, load: f64) -> RocketResult<()> {
+        self.throttle_ramp = None;
+        self.apply_main_engine_load(id, load, true).await
+    }
+
+    pub async fn set_main_engine_ramp(&mut self, id: Uuid, direction: i8) -> RocketResult<()> {
+        if !(-1..=1).contains(&direction) {
+            return Err(RocketError::Generic("engine ramp direction must be -1, 0 or 1".into()));
+        }
+        let engine = self.main_engines.iter().find(|engine| engine.id == id)
+            .ok_or_else(|| RocketError::Generic("engine is not mounted on this vehicle".into()))?;
+        if direction == 0 {
+            if self.throttle_ramp.is_some_and(|(active_id, _)| active_id == id) {
+                self.throttle_ramp = None;
+            }
+            return Ok(());
+        }
+        let minimum = engine.min_throttle_fraction.unwrap_or(1.0);
+        let current = self.snapshot.main_engine_loads.iter()
+            .find(|(instance_id, _)| instance_id == &id.to_string())
+            .map_or(0.0, |(_, load)| *load);
+        let first = if direction > 0 {
+            if current == 0.0 { minimum } else { (current + 0.01).min(1.0) }
+        } else if current <= minimum {
+            0.0
+        } else {
+            (current - 0.01).max(minimum)
+        };
+        if first != current {
+            self.apply_main_engine_load(id, first, true).await?;
+        }
+        self.throttle_ramp = Some((id, direction));
+        Ok(())
+    }
+
+    pub(super) async fn advance_engine_ramp(&mut self, dt_seconds: f64) -> RocketResult<()> {
+        let Some((id, direction)) = self.throttle_ramp else { return Ok(()); };
+        let engine = self.main_engines.iter().find(|engine| engine.id == id)
+            .ok_or_else(|| RocketError::Generic("engine is not mounted on this vehicle".into()))?;
+        let minimum = engine.min_throttle_fraction.unwrap_or(1.0);
+        let current = self.snapshot.main_engine_loads.iter()
+            .find(|(instance_id, _)| instance_id == &id.to_string())
+            .map_or(0.0, |(_, load)| *load);
+        let next = if direction > 0 {
+            if current >= 1.0 { current } else { (current + dt_seconds).max(minimum).min(1.0) }
+        } else if current <= minimum {
+            0.0
+        } else {
+            (current - dt_seconds).max(minimum)
+        };
+        if next != current {
+            self.apply_main_engine_load(id, next, false).await?;
+        }
+        Ok(())
+    }
+
+    async fn apply_main_engine_load(&mut self, id: Uuid, load: f64,
+        record_throttle_event: bool) -> RocketResult<()> {
         if !load.is_finite() || !(0.0..=1.0).contains(&load) {
             return Err(RocketError::Generic("engine load must be between 0 and 1".into()));
         }
@@ -58,7 +115,9 @@ impl RocketconSession {
         } else {
             FlightEventKind::EngineThrottle
         };
-        self.events.push(FlightEvent { kind, total_epoch_seconds: self.snapshot.total_epoch_seconds });
+        if kind != FlightEventKind::EngineThrottle || record_throttle_event {
+            self.events.push(FlightEvent { kind, total_epoch_seconds: self.snapshot.total_epoch_seconds });
+        }
         Ok(())
     }
 }

@@ -408,6 +408,17 @@ async fn create_fixture(
         sqlx::query("INSERT INTO component_operational_states (vehicle_component_id, load_fraction, captured_universe_epoch_s, captured_at_epoch_s) VALUES (?, 0.5, ?, ?)")
             .bind(engine_entry.to_string()).bind(epoch.value()).bind(INITIAL_AT_EPOCH)
             .execute(pool).await?;
+        let tank_component = Uuid::from_u128(0xe2897c6a7d044ebc882c87984a740103);
+        let tank_entry = Uuid::from_u128(0xe2897c6a7d044ebc882c87984a740104);
+        sqlx::query("INSERT INTO components (id, name, component_kind, dry_mass_kg, length_m, diameter_m, power_consumption_w) VALUES (?, 'Benchmark Tank', 'PropellantTank', 20.0, 1.0, 0.9, 0.0)")
+            .bind(tank_component.to_string()).execute(pool).await?;
+        sqlx::query("INSERT INTO component_attributes (component_id, attribute_key, text_value) VALUES (?, 'propellant_id', ?)")
+            .bind(tank_component.to_string()).bind(PROPELLANT_ID).execute(pool).await?;
+        sqlx::query("INSERT INTO component_attributes (component_id, attribute_key, numeric_value) VALUES (?, 'max_propellant_mass_kg', 100.0)")
+            .bind(tank_component.to_string()).execute(pool).await?;
+        sqlx::query("INSERT INTO vehicle_components (id, vehicle_id, component_id, stage_index) VALUES (?, ?, ?, 0)")
+            .bind(tank_entry.to_string()).bind(VEHICLE_ID).bind(tank_component.to_string())
+            .execute(pool).await?;
     }
     sqlx::query("INSERT INTO vehicle_physical_states (vehicle_id, position_x_m, position_y_m, position_z_m, velocity_x_m_s, velocity_y_m_s, velocity_z_m_s, orientation_q_w, orientation_q_x, orientation_q_y, orientation_q_z, angular_velocity_x_rad_s, angular_velocity_y_rad_s, angular_velocity_z_rad_s, reference_body_id, captured_universe_epoch_s, captured_at_epoch_s) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, 0, 0, 0, ?, ?, ?)")
         .bind(VEHICLE_ID).bind(x).bind(y).bind(z)

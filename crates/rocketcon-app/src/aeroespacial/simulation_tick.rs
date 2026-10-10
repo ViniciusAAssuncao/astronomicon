@@ -3,7 +3,8 @@ use crate::aeroespacial::gravity::resolve_vehicle_gravitational_acceleration;
 use crate::aeroespacial::propagation::{
     InitialAerodynamics, advance_vehicle_physical_state_with_initial_aerodynamics,
 };
-use crate::aeroespacial::vehicle::resolve_vehicle_snapshot;
+use crate::aeroespacial::propellant_tick::PropellantTick;
+use crate::aeroespacial::vehicle::resolve_vehicle_snapshot_with_components;
 use crate::environment::load_environment_snapshot;
 use crate::error::{RocketError, RocketResult};
 use crate::orbital::{invalidate_future_trajectory_patches, propagate_coasting_vehicle};
@@ -21,7 +22,7 @@ use astronomicon_core::math::rotation::angular_velocity_from_rotation_period;
 use astronomicon_core::units::constants::STANDARD_GRAVITY;
 use astronomicon_core::units::{AngularVelocityVector, Duration, Length, Luminosity, Vector3};
 use astronomicon_db::SqlitePool;
-use rocketcon_core::domain::{ComponentDetails, VehicleControlInput};
+use rocketcon_core::domain::VehicleControlInput;
 use rocketcon_core::math::collision::resolve_surface_contact;
 use rocketcon_db::repositories::operational_state_repository;
 use rocketcon_db::repositories::vehicle as vehicle_repository;
@@ -81,8 +82,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
         None
     };
 
-    let vehicle_snapshot =
-        resolve_vehicle_snapshot(pool, vehicle_id, universe_epoch, current_at_epoch).await?;
+    let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
+    let vehicle_snapshot = resolve_vehicle_snapshot_with_components(
+        pool, vehicle_id, &components, None, 1.0, universe_epoch, current_at_epoch).await?;
     mark(&mut profile, "load_state_environment_snapshot");
 
     let power_budget = resolve_vehicle_power_budget(
@@ -106,13 +108,8 @@ pub(super) async fn advance_vehicle_simulation_inner(
     .await?;
     mark(&mut profile, "power_and_battery");
 
-    let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
-    let main_engine_loads = components.iter()
-        .filter(|(entry, record)| vehicle_snapshot.is_stage_active(entry.stage_index()) &&
-            matches!(record.details(), ComponentDetails::Engine(_)))
-        .map(|(entry, _)| (entry.id(), vehicle_snapshot.engine_operational_states()
-            .get(&entry.id()).map_or(1.0, |state| state.load_fraction())))
-        .collect();
+    let propellant_tick = PropellantTick::prepare(
+        pool, &components, &vehicle_snapshot, dt).await?;
 
     let mut component_waste_heats: HashMap<Uuid, Luminosity> =
         HashMap::with_capacity(components.len());
@@ -143,7 +140,8 @@ pub(super) async fn advance_vehicle_simulation_inner(
     mark(&mut profile, "component_heat_inputs");
 
     let is_propelling =
-        is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input);
+        is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input) ||
+        propellant_tick.budget.effective_loads.values().any(|load| *load > 1e-4);
 
     let aero_diag_current = resolve_vehicle_aerodynamics_in_existing_transaction(
         pool,
@@ -208,6 +206,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
             universe_epoch,
             control_input,
             initial_aerodynamics,
+            &propellant_tick.budget.effective_loads,
         )
         .await?;
         invalidate_future_trajectory_patches(pool, vehicle_id, universe_epoch + current_at_epoch)
@@ -216,6 +215,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
     } else {
         propagate_coasting_vehicle(pool, vehicle_id, dt, universe_epoch, current_at_epoch).await?
     };
+    propellant_tick.persist(pool, universe_epoch, new_at_epoch).await?;
     mark(&mut profile, "dynamics_or_coast");
 
     let planet_orientation_new =
@@ -404,6 +404,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
             (planet_position_new.raw().2 - environment.planet_position.raw().2) / dt.value(),
         ],
         eq_radius.value(),
-        main_engine_loads,
+        propellant_tick.main_engine_loads(),
+        propellant_tick.tank_stored_kg(),
     ))
 }

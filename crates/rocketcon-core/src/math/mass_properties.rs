@@ -100,6 +100,17 @@ pub fn resolve_mass_properties(
     propellant_load_fraction: f64,
     payload_masses: &HashMap<Uuid, Mass>,
 ) -> MassProperties {
+    resolve_mass_properties_with_tank_loads(
+        entries, active_stages, propellant_load_fraction, &HashMap::new(), payload_masses)
+}
+
+pub fn resolve_mass_properties_with_tank_loads(
+    entries: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    propellant_load_fraction: f64,
+    tank_loads: &HashMap<Uuid, f64>,
+    payload_masses: &HashMap<Uuid, Mass>,
+) -> MassProperties {
     let load_frac = propellant_load_fraction.clamp(0.0, 1.0);
     let mut total_mass_val = 0.0;
     let mut sum_mr = Vector3::zero();
@@ -115,7 +126,8 @@ pub fn resolve_mass_properties(
         let mut m = comp.dry_mass().value();
 
         if let ComponentDetails::PropellantTank(tank) = record.details() {
-            m += tank.max_propellant_mass().value() * load_frac;
+            m += tank.max_propellant_mass().value() * tank_loads
+                .get(&entry.id()).copied().unwrap_or(load_frac).clamp(0.0, 1.0);
         }
 
         if let Some(payload_m) = payload_masses

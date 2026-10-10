@@ -30,6 +30,8 @@ pub struct RocketconSession {
     snapshot: FlightSnapshot,
     vehicle_components: Vec<VehicleVisualComponent>,
     main_engines: Vec<MainEngineCapability>,
+    throttle_ramp: Option<(Uuid, i8)>,
+    fuel_tanks: Vec<(Uuid, String, f64)>,
     trajectory: Vec<FlightSnapshot>,
     events: Vec<FlightEvent>,
 }
@@ -79,6 +81,7 @@ impl RocketconSession {
             &pool, vehicle_id, universe_epoch, state.captured_at_epoch()).await?;
         snapshot.battery_stored_j = Some(vehicle_state.total_stored_energy().value());
         snapshot.battery_capacity_j = Some(vehicle_state.total_battery_capacity().value());
+        let mut fuel_tanks = Vec::new();
         for (entry, record) in &components {
             if let ComponentDetails::PropellantTank(tank) = record.details() {
                 let name = propellant_repository::get_by_id(&pool, &tank.propellant_id()).await?
@@ -86,6 +89,7 @@ impl RocketconSession {
                 let load = operational_state_repository::get_by_vehicle_component_id(
                     &pool, &entry.id()).await?.map_or(1.0, |state| state.load_fraction());
                 let capacity = tank.max_propellant_mass().value();
+                fuel_tanks.push((entry.id(), name.clone(), capacity));
                 snapshot.fuel_reserves.push((name, capacity * load, capacity));
             }
         }
@@ -154,6 +158,8 @@ impl RocketconSession {
             snapshot: snapshot.clone(),
             vehicle_components,
             main_engines,
+            throttle_ramp: None,
+            fuel_tanks,
             trajectory: vec![snapshot],
             events: Vec::new(),
         })
@@ -169,6 +175,12 @@ impl RocketconSession {
                 "tick duration must be positive and finite".into(),
             ));
         }
+        self.advance_engine_ramp(dt_seconds).await?;
+        let ramp_load_before_tick = self.throttle_ramp.and_then(|(id, _)| {
+            self.snapshot.main_engine_loads.iter()
+                .find(|(instance_id, _)| instance_id == &id.to_string())
+                .map(|(_, load)| *load)
+        });
         let report = advance_vehicle_simulation_in_session(
             &self.tick_session,
             self.vehicle_id,
@@ -178,10 +190,20 @@ impl RocketconSession {
         )
         .await?;
         let mut next = FlightSnapshot::from_report(&report);
-        next.fuel_reserves = self.snapshot.fuel_reserves.clone();
+        next.fuel_reserves = self.fuel_tanks.iter().map(|(id, name, capacity)| {
+            let stored = report.tank_stored_kg.iter().find(|(tank_id, _)| tank_id == id)
+                .map_or(*capacity, |(_, mass)| *mass);
+            (name.clone(), stored, *capacity)
+        }).collect();
         self.events
             .extend(FlightEvent::between(&self.snapshot, &next));
         self.snapshot = next.clone();
+        if let (Some((id, _)), Some(previous_load)) = (self.throttle_ramp, ramp_load_before_tick) {
+            if previous_load > 0.0 && self.snapshot.main_engine_loads.iter()
+                .any(|(instance_id, load)| instance_id == &id.to_string() && *load == 0.0) {
+                self.throttle_ramp = None;
+            }
+        }
         self.trajectory.push(next);
         Ok(&self.snapshot)
     }

@@ -3,6 +3,7 @@ pub mod deployment;
 pub mod dynamics_step;
 pub mod gravity;
 pub mod propagation;
+mod propellant_tick;
 pub mod simulation_tick;
 pub mod vehicle;
 

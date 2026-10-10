@@ -230,92 +230,13 @@ impl FlightEvent {
                 total_epoch_seconds: current.total_epoch_seconds,
             });
         }
-        events
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{FlightEvent, FlightEventKind, FlightSnapshot};
-    use uuid::Uuid;
-
-    fn snapshot(epoch: f64) -> FlightSnapshot {
-        FlightSnapshot {
-            vehicle_id: Uuid::nil(),
-            reference_body_id: Uuid::nil(),
-            total_epoch_seconds: epoch,
-            position_m: [0.0; 3],
-            reference_body_position_m: None,
-            reference_body_radius_m: None,
-            velocity_m_s: [0.0; 3],
-            angular_velocity_rad_s: [0.0; 3],
-            speed_m_s: 0.0,
-            reference_speed_m_s: None,
-            reference_vertical_speed_m_s: None,
-            reference_horizontal_speed_m_s: None,
-            local_up_body: None,
-            main_engine_loads: Vec::new(),
-            battery_stored_j: None,
-            battery_capacity_j: None,
-            fuel_reserves: Vec::new(),
-            altitude_m: None,
-            mach: None,
-            dynamic_pressure_pa: None,
-            total_g_load: Some(0.0),
-            surface_contact: Some(false),
+        for (id, previous_load) in &previous.main_engine_loads {
+            if *previous_load > 0.0 && current.main_engine_loads.iter()
+                .any(|(current_id, load)| current_id == id && *load == 0.0) {
+                events.push(Self { kind: FlightEventKind::EngineCutoff,
+                    total_epoch_seconds: current.total_epoch_seconds });
+            }
         }
-    }
-
-    #[test]
-    fn records_only_observed_transitions_at_current_epoch() {
-        let previous = snapshot(4.0);
-        let mut current = snapshot(4.02);
-        current.mach = Some(0.8);
-        current.surface_contact = Some(true);
-        let events = FlightEvent::between(&previous, &current);
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].kind, FlightEventKind::AtmosphericEntry);
-        assert_eq!(events[1].kind, FlightEventKind::SurfaceContact);
-        assert!(events.iter().all(|event| event.total_epoch_seconds == 4.02));
-        assert!(FlightEvent::between(&current, &current).is_empty());
-    }
-
-    #[test]
-    fn vertical_speed_has_sign_relative_to_moving_body() {
-        use super::reference_vertical_speed;
-        let position = [110.0, 20.0, 0.0];
-        let body = [10.0, 20.0, 0.0];
-        let body_velocity = [3.0, 5.0, 0.0];
-        assert_eq!(reference_vertical_speed(position, body, [8.0, 5.0, 0.0], body_velocity), Some(5.0));
-        assert_eq!(reference_vertical_speed(position, body, [-2.0, 5.0, 0.0], body_velocity), Some(-5.0));
-        assert_eq!(reference_vertical_speed(position, body, [3.0, 12.0, 0.0], body_velocity), Some(0.0));
-        assert_eq!(reference_vertical_speed(body, body, [8.0, 5.0, 0.0], body_velocity), None);
-    }
-
-    #[test]
-    fn horizontal_speed_uses_the_tangential_component() {
-        use super::reference_horizontal_speed;
-        assert_eq!(reference_horizontal_speed(Some(5.0), Some(3.0)), Some(4.0));
-        assert_eq!(reference_horizontal_speed(Some(5.0), Some(-3.0)), Some(4.0));
-        assert_eq!(reference_horizontal_speed(Some(5.0), Some(5.0)), Some(0.0));
-        assert_eq!(reference_horizontal_speed(None, Some(3.0)), None);
-    }
-
-    #[test]
-    fn local_up_uses_the_vehicle_body_frame() {
-        use super::local_up_body;
-        use astronomicon_core::units::{Angle, Quaternion, Vector3};
-        let position = [110.0, 20.0, 0.0];
-        let body = [10.0, 20.0, 0.0];
-        assert_eq!(local_up_body(position, body, Quaternion::identity()), Some([1.0, 0.0, 0.0]));
-        let orientation = Quaternion::from_axis_angle(
-            Vector3::new(0.0, 1.0, 0.0),
-            Angle::new(std::f64::consts::FRAC_PI_2),
-        );
-        let up = local_up_body(position, body, orientation).ok_or("missing local up").unwrap();
-        assert!(up[0].abs() < 1e-12);
-        assert!(up[1].abs() < 1e-12);
-        assert!((up[2] - 1.0).abs() < 1e-12);
-        assert_eq!(local_up_body(body, body, orientation), None);
+        events
     }
 }

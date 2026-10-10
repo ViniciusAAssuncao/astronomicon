@@ -48,3 +48,48 @@ async fn session_drives_vehicle_and_reloads_saved_state() -> Result<(), Box<dyn 
     reopened.close().await;
     Ok(())
 }
+
+#[tokio::test]
+async fn throttle_ramp_advances_with_ticks_and_stops_on_release() -> Result<(), Box<dyn Error>> {
+    let path = std::env::temp_dir().join(format!("rocketcon-ramp-{}.db", Uuid::new_v4()));
+    let template = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../database/astronomicon.db");
+    let options = SqliteConnectOptions::new().filename(template).read_only(true);
+    let mut source = SqliteConnection::connect_with(&options).await?;
+    sqlx::query("VACUUM INTO ?")
+        .bind(path.to_str().ok_or("invalid temporary database path")?)
+        .execute(&mut source).await?;
+    source.close().await?;
+    let pool = open_pool_path(&path).await?;
+    rocketcon_db::save::migrations::run_rocketcon_migrations(&pool).await?;
+    let (vehicle_id, _) = super::create_fixture(&pool, super::Scenario::Powered).await?;
+    sqlx::query("INSERT INTO component_attributes (component_id, attribute_key, numeric_value) VALUES (?, 'min_throttle_fraction', 0.01)")
+        .bind(super::ENGINE_ID).execute(&pool).await?;
+    pool.close().await;
+
+    let engine = Uuid::from_u128(0xe2897c6a7d044ebc882c87984a740102);
+    let mut session = RocketconSession::load(&path, vehicle_id).await?;
+    let load = |session: &RocketconSession| session.snapshot().main_engine_loads[0].1;
+    assert!(session.set_main_engine_ramp(engine, 2).await.is_err());
+    session.set_main_engine_ramp(engine, 1).await?;
+    assert!((load(&session) - 0.51).abs() < 1e-9);
+    session.step(0.02).await?;
+    assert!((load(&session) - 0.53).abs() < 1e-9, "{}", load(&session));
+    session.set_main_engine_ramp(engine, 0).await?;
+    session.step(0.02).await?;
+    assert!((load(&session) - 0.53).abs() < 1e-9);
+    session.set_main_engine_ramp(engine, -1).await?;
+    assert!((load(&session) - 0.52).abs() < 1e-9);
+    session.step(0.02).await?;
+    assert!((load(&session) - 0.50).abs() < 1e-9);
+    session.set_main_engine_load(engine, 0.0).await?;
+    assert!(session.set_main_engine_ramp(engine, 1).await.is_err());
+    session.step(0.02).await?;
+    assert_eq!(load(&session), 0.0);
+    session.set_main_engine_ramp(engine, 0).await?;
+    session.close().await;
+
+    let reopened = RocketconSession::load(&path, vehicle_id).await?;
+    assert_eq!(load(&reopened), 0.0);
+    reopened.close().await;
+    Ok(())
+}

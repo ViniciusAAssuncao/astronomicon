@@ -89,6 +89,7 @@ pub mod ffi {
         fn load_save(self: &mut Engine, save_path_utf8: &str, vehicle_uuid: &str) -> Result<()>;
         fn set_control(self: &mut Engine, pitch: f64, yaw: f64, roll: f64) -> Result<()>;
         fn set_main_engine_load(self: &mut Engine, instance_id: &str, load_fraction: f64) -> Result<()>;
+        fn set_main_engine_ramp(self: &mut Engine, instance_id: &str, direction: i8) -> Result<()>;
         fn step(self: &mut Engine, dt_seconds: f64) -> Result<()>;
         fn snapshot(self: &Engine) -> Result<FlightSnapshot>;
         fn vehicle_components(self: &Engine) -> Result<Vec<VisualComponent>>;
