@@ -3,6 +3,7 @@ use sqlx::{
     SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
+use std::path::Path;
 use std::str::FromStr;
 
 pub const DATABASE_URL: &str = "sqlite://database/astronomicon.db";
@@ -15,7 +16,22 @@ pub async fn open_pool(db_url: &str) -> DbResult<SqlitePool> {
         .pragma("busy_timeout", "5000")
         .pragma("temp_store", "MEMORY")
         .pragma("cache_size", "-20000");
+    open_pool_with_options(options).await
+}
 
+pub async fn open_pool_path(path: &Path) -> DbResult<SqlitePool> {
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true)
+        .pragma("journal_mode", "WAL")
+        .pragma("synchronous", "NORMAL")
+        .pragma("busy_timeout", "5000")
+        .pragma("temp_store", "MEMORY")
+        .pragma("cache_size", "-20000");
+    open_pool_with_options(options).await
+}
+
+async fn open_pool_with_options(options: SqliteConnectOptions) -> DbResult<SqlitePool> {
     let pool = SqlitePoolOptions::new().connect_with(options).await?;
 
     let mut migrator = sqlx::migrate!("../../migrations");

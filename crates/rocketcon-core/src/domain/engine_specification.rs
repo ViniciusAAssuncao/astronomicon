@@ -3,8 +3,10 @@ use crate::domain::propellant::Propellant;
 use crate::domain::thrust_producer::ThrustProducer;
 use crate::error::{RocketDomainError, RocketDomainResult};
 use astronomicon_core::domain::validation::validate_positive_finite;
-use astronomicon_core::units::constants::STANDARD_GRAVITY;
-use astronomicon_core::units::{Angle, AngularVelocity, Duration, Force, Mass, MassRate, Speed};
+use astronomicon_core::units::constants::{STANDARD_ATMOSPHERE_PRESSURE, STANDARD_GRAVITY};
+use astronomicon_core::units::{
+    Angle, AngularVelocity, Duration, Force, Mass, MassRate, Pressure, Speed,
+};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::FRAC_PI_2;
 use uuid::Uuid;
@@ -23,6 +25,8 @@ pub struct EngineSpecificationBuilder {
     gimbal_slew_rate: Option<AngularVelocity>,
     min_throttle_fraction: Option<f64>,
     oxidizer_to_fuel_mass_ratio: Option<f64>,
+    nozzle_exit_area_m2: Option<f64>,
+    chamber_pressure: Option<Pressure>,
 }
 
 impl EngineSpecificationBuilder {
@@ -46,6 +50,8 @@ impl EngineSpecificationBuilder {
             gimbal_slew_rate: None,
             min_throttle_fraction: None,
             oxidizer_to_fuel_mass_ratio: None,
+            nozzle_exit_area_m2: None,
+            chamber_pressure: None,
         }
     }
 
@@ -102,6 +108,22 @@ impl EngineSpecificationBuilder {
         oxidizer_to_fuel_mass_ratio: impl Into<Option<f64>>,
     ) -> Self {
         self.oxidizer_to_fuel_mass_ratio = oxidizer_to_fuel_mass_ratio.into();
+        self
+    }
+
+    pub fn with_nozzle_exit_area_m2(
+        mut self,
+        nozzle_exit_area_m2: impl Into<Option<f64>>,
+    ) -> Self {
+        self.nozzle_exit_area_m2 = nozzle_exit_area_m2.into();
+        self
+    }
+
+    pub fn with_chamber_pressure(
+        mut self,
+        chamber_pressure: impl Into<Option<Pressure>>,
+    ) -> Self {
+        self.chamber_pressure = chamber_pressure.into();
         self
     }
 
@@ -171,6 +193,14 @@ impl EngineSpecificationBuilder {
             }
         }
 
+        if let Some(area) = self.nozzle_exit_area_m2 {
+            validate_positive_finite(area, "nozzle_exit_area_m2")?;
+        }
+
+        if let Some(cp) = self.chamber_pressure {
+            validate_positive_finite(cp.value(), "chamber_pressure")?;
+        }
+
         Ok(EngineSpecification {
             component_id: self.component_id,
             fuel_propellant_id: self.fuel_propellant_id,
@@ -184,6 +214,8 @@ impl EngineSpecificationBuilder {
             gimbal_slew_rate: self.gimbal_slew_rate,
             min_throttle_fraction: self.min_throttle_fraction,
             oxidizer_to_fuel_mass_ratio: self.oxidizer_to_fuel_mass_ratio,
+            nozzle_exit_area_m2: self.nozzle_exit_area_m2,
+            chamber_pressure: self.chamber_pressure,
         })
     }
 }
@@ -202,6 +234,8 @@ pub struct EngineSpecification {
     gimbal_slew_rate: Option<AngularVelocity>,
     min_throttle_fraction: Option<f64>,
     oxidizer_to_fuel_mass_ratio: Option<f64>,
+    nozzle_exit_area_m2: Option<f64>,
+    chamber_pressure: Option<Pressure>,
 }
 
 impl ThrustProducer for EngineSpecification {
@@ -259,6 +293,43 @@ impl EngineSpecification {
         .with_gimbal_slew_rate(gimbal_slew_rate)
         .with_min_throttle_fraction(min_throttle_fraction)
         .with_oxidizer_to_fuel_mass_ratio(oxidizer_to_fuel_mass_ratio)
+        .with_nozzle_exit_area_m2(None)
+        .with_chamber_pressure(None)
+        .build()
+    }
+
+    pub fn new_with_nozzle(
+        component_id: Uuid,
+        fuel_propellant_id: Uuid,
+        oxidizer_propellant_id: Option<Uuid>,
+        specific_impulse_vacuum: Duration,
+        specific_impulse_sea_level: Option<Duration>,
+        max_thrust: Force,
+        ignition_type: IgnitionType,
+        integral_propellant_mass: Option<Mass>,
+        max_gimbal_deflection: Option<Angle>,
+        gimbal_slew_rate: Option<AngularVelocity>,
+        min_throttle_fraction: Option<f64>,
+        oxidizer_to_fuel_mass_ratio: Option<f64>,
+        nozzle_exit_area_m2: Option<f64>,
+        chamber_pressure: Option<Pressure>,
+    ) -> RocketDomainResult<Self> {
+        Self::builder(
+            component_id,
+            fuel_propellant_id,
+            specific_impulse_vacuum,
+            max_thrust,
+            ignition_type,
+        )
+        .with_oxidizer_propellant_id(oxidizer_propellant_id)
+        .with_specific_impulse_sea_level(specific_impulse_sea_level)
+        .with_integral_propellant_mass(integral_propellant_mass)
+        .with_max_gimbal_deflection(max_gimbal_deflection)
+        .with_gimbal_slew_rate(gimbal_slew_rate)
+        .with_min_throttle_fraction(min_throttle_fraction)
+        .with_oxidizer_to_fuel_mass_ratio(oxidizer_to_fuel_mass_ratio)
+        .with_nozzle_exit_area_m2(nozzle_exit_area_m2)
+        .with_chamber_pressure(chamber_pressure)
         .build()
     }
 
@@ -310,6 +381,14 @@ impl EngineSpecification {
         self.oxidizer_to_fuel_mass_ratio
     }
 
+    pub fn nozzle_exit_area_m2(&self) -> Option<f64> {
+        self.nozzle_exit_area_m2
+    }
+
+    pub fn chamber_pressure(&self) -> Option<Pressure> {
+        self.chamber_pressure
+    }
+
     pub fn has_gimbal(&self) -> bool {
         self.max_gimbal_deflection.is_some()
     }
@@ -340,5 +419,87 @@ impl EngineSpecification {
             let total = self.propellant_mass_flow_rate_at_max_thrust().value();
             MassRate::new((total * of) / (1.0 + of))
         })
+    }
+
+    pub fn effective_nozzle_exit_area_m2(&self) -> f64 {
+        if let Some(area) = self.nozzle_exit_area_m2 {
+            if area.is_finite() && area > 0.0 {
+                return area;
+            }
+        }
+
+        let f_vac = self.max_thrust.value();
+        let isp_vac = self.specific_impulse_vacuum.value();
+
+        if let Some(isp_sl) = self.specific_impulse_sea_level {
+            let isp_sl_val = isp_sl.value();
+            if isp_sl_val > 0.0 && isp_vac > 0.0 && isp_sl_val < isp_vac {
+                let delta_f = f_vac * (1.0 - isp_sl_val / isp_vac);
+                let area = delta_f / STANDARD_ATMOSPHERE_PRESSURE;
+                if area.is_finite() && area > 0.0 {
+                    return area;
+                }
+            }
+        }
+
+        let pc = self.chamber_pressure.map(|p| p.value()).unwrap_or(7.0e6);
+        let at = if pc > 0.0 { f_vac / (1.6 * pc) } else { 0.0 };
+        let area = at * 80.0;
+        if area.is_finite() && area > 0.0 {
+            area
+        } else {
+            0.0
+        }
+    }
+
+    pub fn exit_pressure(&self) -> Pressure {
+        let f_vac = self.max_thrust.value();
+        if f_vac <= 0.0 || !f_vac.is_finite() {
+            return Pressure::new(0.0);
+        }
+
+        let pc = self
+            .chamber_pressure
+            .map(|p| p.value())
+            .unwrap_or(7.0e6);
+
+        if pc <= 0.0 || !pc.is_finite() {
+            return Pressure::new(0.0);
+        }
+
+        let ae = self.effective_nozzle_exit_area_m2();
+        let at = f_vac / (1.6 * pc);
+
+        if at <= 0.0 || ae <= 0.0 || !at.is_finite() || !ae.is_finite() {
+            return Pressure::new(3000.0);
+        }
+
+        let epsilon = (ae / at).max(1.0);
+        if epsilon <= 1.0001 {
+            return Pressure::new(pc);
+        }
+
+        let mut m = (1.0 + 2.0 * epsilon.ln()).max(1.0);
+        for _ in 0..10 {
+            let m2 = m * m;
+            let term = 1.0 + 0.1 * m2;
+            let f = (1.0 / m) * (term / 1.1).powf(5.5) - epsilon;
+            let df = ((1.0 / m) * (term / 1.1).powf(5.5)) * (m2 - 1.0) / (m * term);
+            if df.abs() < 1e-12 {
+                break;
+            }
+            let dm = f / df;
+            m = (m - dm).max(1.0);
+            if dm.abs() < 1e-6 {
+                break;
+            }
+        }
+
+        let pe = pc * (1.0 + 0.1 * m * m).powf(-6.0);
+        if !pe.is_finite() || pe <= 0.0 {
+            Pressure::new(3000.0)
+        } else {
+            Pressure::new(pe)
+        }
     }
 }

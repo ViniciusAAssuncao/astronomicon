@@ -1,4 +1,4 @@
-use crate::climate::circulation::resolve_planetary_circulation;
+use crate::climate::circulation::{resolve_planetary_circulation, PlanetaryCirculationDiagnostic};
 use crate::climate::emission::resolve_star_emission_profile;
 use crate::ephemeris::resolve_system_positions;
 use crate::error::AppResult;
@@ -25,6 +25,10 @@ use astronomicon_db::repositories::{
     planet_repository,
 };
 use uuid::Uuid;
+
+mod context;
+pub use context::{AdvectiveTemperatureContext, ClimateBodyInputs};
+use context::SurfaceTemperatureInputs;
 
 pub async fn resolve_irradiance_at_position(
     pool: &SqlitePool,
@@ -251,67 +255,62 @@ pub async fn resolve_advective_surface_temperature(
     universe_epoch: Duration,
     at_epoch: Duration
 ) -> AppResult<Temperature> {
-    let planet_row = planet_repository
-        ::get_by_id(pool, &planet_id).await?
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "planet_id".to_string(),
-            reason: format!("planet '{}' not found", planet_id),
-        })?;
-    let planet = Planet::try_from(planet_row)?;
+    resolve_advective_surface_temperature_inner(
+        pool, planet_id, latitude, universe_epoch, at_epoch, None, None, None,
+    ).await
+}
 
-    let star = find_parent_star(pool, planet.orbital_parent()).await?;
+pub(crate) async fn resolve_advective_surface_temperature_with_circulation(
+    pool: &SqlitePool,
+    planet_id: Uuid,
+    latitude: Angle,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+    circulation: &PlanetaryCirculationDiagnostic,
+) -> AppResult<Temperature> {
+    resolve_advective_surface_temperature_inner(
+        pool, planet_id, latitude, universe_epoch, at_epoch, Some(circulation), None, None,
+    ).await
+}
 
-    let obliquity = planet.obliquity().unwrap_or_else(|| Angle::new(0.0));
-    let solstice_true_anomaly = planet.solstice_true_anomaly().unwrap_or_else(|| Angle::new(0.0));
-
-    let orbital_elements = planet.orbital_elements().ok_or_else(|| DomainError::InvalidInvariant {
-        field: "orbital_elements".to_string(),
-        reason: "planet does not have orbital elements".to_string(),
-    })?;
-
-    let bond_albedo = planet.bond_albedo().unwrap_or(0.3);
-    let total_epoch = universe_epoch + at_epoch;
-    let mu = combined_gravitational_parameter(planet.mass(), star.mass());
-    let true_anomaly = true_anomaly_at_epoch(&orbital_elements, mu, total_epoch)?;
-
-    let declination = solar_declination(
-        obliquity,
-        orbital_elements.argument_of_periapsis(),
-        solstice_true_anomaly,
-        true_anomaly
-    );
-    let half_angle = day_length_half_angle(latitude, declination);
-    let insolation_factor = mean_daily_insolation_factor(latitude, declination, half_angle);
-
-    let top_irradiance = resolve_top_of_atmosphere_irradiance(
-        pool,
-        &planet,
-        &star,
-        universe_epoch,
-        at_epoch
-    ).await?;
-    let local_insolation = top_irradiance * insolation_factor;
-
-    let greenhouse = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
-        Some(atmosphere) => atmosphere.greenhouse_effect(),
-        None => Temperature::new(0.0),
+async fn resolve_advective_surface_temperature_inner(
+    pool: &SqlitePool,
+    planet_id: Uuid,
+    latitude: Angle,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+    circulation: Option<&PlanetaryCirculationDiagnostic>,
+    supplied_global_mean: Option<Temperature>,
+    surface: Option<&SurfaceTemperatureInputs>,
+) -> AppResult<Temperature> {
+    let owned_surface;
+    let surface = match surface {
+        Some(value) => value,
+        None => {
+            owned_surface = SurfaceTemperatureInputs::load(
+                pool, planet_id, universe_epoch, at_epoch,
+            ).await?;
+            &owned_surface
+        }
+    };
+    let local_surface_temp = surface.local_surface_temperature(latitude);
+    let global_mean = match supplied_global_mean {
+        Some(value) => value,
+        None => resolve_global_mean_temperature(
+            pool, planet_id, universe_epoch, at_epoch,
+        ).await?,
     };
 
-    let local_eq = local_radiative_equilibrium_temperature(local_insolation, bond_albedo);
-    let local_surface_temp = local_eq + greenhouse;
-    let global_mean = resolve_global_mean_temperature(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch
-    ).await?;
-
-    let circulation = resolve_planetary_circulation(
-        pool,
-        planet_id,
-        universe_epoch,
-        at_epoch
-    ).await?;
+    let owned_circulation;
+    let circulation = match circulation {
+        Some(value) => value,
+        None => {
+            owned_circulation = resolve_planetary_circulation(
+                pool, planet_id, universe_epoch, at_epoch,
+            ).await?;
+            &owned_circulation
+        }
+    };
     let advective = advective_local_temperature(
         global_mean,
         local_surface_temp,

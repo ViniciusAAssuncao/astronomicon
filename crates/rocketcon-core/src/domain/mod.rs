@@ -11,7 +11,11 @@ pub mod energy_reservoir_state;
 pub mod engine_fault;
 pub mod engine_specification;
 pub mod engine_state;
+pub mod heat_shield_specification;
+pub mod heat_shield_state;
+pub mod hull_specification;
 pub mod ignition_type;
+pub mod material;
 pub mod nuclear_reactor_specification;
 pub mod payload_specification;
 pub mod propellant;
@@ -24,7 +28,9 @@ pub mod reaction_wheel_state;
 pub mod rtg_specification;
 pub mod save_metadata;
 pub mod solar_panel_specification;
+pub mod thermal_node_state;
 pub mod thrust_producer;
+pub mod trajectory_patch;
 pub mod vehicle;
 pub mod vehicle_component;
 pub mod vehicle_kind;
@@ -44,7 +50,14 @@ pub use energy_reservoir_state::EnergyReservoirState;
 pub use engine_fault::EngineFaultKind;
 pub use engine_specification::{EngineSpecification, EngineSpecificationBuilder};
 pub use engine_state::{is_valid_engine_transition, EngineState};
+pub use heat_shield_specification::HeatShieldSpecification;
+pub use heat_shield_state::HeatShieldState;
+pub use hull_specification::HullSpecification;
 pub use ignition_type::IgnitionType;
+pub use material::{
+    AblativeMaterialProperties, AerospaceMaterial, AerospaceMaterialBuilder, MaterialClass,
+    MaterialClassDetails, MaterialRecord,
+};
 pub use nuclear_reactor_specification::{
     NuclearReactorSpecification, NuclearReactorSpecificationBuilder, NuclearReactorType,
 };
@@ -59,7 +72,11 @@ pub use reaction_wheel_state::ReactionWheelState;
 pub use rtg_specification::RtgSpecification;
 pub use save_metadata::SaveMetadata;
 pub use solar_panel_specification::{SolarPanelSpecification, DEFAULT_SOLAR_PANEL_ABSORPTIVITY};
+pub use thermal_node_state::ThermalNodeState;
 pub use thrust_producer::ThrustProducer;
+pub use trajectory_patch::{
+    ConicPatchData, LowThrustPatchData, TrajectoryPatch, TrajectoryPatchKind,
+};
 pub use vehicle::{Vehicle, VehicleBuilder};
 pub use vehicle_component::VehicleComponentEntry;
 pub use vehicle_kind::VehicleKind;

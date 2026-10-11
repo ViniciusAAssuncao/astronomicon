@@ -3,7 +3,7 @@ use crate::domain::{
     VehicleComponentEntry, VehiclePhysicalState,
 };
 use crate::error::{RocketDomainError, RocketDomainResult};
-use crate::math::{resolve_mass_properties, MassProperties};
+use crate::math::{resolve_mass_properties_with_tank_loads, MassProperties};
 use astronomicon_core::domain::validation::validate_non_negative_finite;
 use astronomicon_core::units::{Duration, Energy, Mass};
 use serde::{Deserialize, Serialize};
@@ -153,8 +153,10 @@ impl VehicleSnapshot {
             }
         }
 
-        let mass_props =
-            resolve_mass_properties(components, &active_stages, propellant_load_fraction, payload_masses);
+        let tank_loads: HashMap<Uuid, f64> = operational_states.iter()
+            .map(|(id, state)| (*id, state.load_fraction())).collect();
+        let mass_props = resolve_mass_properties_with_tank_loads(
+            components, &active_stages, propellant_load_fraction, &tank_loads, payload_masses);
 
         Self::new(
             vehicle_id,
