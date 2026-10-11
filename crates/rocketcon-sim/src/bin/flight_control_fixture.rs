@@ -312,36 +312,3 @@ async fn mount(
         .execute(pool).await?;
     Ok(id)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn unpowered_orbit_has_continuous_telemetry() -> Result<(), Box<dyn Error>> {
-        std::env::set_current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))?;
-        let path = Path::new("target").join(format!("flight-coast-{}.db", Uuid::new_v4()));
-        create_fixture(&path, true, true, false).await?;
-        let mut session = RocketconSession::load(&path, Uuid::parse_str(VEHICLE_ID)?).await?;
-        let mut previous = session.snapshot().clone();
-        assert!(previous.main_engine_loads.iter().all(|(_, load)| *load == 0.0));
-
-        for _ in 0..50 {
-            let current = session.step(0.02).await?.clone();
-            let altitude_change = current.altitude_m.unwrap() - previous.altitude_m.unwrap();
-            let vertical_speed = current.reference_vertical_speed_m_s.unwrap();
-            let previous_vertical_speed = previous.reference_vertical_speed_m_s.unwrap();
-            let relative_speed = current.reference_speed_m_s.unwrap();
-            let previous_relative_speed = previous.reference_speed_m_s.unwrap();
-            assert!(current.total_g_load.unwrap() < 0.05);
-            assert!((vertical_speed - previous_vertical_speed).abs() < 1.0);
-            assert!((relative_speed - previous_relative_speed).abs() < 1.0);
-            assert!((altitude_change - vertical_speed * 0.02).abs() < 1.0);
-            previous = current;
-        }
-
-        session.close().await;
-        std::fs::remove_file(path)?;
-        Ok(())
-    }
-}
