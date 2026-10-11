@@ -37,6 +37,9 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(preview.relative_points_m.len() >= 2);
     assert!(preview.relative_points_m.len() <= 193);
     assert!(preview.has_impact);
+    assert!(preview.has_eccentricity);
+    assert!(preview.eccentricity.is_finite());
+    assert!(preview.eccentricity >= 1.0);
     assert!(preview.has_periapsis);
     assert!(preview.periapsis_altitude_m.is_finite());
     assert!(!preview.has_apoapsis);

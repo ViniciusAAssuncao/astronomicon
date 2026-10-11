@@ -21,6 +21,7 @@ pub struct OrbitPreview {
     pub horizon_seconds: f64,
     pub impact_epoch_seconds: Option<f64>,
     pub under_thrust: bool,
+    pub eccentricity: Option<f64>,
     pub periapsis_altitude_m: Option<f64>,
     pub apoapsis_altitude_m: Option<f64>,
     pub period_seconds: Option<f64>,
@@ -117,6 +118,8 @@ impl RocketconSession {
                 .main_engine_loads
                 .iter()
                 .any(|(_, load)| *load > 0.0),
+            eccentricity: elements.eccentricity.is_finite()
+                .then_some(elements.eccentricity),
             periapsis_altitude_m,
             apoapsis_altitude_m,
             period_seconds,

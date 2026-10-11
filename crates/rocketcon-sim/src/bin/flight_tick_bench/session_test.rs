@@ -123,6 +123,7 @@ async fn orbital_preview_is_sampled_without_advancing_the_save() -> Result<(), B
     assert_eq!(preview.source_epoch_seconds, before.total_epoch_seconds);
     assert_eq!(preview.relative_points_m.len(), 193);
     assert!(!preview.under_thrust);
+    assert!(preview.eccentricity.ok_or("eccentricity missing")? < 1e-7);
     assert!((preview.periapsis_altitude_m.ok_or("periapsis missing")? - 200_000.0).abs() < 1.0);
     assert!((preview.apoapsis_altitude_m.ok_or("apoapsis missing")? - 200_000.0).abs() < 1.0);
     assert!(preview.period_seconds.ok_or("period missing")? > 0.0);

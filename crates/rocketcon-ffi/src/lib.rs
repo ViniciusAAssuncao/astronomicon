@@ -92,6 +92,8 @@ pub mod ffi {
         has_impact: bool,
         impact_epoch_seconds: f64,
         under_thrust: bool,
+        has_eccentricity: bool,
+        eccentricity: f64,
         has_periapsis: bool,
         periapsis_altitude_m: f64,
         has_apoapsis: bool,
