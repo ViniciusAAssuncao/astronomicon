@@ -1,4 +1,6 @@
 use super::orbit_apsides::{next_apoapsis, next_periapsis, OrbitApsis};
+use super::orbit_view_basis::orbit_view_basis;
+use super::OrbitViewBasis;
 use super::RocketconSession;
 use crate::{RocketError, RocketResult};
 use astronomicon_core::units::Duration;
@@ -21,6 +23,7 @@ pub struct OrbitPreview {
     pub horizon_seconds: f64,
     pub impact_epoch_seconds: Option<f64>,
     pub under_thrust: bool,
+    pub orbit_view_basis: Option<OrbitViewBasis>,
     pub eccentricity: Option<f64>,
     pub periapsis_altitude_m: Option<f64>,
     pub apoapsis_altitude_m: Option<f64>,
@@ -118,6 +121,7 @@ impl RocketconSession {
                 .main_engine_loads
                 .iter()
                 .any(|(_, load)| *load > 0.0),
+            orbit_view_basis: orbit_view_basis(position, velocity),
             eccentricity: elements.eccentricity.is_finite()
                 .then_some(elements.eccentricity),
             periapsis_altitude_m,

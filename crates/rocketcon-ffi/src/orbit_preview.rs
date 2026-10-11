@@ -10,6 +10,11 @@ impl From<SessionPreview> for OrbitPreview {
             has_impact: source.impact_epoch_seconds.is_some(),
             impact_epoch_seconds: source.impact_epoch_seconds.unwrap_or_default(),
             under_thrust: source.under_thrust,
+            has_orbit_view_basis: source.orbit_view_basis.is_some(),
+            orbit_horizontal: source.orbit_view_basis.as_ref()
+                .map_or([0.0; 3], |basis| basis.horizontal).into(),
+            orbit_vertical: source.orbit_view_basis.as_ref()
+                .map_or([0.0; 3], |basis| basis.vertical).into(),
             has_eccentricity: source.eccentricity.is_some(),
             eccentricity: source.eccentricity.unwrap_or_default(),
             has_periapsis: source.periapsis_altitude_m.is_some(),

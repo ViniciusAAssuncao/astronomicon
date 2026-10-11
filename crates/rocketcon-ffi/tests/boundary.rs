@@ -40,6 +40,17 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(preview.has_eccentricity);
     assert!(preview.eccentricity.is_finite());
     assert!(preview.eccentricity >= 1.0);
+    if preview.has_orbit_view_basis {
+        let horizontal = &preview.orbit_horizontal;
+        let vertical = &preview.orbit_vertical;
+        let h_norm = horizontal.x.hypot(horizontal.y).hypot(horizontal.z);
+        let v_norm = vertical.x.hypot(vertical.y).hypot(vertical.z);
+        let dot = horizontal.x * vertical.x +
+            horizontal.y * vertical.y + horizontal.z * vertical.z;
+        assert!((h_norm - 1.0).abs() < 1e-10);
+        assert!((v_norm - 1.0).abs() < 1e-10);
+        assert!(dot.abs() < 1e-10);
+    }
     assert!(preview.has_periapsis);
     assert!(preview.periapsis_altitude_m.is_finite());
     assert!(!preview.has_apoapsis);
