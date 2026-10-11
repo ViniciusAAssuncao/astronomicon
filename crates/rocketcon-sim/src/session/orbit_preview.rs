@@ -2,21 +2,17 @@ use super::OrbitViewBasis;
 use super::RocketconSession;
 use super::orbit_apsides::{OrbitApsis, next_apoapsis, next_periapsis};
 use super::orbit_nodes::{orbit_nodes, orbit_nodes_in_frame};
+use super::orbit_preview_horizon::preview_horizon;
+use super::orbit_preview_path::{PreviewEndReason, sample_preview_path};
+use super::orbit_soi::{OrbitSoiPreview, soi_radius};
 use super::orbit_view_basis::orbit_view_basis;
 use super::planet_equatorial_reference;
 use crate::{RocketError, RocketResult};
-use astronomicon_core::units::Duration;
 use rocketcon_app::orbital::resolve_relative_state_for_body;
+use rocketcon_core::math::orbital::cartesian_to_osculating_elements;
 use rocketcon_core::math::orbital::state_properties::orbital_period_if_bound;
-use rocketcon_core::math::orbital::{
-    cartesian_to_osculating_elements, propagate_universal_state_vectors,
-};
 use rocketcon_db::repositories::vehicle_physical_state;
 use uuid::Uuid;
-
-const SAMPLE_INTERVALS: usize = 192;
-const MIN_HORIZON_S: f64 = 600.0;
-const MAX_HORIZON_S: f64 = 21_600.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EquatorialOrbitPreview {
@@ -29,7 +25,10 @@ pub struct OrbitPreview {
     pub reference_body_id: Uuid,
     pub source_epoch_seconds: f64,
     pub horizon_seconds: f64,
+    pub rendered_horizon_seconds: f64,
+    pub end_reason: PreviewEndReason,
     pub impact_epoch_seconds: Option<f64>,
+    pub soi: Option<OrbitSoiPreview>,
     pub under_thrust: bool,
     pub orbit_view_basis: Option<OrbitViewBasis>,
     pub nodes: super::OrbitNodes,
@@ -81,46 +80,29 @@ impl RocketconSession {
         let period_seconds = orbital_period_if_bound(&elements, mu)
             .map(|period| period.value())
             .filter(|value| value.is_finite());
-        let horizon_seconds =
-            period_seconds.map_or(3_600.0, |period| period.clamp(MIN_HORIZON_S, MAX_HORIZON_S));
-        if !horizon_seconds.is_finite() {
-            return Err(RocketError::Generic(
-                "orbital preview horizon is not finite".into(),
-            ));
-        }
-        let radius = body_radius_m;
-        let mut relative_points_m = Vec::with_capacity(SAMPLE_INTERVALS + 1);
-        let mut impact_epoch_seconds = None;
-        let mut sample_position = position;
-        let mut sample_velocity = velocity;
-        for index in 0..=SAMPLE_INTERVALS {
-            let elapsed = horizon_seconds * index as f64 / SAMPLE_INTERVALS as f64;
-            if index > 0 {
-                (sample_position, sample_velocity) = propagate_universal_state_vectors(
-                    sample_position,
-                    sample_velocity,
-                    mu,
-                    Duration::new(horizon_seconds / SAMPLE_INTERVALS as f64),
-                )?;
-            }
-            let point = sample_position.raw();
-            if ![point.0, point.1, point.2]
-                .iter()
-                .all(|value| value.is_finite())
-            {
-                return Err(RocketError::Generic(
-                    "orbital preview contains non-finite coordinates".into(),
-                ));
-            }
-            relative_points_m.push([point.0, point.1, point.2]);
-            if radius > 0.0 && index > 0 && point.magnitude() <= radius {
-                impact_epoch_seconds = Some(epoch.value() + elapsed);
-                break;
-            }
-        }
-        let visible_horizon = impact_epoch_seconds
-            .map(|impact| impact - epoch.value())
-            .unwrap_or(horizon_seconds);
+        let mut soi =
+            soi_radius(&environment.planet, &environment.star).map(|radius_m| OrbitSoiPreview {
+                radius_m,
+                outside: position.raw().magnitude() >= radius_m,
+                exit: None,
+            });
+        let horizon_seconds = preview_horizon(
+            &elements,
+            mu,
+            period_seconds,
+            soi.as_ref().map(|s| s.radius_m),
+        );
+        let path = sample_preview_path(
+            position,
+            velocity,
+            mu,
+            body_radius_m,
+            horizon_seconds,
+            &mut soi,
+        );
+        let impact_epoch_seconds = path.impact_seconds.map(|elapsed| epoch.value() + elapsed);
+        let visible_horizon = path.elapsed_seconds;
+        let relative_points_m = path.points;
         let equatorial =
             planet_equatorial_reference(&environment.planet).map(|frame| EquatorialOrbitPreview {
                 nodes: orbit_nodes_in_frame(
@@ -137,7 +119,10 @@ impl RocketconSession {
             reference_body_id,
             source_epoch_seconds: epoch.value(),
             horizon_seconds,
+            rendered_horizon_seconds: visible_horizon,
+            end_reason: path.end_reason,
             impact_epoch_seconds,
+            soi,
             under_thrust: self
                 .snapshot
                 .main_engine_loads

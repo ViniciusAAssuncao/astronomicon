@@ -70,6 +70,11 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
         assert!((v_norm - 1.0).abs() < 1e-10);
         assert!(dot.abs() < 1e-10);
     }
+    assert!(preview.has_soi);
+    assert!(preview.soi_radius_m > 100_000_000.0);
+    assert!(preview.soi_radius_m < 200_000_000.0);
+    assert!(!preview.soi_outside);
+    assert!(!preview.has_soi_exit);
     assert!(preview.has_equatorial_reference);
     let normal = &preview.equatorial_normal;
     let horizontal = &preview.equatorial_horizontal;

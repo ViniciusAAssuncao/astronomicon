@@ -7,8 +7,18 @@ impl From<SessionPreview> for OrbitPreview {
             reference_body_id: source.reference_body_id.to_string(),
             source_epoch_seconds: source.source_epoch_seconds,
             horizon_seconds: source.horizon_seconds,
+            rendered_horizon_seconds: source.rendered_horizon_seconds,
+            end_reason: source.end_reason as u8,
             has_impact: source.impact_epoch_seconds.is_some(),
             impact_epoch_seconds: source.impact_epoch_seconds.unwrap_or_default(),
+            has_soi: source.soi.is_some(),
+            soi_radius_m: source.soi.as_ref().map_or(0.0, |s| s.radius_m),
+            soi_outside: source.soi.as_ref().is_some_and(|s| s.outside),
+            has_soi_exit: source.soi.as_ref().is_some_and(|s| s.exit.is_some()),
+            soi_exit_seconds: source.soi.as_ref().and_then(|s| s.exit.as_ref())
+                .map_or(0.0, |event| event.time_to_seconds),
+            soi_exit_position_m: source.soi.as_ref().and_then(|s| s.exit.as_ref())
+                .map_or([0.0; 3], |event| event.relative_position_m).into(),
             under_thrust: source.under_thrust,
             has_inclination: source.nodes.inclination_rad.is_some(),
             inclination_rad: source.nodes.inclination_rad.unwrap_or_default(),

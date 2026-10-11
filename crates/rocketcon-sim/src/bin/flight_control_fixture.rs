@@ -1,3 +1,6 @@
+#[path = "flight_control_fixture/soi_scenarios.rs"]
+mod soi_scenarios;
+
 use astronomicon_core::units::Duration;
 use rocketcon_db::save::{migrations::run_rocketcon_migrations, template::create_save_copy};
 use rocketcon_sim::{RocketconSession, planet_equatorial_reference, OrbitalReferenceFrame};
@@ -27,11 +30,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let fine_throttle = mode.as_deref() == Some("--fine-throttle") || eccentric;
     let throttleable = fine_throttle || mode.as_deref() == Some("--throttleable");
     let scenario = mode.as_deref().filter(|value|
-        value.starts_with("--node-") || value.starts_with("--c8-"));
+        value.starts_with("--node-") || value.starts_with("--c8-") || value.starts_with("--c9-"));
     if let Some(name) = scenario {
         if !matches!(name, "--node-inclined" | "--node-polar" | "--node-retrograde" |
             "--node-equatorial" | "--node-escape" | "--node-separated" |
-            "--c8-meros-equatorial" | "--c8-meros-inclined") {
+            "--c8-meros-equatorial" | "--c8-meros-inclined" |
+            "--c9-soi-outbound" | "--c9-soi-inbound" | "--c9-soi-inbound-stable" | "--c9-soi-inbound-nearcircular" | "--c9-soi-outside") {
             return Err(format!("unknown orbital scenario: {name}").into());
         }
     }
@@ -69,9 +73,10 @@ async fn create_fixture(
         }
         if let Some(name) = scenario {
             let c8 = name.starts_with("--c8-");
+            let c9 = name.starts_with("--c9-");
             let equatorial = name == "--node-equatorial";
             let escape = name == "--node-escape";
-            if !c8 && (preview.nodes.inclination_rad.is_none() ||
+            if !(c8 || c9) && (preview.nodes.inclination_rad.is_none() ||
                 preview.nodes.ascending_longitude_rad.is_some() == equatorial ||
                 preview.nodes.next_ascending.is_some() == equatorial ||
                 (!equatorial && !escape && preview.nodes.next_descending.is_none()) ||
@@ -109,6 +114,25 @@ async fn create_fixture(
                 println!("equatorial_inclination_deg: {inclination:.6}");
                 println!("equatorial_next_ascending_s: {:?}", eq.nodes.next_ascending.as_ref().map(|n| n.time_to_seconds));
                 println!("equatorial_next_descending_s: {:?}", eq.nodes.next_descending.as_ref().map(|n| n.time_to_seconds));
+            }
+            if c9 {
+                let soi = preview.soi.as_ref().ok_or("SOI missing")?;
+                let expected_outside = name == "--c9-soi-outside";
+                let expected_exit = name == "--c9-soi-outbound" ||
+                    name == "--c9-soi-inbound";
+                if soi.outside != expected_outside || soi.exit.is_some() != expected_exit {
+                    return Err(format!("C9 SOI scenario invalid: {name} {soi:?}").into());
+                }
+                if let Some(exit) = &soi.exit {
+                    println!("soi_exit_seconds: {:.6}", exit.time_to_seconds);
+                    println!("soi_exit_distance_m: {:.3}",
+                        exit.relative_position_m.iter().map(|v| v*v).sum::<f64>().sqrt());
+                }
+                println!("soi_radius_m: {:.3} outside: {}", soi.radius_m, soi.outside);
+                println!("preview_target_seconds: {:.3} rendered_seconds: {:.3} points: {} end: {:?}",
+                    preview.horizon_seconds, preview.rendered_horizon_seconds,
+                    preview.relative_points_m.len(), preview.end_reason);
+                println!("next_periapsis_s: {:?}", preview.next_periapsis.as_ref().map(|p| p.time_to_seconds));
             }
             println!("scenario: {name}");
             println!("inclination_deg: {:.4}", preview.nodes.inclination_rad.unwrap().to_degrees());
@@ -306,7 +330,9 @@ async fn populate(
     }
 
     let (offset, relative_velocity) = scenario.map(|name| {
-        if name.starts_with("--c8-") {
+        if name.starts_with("--c9-") {
+            soi_scenarios::soi_orbit_state(name, &environment.planet, &environment.star)
+        } else if name.starts_with("--c8-") {
             equatorial_orbit_state(name, radius, mu,
                 planet_equatorial_reference(&environment.planet)
                     .expect("Meridian test planet must have a physical equator"))

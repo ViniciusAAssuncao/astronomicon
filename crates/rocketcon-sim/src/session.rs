@@ -6,6 +6,9 @@ mod orbit_apsides;
 mod orbit_view_basis;
 mod orbit_nodes;
 mod orbit_reference;
+mod orbit_soi;
+mod orbit_preview_horizon;
+mod orbit_preview_path;
 
 pub use snapshot::{FlightEvent, FlightEventKind, FlightSnapshot};
 pub use vehicle_visual::VehicleVisualComponent;
