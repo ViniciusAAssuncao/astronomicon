@@ -1,6 +1,6 @@
 use astronomicon_core::units::Duration;
 use rocketcon_db::save::{migrations::run_rocketcon_migrations, template::create_save_copy};
-use rocketcon_sim::RocketconSession;
+use rocketcon_sim::{RocketconSession, planet_equatorial_reference, OrbitalReferenceFrame};
 use sqlx::SqlitePool;
 use std::error::Error;
 use std::path::Path;
@@ -26,10 +26,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let eccentric = mode.as_deref() == Some("--eccentric");
     let fine_throttle = mode.as_deref() == Some("--fine-throttle") || eccentric;
     let throttleable = fine_throttle || mode.as_deref() == Some("--throttleable");
-    let scenario = mode.as_deref().filter(|value| value.starts_with("--node-"));
+    let scenario = mode.as_deref().filter(|value|
+        value.starts_with("--node-") || value.starts_with("--c8-"));
     if let Some(name) = scenario {
         if !matches!(name, "--node-inclined" | "--node-polar" | "--node-retrograde" |
-            "--node-equatorial" | "--node-escape" | "--node-separated") {
+            "--node-equatorial" | "--node-escape" | "--node-separated" |
+            "--c8-meros-equatorial" | "--c8-meros-inclined") {
             return Err(format!("unknown orbital scenario: {name}").into());
         }
     }
@@ -66,13 +68,14 @@ async fn create_fixture(
             return Err("eccentric test orbit is missing an apsis marker".into());
         }
         if let Some(name) = scenario {
+            let c8 = name.starts_with("--c8-");
             let equatorial = name == "--node-equatorial";
             let escape = name == "--node-escape";
-            if preview.nodes.inclination_rad.is_none() ||
+            if !c8 && (preview.nodes.inclination_rad.is_none() ||
                 preview.nodes.ascending_longitude_rad.is_some() == equatorial ||
                 preview.nodes.next_ascending.is_some() == equatorial ||
                 (!equatorial && !escape && preview.nodes.next_descending.is_none()) ||
-                (escape && preview.nodes.next_descending.is_some()) {
+                (escape && preview.nodes.next_descending.is_some())) {
                 return Err(format!("nodal fixture preview is invalid: {name} {:#?}", preview.nodes).into());
             }
             if name == "--node-separated" {
@@ -88,6 +91,24 @@ async fn create_fixture(
                         return Err("separated orbit has coincident events".into());
                     }
                 }
+            }
+            if c8 {
+                let eq = preview.equatorial.as_ref().ok_or("planet has no equatorial reference")?;
+                let inclination = eq.nodes.inclination_rad.ok_or("equatorial inclination missing")?.to_degrees();
+                let expected: f64 = if name == "--c8-meros-equatorial" { 0.0 } else { 35.0 };
+                if (inclination - expected).abs() > 1e-5 {
+                    return Err(format!("wrong equatorial inclination: {inclination}").into());
+                }
+                if name == "--c8-meros-equatorial" && eq.nodes.ascending_longitude_rad.is_some() {
+                    return Err("equatorial orbit has an invented longitude".into());
+                }
+                if name == "--c8-meros-inclined" &&
+                    (eq.nodes.next_ascending.is_none() || eq.nodes.next_descending.is_none()) {
+                    return Err("inclined equatorial fixture missing node".into());
+                }
+                println!("equatorial_inclination_deg: {inclination:.6}");
+                println!("equatorial_next_ascending_s: {:?}", eq.nodes.next_ascending.as_ref().map(|n| n.time_to_seconds));
+                println!("equatorial_next_descending_s: {:?}", eq.nodes.next_descending.as_ref().map(|n| n.time_to_seconds));
             }
             println!("scenario: {name}");
             println!("inclination_deg: {:.4}", preview.nodes.inclination_rad.unwrap().to_degrees());
@@ -284,8 +305,15 @@ async fn populate(
         .await?;
     }
 
-    let (offset, relative_velocity) = scenario.map(|name|
-        nodal_orbit_state(name, radius, mu)).unwrap_or((
+    let (offset, relative_velocity) = scenario.map(|name| {
+        if name.starts_with("--c8-") {
+            equatorial_orbit_state(name, radius, mu,
+                planet_equatorial_reference(&environment.planet)
+                    .expect("Meridian test planet must have a physical equator"))
+        } else {
+            nodal_orbit_state(name, radius, mu)
+        }
+    }).unwrap_or((
             [orbital_radius, 0.0, 0.0],
             [0.0, (mu / orbital_radius).sqrt() * if eccentric { 1.05 } else { 1.0 }, 0.0]));
     sqlx::query("INSERT INTO vehicle_physical_states (vehicle_id, position_x_m, position_y_m, position_z_m, velocity_x_m_s, velocity_y_m_s, velocity_z_m_s, orientation_q_w, orientation_q_x, orientation_q_y, orientation_q_z, angular_velocity_x_rad_s, angular_velocity_y_rad_s, angular_velocity_z_rad_s, reference_body_id, captured_universe_epoch_s, captured_at_epoch_s) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?)")
@@ -296,6 +324,35 @@ async fn populate(
         .bind(if eccentric { -std::f64::consts::FRAC_1_SQRT_2 } else { 0.0 })
         .bind(MEROS_ID).bind(epoch.value()).bind(AT_EPOCH).execute(pool).await?;
     Ok(())
+}
+
+fn equatorial_orbit_state(
+    scenario: &str,
+    body_radius: f64,
+    mu: f64,
+    frame: OrbitalReferenceFrame,
+) -> ([f64; 3], [f64; 3]) {
+    let (inclination_deg, longitude_deg, eccentricity, argument_deg) = match scenario {
+        "--c8-meros-equatorial" => (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64),
+        "--c8-meros-inclined" => (35.0, 42.0, 0.18, 50.0),
+        _ => unreachable!(),
+    };
+    let inclination = inclination_deg.to_radians();
+    let longitude = longitude_deg.to_radians();
+    let anomaly = -45.0_f64.to_radians();
+    let argument = argument_deg.to_radians();
+    let phase = anomaly + argument;
+    let node = frame.horizontal * longitude.cos() + frame.vertical * longitude.sin();
+    let transverse = frame.normal.cross(&node) * inclination.cos() +
+        frame.normal * inclination.sin();
+    let radial = node * phase.cos() + transverse * phase.sin();
+    let tangent = node * -phase.sin() + transverse * phase.cos();
+    let radius = body_radius + 520_000.0;
+    let p = radius * (1.0 + eccentricity * anomaly.cos());
+    let speed = (mu / p).sqrt();
+    let v = radial * (speed * eccentricity * anomaly.sin()) +
+        tangent * (speed * (1.0 + eccentricity * anomaly.cos()));
+    ([radial.0 * radius, radial.1 * radius, radial.2 * radius], [v.0, v.1, v.2])
 }
 
 fn nodal_orbit_state(scenario: &str, body_radius: f64, mu: f64) -> ([f64; 3], [f64; 3]) {

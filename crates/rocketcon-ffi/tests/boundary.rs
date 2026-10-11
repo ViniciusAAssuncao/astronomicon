@@ -70,6 +70,20 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
         assert!((v_norm - 1.0).abs() < 1e-10);
         assert!(dot.abs() < 1e-10);
     }
+    assert!(preview.has_equatorial_reference);
+    let normal = &preview.equatorial_normal;
+    let horizontal = &preview.equatorial_horizontal;
+    let vertical = &preview.equatorial_vertical;
+    let length = |v: &rocketcon_ffi::ffi::FfiVec3| v.x.hypot(v.y).hypot(v.z);
+    let dot = |a: &rocketcon_ffi::ffi::FfiVec3, b: &rocketcon_ffi::ffi::FfiVec3|
+        a.x * b.x + a.y * b.y + a.z * b.z;
+    assert!((length(normal) - 1.0).abs() < 1e-10);
+    assert!((length(horizontal) - 1.0).abs() < 1e-10);
+    assert!((length(vertical) - 1.0).abs() < 1e-10);
+    assert!(dot(normal, horizontal).abs() < 1e-10);
+    assert!(dot(normal, vertical).abs() < 1e-10);
+    assert!(preview.equatorial_has_inclination);
+    assert!((0.0..=std::f64::consts::PI).contains(&preview.equatorial_inclination_rad));
     assert!(preview.has_periapsis);
     assert!(preview.periapsis_altitude_m.is_finite());
     assert!(!preview.has_apoapsis);
@@ -167,6 +181,31 @@ fn ffi_exposes_inclination_and_nodal_crossings() -> Result<(), Box<dyn Error>> {
     assert!(preview.has_next_descending);
     assert!(preview.next_descending_seconds > 0.0);
     assert!(preview.next_descending_position_m.z.abs() < 1e-5);
+    drop(engine);
+    let _ = std::fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
+fn ffi_does_not_invent_equator_when_planet_data_is_missing() -> Result<(), Box<dyn Error>> {
+    let path = std::env::temp_dir().join(format!("rocketcon-ffi-no-equator-{}.db", Uuid::new_v4()));
+    prepare_save(&path)?;
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let pool = astronomicon_db::connection::open_pool_path(&path).await?;
+        let changed = sqlx::query("UPDATE planets SET axial_tilt_rad = NULL WHERE name = 'Meros'")
+            .execute(&pool).await?;
+        assert_eq!(changed.rows_affected(), 1);
+        pool.close().await;
+        Ok::<_, Box<dyn Error>>(())
+    })?;
+    let mut engine = create_engine()?;
+    engine.load_save(path.to_str().ok_or("invalid path")?, VEHICLE_ID)?;
+    let preview = engine.orbit_preview()?;
+    assert!(!preview.has_equatorial_reference);
+    assert!(!preview.equatorial_has_inclination);
+    assert!(!preview.equatorial_has_next_ascending);
+    assert!(preview.has_inclination);
     drop(engine);
     let _ = std::fs::remove_file(path);
     Ok(())

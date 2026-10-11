@@ -1,3 +1,4 @@
+use super::OrbitalReferenceFrame;
 use astronomicon_core::units::{Angle, GravitationalParameter, Position, Vector3, VelocityVector};
 use rocketcon_core::math::orbital::OsculatingElements;
 use rocketcon_core::math::orbital::state_properties::laplace_runge_lenz_vector;
@@ -25,6 +26,24 @@ pub fn orbit_nodes(
     mu: GravitationalParameter,
     horizon: f64,
 ) -> OrbitNodes {
+    orbit_nodes_in_frame(
+        elements,
+        position,
+        velocity,
+        mu,
+        horizon,
+        OrbitalReferenceFrame::inertial_xy(),
+    )
+}
+
+pub fn orbit_nodes_in_frame(
+    elements: &OsculatingElements,
+    position: Position,
+    velocity: VelocityVector,
+    mu: GravitationalParameter,
+    horizon: f64,
+    frame: OrbitalReferenceFrame,
+) -> OrbitNodes {
     let mut output = OrbitNodes {
         inclination_rad: None,
         ascending_longitude_rad: None,
@@ -47,18 +66,23 @@ pub fn orbit_nodes(
         return output;
     }
     let normal = h / h_norm;
-    let inclination = normal.2.clamp(-1.0, 1.0).acos();
+    let inclination = normal.dot(&frame.normal).clamp(-1.0, 1.0).acos();
     if !inclination.is_finite() {
         return output;
     }
     output.inclination_rad = Some(inclination);
-    let line = Vector3::new(-normal.1, normal.0, 0.0);
+    let line = frame.normal.cross(&normal);
     let line_length = line.magnitude();
     if !line_length.is_finite() || line_length <= 1e-7 {
         return output;
     }
     let ascending = line / line_length;
-    output.ascending_longitude_rad = Some(ascending.1.atan2(ascending.0).rem_euclid(TAU));
+    output.ascending_longitude_rad = Some(
+        ascending
+            .dot(&frame.vertical)
+            .atan2(ascending.dot(&frame.horizontal))
+            .rem_euclid(TAU),
+    );
     if !horizon.is_finite() || horizon <= 0.0 || mu.value() <= 0.0 {
         return output;
     }
@@ -231,6 +255,42 @@ mod tests {
         let invalid = orbit_nodes(&elements, r, radial, mu, 20.0);
         assert!(invalid.inclination_rad.is_none());
         assert!(invalid.ascending_longitude_rad.is_none());
+    }
+
+    #[test]
+    fn equatorial_reference_differs_from_inertial_xy() {
+        let (r, v, mu, elements) = state(0.55, 0.12, -0.7);
+        let h = r.raw().cross(&v.raw()).normalized();
+        let aligned = OrbitalReferenceFrame::from_pole(h).unwrap();
+        let xy = orbit_nodes(&elements, r, v, mu, 100.0);
+        let eq = orbit_nodes_in_frame(&elements, r, v, mu, 100.0, aligned);
+        assert!((xy.inclination_rad.unwrap() - 0.55).abs() < 1e-8);
+        assert!(eq.inclination_rad.unwrap().abs() < 1e-8);
+        assert!(eq.ascending_longitude_rad.is_none());
+        assert!(eq.next_ascending.is_none() && eq.next_descending.is_none());
+    }
+
+    #[test]
+    fn tilted_reference_nodes_lie_on_its_equator() {
+        let (r, v, mu, elements) = state(0.85, 0.14, -0.4);
+        let frame = OrbitalReferenceFrame::from_pole(Vector3::new(0.12, -0.18, 1.0)).unwrap();
+        let nodes = orbit_nodes_in_frame(&elements, r, v, mu, 100.0, frame);
+        assert!(nodes.inclination_rad.unwrap() > 0.1);
+        assert!(nodes.ascending_longitude_rad.is_some());
+        for node in [
+            nodes.next_ascending.as_ref(),
+            nodes.next_descending.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let pos = Vector3::new(
+                node.relative_position_m[0],
+                node.relative_position_m[1],
+                node.relative_position_m[2],
+            );
+            assert!(pos.dot(&frame.normal).abs() < 1e-9);
+        }
     }
 
     #[test]

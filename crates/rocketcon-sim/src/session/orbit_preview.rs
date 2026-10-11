@@ -1,8 +1,9 @@
-use super::orbit_apsides::{next_apoapsis, next_periapsis, OrbitApsis};
-use super::orbit_view_basis::orbit_view_basis;
-use super::orbit_nodes::orbit_nodes;
 use super::OrbitViewBasis;
 use super::RocketconSession;
+use super::orbit_apsides::{OrbitApsis, next_apoapsis, next_periapsis};
+use super::orbit_nodes::{orbit_nodes, orbit_nodes_in_frame};
+use super::orbit_view_basis::orbit_view_basis;
+use super::planet_equatorial_reference;
 use crate::{RocketError, RocketResult};
 use astronomicon_core::units::Duration;
 use rocketcon_app::orbital::resolve_relative_state_for_body;
@@ -18,6 +19,12 @@ const MIN_HORIZON_S: f64 = 600.0;
 const MAX_HORIZON_S: f64 = 21_600.0;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct EquatorialOrbitPreview {
+    pub frame: super::OrbitalReferenceFrame,
+    pub nodes: super::OrbitNodes,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct OrbitPreview {
     pub reference_body_id: Uuid,
     pub source_epoch_seconds: f64,
@@ -26,6 +33,7 @@ pub struct OrbitPreview {
     pub under_thrust: bool,
     pub orbit_view_basis: Option<OrbitViewBasis>,
     pub nodes: super::OrbitNodes,
+    pub equatorial: Option<EquatorialOrbitPreview>,
     pub eccentricity: Option<f64>,
     pub periapsis_altitude_m: Option<f64>,
     pub apoapsis_altitude_m: Option<f64>,
@@ -113,6 +121,18 @@ impl RocketconSession {
         let visible_horizon = impact_epoch_seconds
             .map(|impact| impact - epoch.value())
             .unwrap_or(horizon_seconds);
+        let equatorial =
+            planet_equatorial_reference(&environment.planet).map(|frame| EquatorialOrbitPreview {
+                nodes: orbit_nodes_in_frame(
+                    &elements,
+                    position,
+                    velocity,
+                    mu,
+                    visible_horizon,
+                    frame,
+                ),
+                frame,
+            });
         Ok(OrbitPreview {
             reference_body_id,
             source_epoch_seconds: epoch.value(),
@@ -125,7 +145,10 @@ impl RocketconSession {
                 .any(|(_, load)| *load > 0.0),
             orbit_view_basis: orbit_view_basis(position, velocity),
             nodes: orbit_nodes(&elements, position, velocity, mu, visible_horizon),
-            eccentricity: elements.eccentricity.is_finite()
+            equatorial,
+            eccentricity: elements
+                .eccentricity
+                .is_finite()
                 .then_some(elements.eccentricity),
             periapsis_altitude_m,
             apoapsis_altitude_m,

@@ -29,6 +29,37 @@ impl From<SessionPreview> for OrbitPreview {
                 .map_or([0.0; 3], |basis| basis.horizontal).into(),
             orbit_vertical: source.orbit_view_basis.as_ref()
                 .map_or([0.0; 3], |basis| basis.vertical).into(),
+            has_equatorial_reference: source.equatorial.is_some(),
+            equatorial_normal: source.equatorial.as_ref()
+                .map(|eq| eq.frame.as_arrays().0).unwrap_or([0.0; 3]).into(),
+            equatorial_horizontal: source.equatorial.as_ref()
+                .map(|eq| eq.frame.as_arrays().1).unwrap_or([0.0; 3]).into(),
+            equatorial_vertical: source.equatorial.as_ref()
+                .map(|eq| eq.frame.as_arrays().2).unwrap_or([0.0; 3]).into(),
+            equatorial_has_inclination: source.equatorial.as_ref()
+                .is_some_and(|eq| eq.nodes.inclination_rad.is_some()),
+            equatorial_inclination_rad: source.equatorial.as_ref()
+                .and_then(|eq| eq.nodes.inclination_rad).unwrap_or_default(),
+            equatorial_has_ascending_longitude: source.equatorial.as_ref()
+                .is_some_and(|eq| eq.nodes.ascending_longitude_rad.is_some()),
+            equatorial_ascending_longitude_rad: source.equatorial.as_ref()
+                .and_then(|eq| eq.nodes.ascending_longitude_rad).unwrap_or_default(),
+            equatorial_has_next_ascending: source.equatorial.as_ref()
+                .is_some_and(|eq| eq.nodes.next_ascending.is_some()),
+            equatorial_next_ascending_seconds: source.equatorial.as_ref()
+                .and_then(|eq| eq.nodes.next_ascending.as_ref())
+                .map_or(0.0, |node| node.time_to_seconds),
+            equatorial_next_ascending_position_m: source.equatorial.as_ref()
+                .and_then(|eq| eq.nodes.next_ascending.as_ref())
+                .map_or([0.0; 3], |node| node.relative_position_m).into(),
+            equatorial_has_next_descending: source.equatorial.as_ref()
+                .is_some_and(|eq| eq.nodes.next_descending.is_some()),
+            equatorial_next_descending_seconds: source.equatorial.as_ref()
+                .and_then(|eq| eq.nodes.next_descending.as_ref())
+                .map_or(0.0, |node| node.time_to_seconds),
+            equatorial_next_descending_position_m: source.equatorial.as_ref()
+                .and_then(|eq| eq.nodes.next_descending.as_ref())
+                .map_or([0.0; 3], |node| node.relative_position_m).into(),
             has_eccentricity: source.eccentricity.is_some(),
             eccentricity: source.eccentricity.unwrap_or_default(),
             has_periapsis: source.periapsis_altitude_m.is_some(),

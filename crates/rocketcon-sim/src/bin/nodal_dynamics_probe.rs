@@ -67,6 +67,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if (initial_i - final_i).abs() > 0.01 {
         return Err("unexpected inclination variation in short coast".into());
     }
+    if let (Some(before), Some(now)) = (&original.equatorial, &after.equatorial) {
+        let b = before.nodes.inclination_rad.ok_or("equatorial inclination missing before")?;
+        let a = now.nodes.inclination_rad.ok_or("equatorial inclination missing after")?;
+        if (b - a).abs() > 0.01 {
+            return Err("unexpected equatorial inclination variation".into());
+        }
+        for (past, future) in [
+            (&before.nodes.next_ascending, &now.nodes.next_ascending),
+            (&before.nodes.next_descending, &now.nodes.next_descending),
+        ] {
+            if let (Some(past), Some(future)) = (past.as_ref(), future.as_ref()) {
+                let drift = (past.time_to_seconds - future.time_to_seconds) - ticks as f64 * 0.02;
+                if drift.abs() > 5.0 {
+                    return Err(format!("unexpected equatorial node drift: {drift}").into());
+                }
+            }
+        }
+        println!(
+            "equatorial_inclination_start_deg={:.6} equatorial_inclination_end_deg={:.6} equatorial_NA_start_s={:?} equatorial_NA_end_s={:?} equatorial_ND_start_s={:?} equatorial_ND_end_s={:?}",
+            b.to_degrees(), a.to_degrees(),
+            before.nodes.next_ascending.as_ref().map(|n| n.time_to_seconds),
+            now.nodes.next_ascending.as_ref().map(|n| n.time_to_seconds),
+            before.nodes.next_descending.as_ref().map(|n| n.time_to_seconds),
+            now.nodes.next_descending.as_ref().map(|n| n.time_to_seconds));
+    }
     println!(
         "ticks={ticks} total_tick_ms={:.2} mean_tick_ms={:.3} inclination_start_deg={:.5} inclination_end_deg={:.5} NA_before_s={:?} NA_after_s={:?} ND_before_s={:?} ND_after_s={:?}",
         tick_elapsed.as_secs_f64() * 1000.0,
