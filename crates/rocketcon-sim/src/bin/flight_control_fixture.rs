@@ -26,8 +26,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let eccentric = mode.as_deref() == Some("--eccentric");
     let fine_throttle = mode.as_deref() == Some("--fine-throttle") || eccentric;
     let throttleable = fine_throttle || mode.as_deref() == Some("--throttleable");
+    let scenario = mode.as_deref().filter(|value| value.starts_with("--node-"));
+    if let Some(name) = scenario {
+        if !matches!(name, "--node-inclined" | "--node-polar" | "--node-retrograde" |
+            "--node-equatorial" | "--node-escape" | "--node-separated") {
+            return Err(format!("unknown orbital scenario: {name}").into());
+        }
+    }
     let path = Path::new(&destination);
-    create_fixture(path, throttleable, fine_throttle, eccentric).await?;
+    create_fixture(path, throttleable, fine_throttle, eccentric, scenario).await?;
     println!("save: {}", path.canonicalize()?.display());
     println!("vehicle: {VEHICLE_ID}");
     Ok(())
@@ -35,6 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 async fn create_fixture(
     path: &Path, throttleable: bool, fine_throttle: bool, eccentric: bool,
+    scenario: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
     if path.exists() {
         return Err(format!("save already exists: {}", path.display()).into());
@@ -47,15 +55,45 @@ async fn create_fixture(
     create_save_copy(path).await?;
     let pool = astronomicon_db::connection::open_pool_path(path).await?;
     run_rocketcon_migrations(&pool).await?;
-    populate(&pool, throttleable, fine_throttle, eccentric).await?;
+    populate(&pool, throttleable, fine_throttle, eccentric, scenario).await?;
     let session = RocketconSession::load(path, Uuid::parse_str(VEHICLE_ID)?).await?;
     if session.vehicle_components().len() != 16 {
         return Err("test vehicle assembly is incomplete".into());
     }
-    if eccentric {
+    if eccentric || scenario.is_some() {
         let preview = session.orbit_preview().await?;
-        if preview.next_periapsis.is_none() || preview.next_apoapsis.is_none() {
+        if eccentric && (preview.next_periapsis.is_none() || preview.next_apoapsis.is_none()) {
             return Err("eccentric test orbit is missing an apsis marker".into());
+        }
+        if let Some(name) = scenario {
+            let equatorial = name == "--node-equatorial";
+            let escape = name == "--node-escape";
+            if preview.nodes.inclination_rad.is_none() ||
+                preview.nodes.ascending_longitude_rad.is_some() == equatorial ||
+                preview.nodes.next_ascending.is_some() == equatorial ||
+                (!equatorial && !escape && preview.nodes.next_descending.is_none()) ||
+                (escape && preview.nodes.next_descending.is_some()) {
+                return Err(format!("nodal fixture preview is invalid: {name} {:#?}", preview.nodes).into());
+            }
+            if name == "--node-separated" {
+                let peri = preview.next_periapsis.as_ref().ok_or("missing periapsis")?;
+                let apo = preview.next_apoapsis.as_ref().ok_or("missing apoapsis")?;
+                let asc = preview.nodes.next_ascending.as_ref().ok_or("missing ascending node")?;
+                let desc = preview.nodes.next_descending.as_ref().ok_or("missing descending node")?;
+                for (apsis, node) in [(peri, asc), (peri, desc), (apo, asc), (apo, desc)] {
+                    let separation = apsis.relative_position_m.iter()
+                        .zip(node.relative_position_m.iter())
+                        .map(|(a, b)| (a - b).powi(2)).sum::<f64>().sqrt();
+                    if separation < 100_000.0 {
+                        return Err("separated orbit has coincident events".into());
+                    }
+                }
+            }
+            println!("scenario: {name}");
+            println!("inclination_deg: {:.4}", preview.nodes.inclination_rad.unwrap().to_degrees());
+            println!("ascending_longitude_deg: {:?}", preview.nodes.ascending_longitude_rad.map(f64::to_degrees));
+            println!("next_ascending_s: {:?}", preview.nodes.next_ascending.as_ref().map(|n| n.time_to_seconds));
+            println!("next_descending_s: {:?}", preview.nodes.next_descending.as_ref().map(|n| n.time_to_seconds));
         }
     }
     session.close().await;
@@ -71,6 +109,7 @@ async fn create_fixture(
 
 async fn populate(
     pool: &SqlitePool, throttleable: bool, fine_throttle: bool, eccentric: bool,
+    scenario: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
     let planet_id = Uuid::parse_str(MEROS_ID)?;
     let epoch = rocketcon_app::universe::resolve_universe_epoch(pool).await?;
@@ -98,8 +137,8 @@ async fn populate(
     let position = environment.planet_position.raw();
     let velocity = planet_velocity.raw();
 
-    sqlx::query("INSERT INTO vehicles (id, name, vehicle_kind) VALUES (?, 'Rocketcon Attitude Test', 'Rocket')")
-        .bind(VEHICLE_ID).execute(pool).await?;
+    sqlx::query("INSERT INTO vehicles (id, name, vehicle_kind) VALUES (?, ?, 'Rocket')")
+        .bind(VEHICLE_ID).bind(scenario.unwrap_or("Rocketcon Attitude Test")).execute(pool).await?;
     sqlx::query("INSERT INTO propellants (id, name, propellant_kind, density_kg_per_m3, is_cryogenic, is_hypergolic) VALUES (?, 'Test Monopropellant', 'LiquidFuel', 800, 0, 0)")
         .bind(PROPELLANT_ID).execute(pool).await?;
 
@@ -245,13 +284,52 @@ async fn populate(
         .await?;
     }
 
+    let (offset, relative_velocity) = scenario.map(|name|
+        nodal_orbit_state(name, radius, mu)).unwrap_or((
+            [orbital_radius, 0.0, 0.0],
+            [0.0, (mu / orbital_radius).sqrt() * if eccentric { 1.05 } else { 1.0 }, 0.0]));
     sqlx::query("INSERT INTO vehicle_physical_states (vehicle_id, position_x_m, position_y_m, position_z_m, velocity_x_m_s, velocity_y_m_s, velocity_z_m_s, orientation_q_w, orientation_q_x, orientation_q_y, orientation_q_z, angular_velocity_x_rad_s, angular_velocity_y_rad_s, angular_velocity_z_rad_s, reference_body_id, captured_universe_epoch_s, captured_at_epoch_s) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?)")
-        .bind(VEHICLE_ID).bind(position.0 + orbital_radius).bind(position.1).bind(position.2)
-        .bind(velocity.0).bind(velocity.1 + (mu / orbital_radius).sqrt() * if eccentric { 1.05 } else { 1.0 }).bind(velocity.2)
+        .bind(VEHICLE_ID).bind(position.0 + offset[0]).bind(position.1 + offset[1]).bind(position.2 + offset[2])
+        .bind(velocity.0 + relative_velocity[0]).bind(velocity.1 + relative_velocity[1])
+        .bind(velocity.2 + relative_velocity[2])
         .bind(if eccentric { std::f64::consts::FRAC_1_SQRT_2 } else { 1.0 })
         .bind(if eccentric { -std::f64::consts::FRAC_1_SQRT_2 } else { 0.0 })
         .bind(MEROS_ID).bind(epoch.value()).bind(AT_EPOCH).execute(pool).await?;
     Ok(())
+}
+
+fn nodal_orbit_state(scenario: &str, body_radius: f64, mu: f64) -> ([f64; 3], [f64; 3]) {
+    let (inclination, longitude, eccentricity, anomaly, altitude, periapsis_argument) = match scenario {
+        "--node-inclined" => (28.5_f64, 35.0_f64, 0.15, -45.0_f64, 500_000.0, 0.0),
+        "--node-separated" => (28.5, 35.0, 0.15, -45.0, 500_000.0, 60.0),
+        "--node-polar" => (90.0, 0.0, 0.0, -45.0, 450_000.0, 0.0),
+        "--node-retrograde" => (145.0, 72.0, 0.10, -45.0, 500_000.0, 0.0),
+        "--node-equatorial" => (0.0, 0.0, 0.0, -45.0, 450_000.0, 0.0),
+        "--node-escape" => (60.0, 50.0, 1.50, -15.0, 1_000_000.0, 0.0),
+        _ => unreachable!(),
+    };
+    let inclination = inclination.to_radians();
+    let longitude = longitude.to_radians();
+    let anomaly = anomaly.to_radians();
+    let periapsis_argument: f64 = periapsis_argument;
+    let orbital_angle = anomaly + periapsis_argument.to_radians();
+    let node = [longitude.cos(), longitude.sin(), 0.0];
+    let transverse = [
+        -longitude.sin() * inclination.cos(),
+        longitude.cos() * inclination.cos(),
+        inclination.sin(),
+    ];
+    let radial = std::array::from_fn::<_, 3, _>(|axis|
+        node[axis] * orbital_angle.cos() + transverse[axis] * orbital_angle.sin());
+    let tangent = std::array::from_fn::<_, 3, _>(|axis|
+        -node[axis] * orbital_angle.sin() + transverse[axis] * orbital_angle.cos());
+    let radius = body_radius + altitude;
+    let p = radius * (1.0 + eccentricity * anomaly.cos());
+    let scale = (mu / p).sqrt();
+    let velocity = std::array::from_fn(|axis| scale *
+        (eccentricity * anomaly.sin() * radial[axis] +
+            (1.0 + eccentricity * anomaly.cos()) * tangent[axis]));
+    (radial.map(|axis| axis * radius), velocity)
 }
 
 async fn component(

@@ -37,6 +37,25 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(preview.relative_points_m.len() >= 2);
     assert!(preview.relative_points_m.len() <= 193);
     assert!(preview.has_impact);
+    if preview.has_inclination {
+        assert!(preview.inclination_rad.is_finite());
+        assert!((0.0..=std::f64::consts::PI).contains(&preview.inclination_rad));
+    }
+    if preview.has_ascending_longitude {
+        assert!(preview.has_inclination);
+        assert!(preview.ascending_longitude_rad.is_finite());
+        assert!((0.0..std::f64::consts::TAU).contains(&preview.ascending_longitude_rad));
+    }
+    if preview.has_next_ascending {
+        assert!(preview.has_ascending_longitude);
+        assert!(preview.next_ascending_seconds.is_finite());
+        assert!(preview.next_ascending_seconds >= 0.0);
+    }
+    if preview.has_next_descending {
+        assert!(preview.has_ascending_longitude);
+        assert!(preview.next_descending_seconds.is_finite());
+        assert!(preview.next_descending_seconds >= 0.0);
+    }
     assert!(preview.has_eccentricity);
     assert!(preview.eccentricity.is_finite());
     assert!(preview.eccentricity >= 1.0);
@@ -109,6 +128,47 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     let persisted = reopened.snapshot()?;
     assert_eq!(persisted.position_m, next.position_m);
     assert_eq!(persisted.total_epoch_seconds, next.total_epoch_seconds);
+    Ok(())
+}
+
+#[test]
+fn ffi_exposes_inclination_and_nodal_crossings() -> Result<(), Box<dyn Error>> {
+    let path = std::env::temp_dir().join(format!("rocketcon-ffi-nodes-{}.db", Uuid::new_v4()));
+    prepare_save(&path)?;
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let pool = astronomicon_db::connection::open_pool_path(&path).await?;
+        let epoch = rocketcon_app::universe::resolve_universe_epoch(&pool).await?;
+        let meros = Uuid::parse_str(PLANET_ID)?;
+        let environment = rocketcon_app::environment::load_environment_snapshot(
+            &pool, meros, epoch, Duration::new(1.0)).await?;
+        let radius = environment.planet.equatorial_radius().ok_or("missing radius")?.value() + 200_000.0;
+        let speed = (6.67430e-11 * environment.planet.mass().value() / radius).sqrt();
+        let (_, body_velocity) = rocketcon_app::orbital::soi::resolve_body_state_at_epoch(
+            &pool, meros, environment.system_id, epoch + Duration::new(1.0)).await?;
+        let body_velocity = body_velocity.raw();
+        let inclination = 45.0_f64.to_radians();
+        sqlx::query("UPDATE vehicle_physical_states SET velocity_x_m_s = ?, velocity_y_m_s = ?, velocity_z_m_s = ? WHERE vehicle_id = ?")
+            .bind(body_velocity.0)
+            .bind(body_velocity.1 + speed * inclination.cos())
+            .bind(body_velocity.2 + speed * inclination.sin())
+            .bind(VEHICLE_ID)
+            .execute(&pool).await?;
+        pool.close().await;
+        Ok::<_, Box<dyn Error>>(())
+    })?;
+    let mut engine = create_engine()?;
+    engine.load_save(path.to_str().ok_or("invalid path")?, VEHICLE_ID)?;
+    let preview = engine.orbit_preview()?;
+    assert!(preview.has_inclination);
+    assert!((preview.inclination_rad.to_degrees() - 45.0).abs() < 1e-5);
+    assert!(preview.has_ascending_longitude);
+    assert!(preview.ascending_longitude_rad.abs() < 1e-5);
+    assert!(preview.has_next_descending);
+    assert!(preview.next_descending_seconds > 0.0);
+    assert!(preview.next_descending_position_m.z.abs() < 1e-5);
+    drop(engine);
+    let _ = std::fs::remove_file(path);
     Ok(())
 }
 
