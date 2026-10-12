@@ -161,8 +161,9 @@ fn ffi_exposes_inclination_and_nodal_crossings() -> Result<(), Box<dyn Error>> {
         let meros = Uuid::parse_str(PLANET_ID)?;
         let environment = rocketcon_app::environment::load_environment_snapshot(
             &pool, meros, epoch, Duration::new(1.0)).await?;
-        let radius = environment.planet.equatorial_radius().ok_or("missing radius")?.value() + 200_000.0;
-        let speed = (6.67430e-11 * environment.planet.mass().value() / radius).sqrt();
+        let planet = environment.planet.as_ref().ok_or("expected planetary fixture")?;
+        let radius = planet.equatorial_radius().ok_or("missing radius")?.value() + 200_000.0;
+        let speed = (6.67430e-11 * planet.mass().value() / radius).sqrt();
         let (_, body_velocity) = rocketcon_app::orbital::soi::resolve_body_state_at_epoch(
             &pool, meros, environment.system_id, epoch + Duration::new(1.0)).await?;
         let body_velocity = body_velocity.raw();
@@ -232,8 +233,9 @@ fn prepare_save(path: &Path) -> Result<(), Box<dyn Error>> {
         let environment = rocketcon_app::environment::load_environment_snapshot(
             &pool, Uuid::parse_str(PLANET_ID)?, epoch, Duration::new(1.0),
         ).await?;
-        let radius = environment.planet.equatorial_radius().ok_or("missing radius")?.value();
-        let center = environment.planet_position.raw();
+        let radius = environment.planet.as_ref().ok_or("expected planetary fixture")?
+            .equatorial_radius().ok_or("missing radius")?.value();
+        let center = environment.reference_position().raw();
         let position = center.0 + radius + 200_000.0;
         sqlx::query("INSERT INTO vehicles (id, name, vehicle_kind) VALUES (?, 'FFI Probe', 'Probe')")
             .bind(VEHICLE_ID).execute(&pool).await?;

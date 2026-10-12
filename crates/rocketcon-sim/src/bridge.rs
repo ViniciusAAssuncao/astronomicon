@@ -30,14 +30,11 @@ pub async fn run_bridge_smoke_test(
     )
     .await?;
 
-    let radius = snapshot.planet.equatorial_radius().ok_or_else(|| {
-        RocketError::Generic(format!(
-            "planet '{}' has no equatorial radius",
-            snapshot.planet.id()
-        ))
-    })?;
-
-    let point = snapshot.planet_position + Position::from_components(radius.value(), 0.0, 0.0);
+    let radius = snapshot.planet.as_ref().and_then(|p| p.equatorial_radius())
+        .ok_or_else(|| RocketError::Generic(
+            format!("planet '{}' has no equatorial radius", planet_id)))?;
+    let point = snapshot.reference_position() +
+        Position::from_components(radius.value(), 0.0, 0.0);
 
     let start = std::time::Instant::now();
     let dt = Duration::new(dt_seconds);

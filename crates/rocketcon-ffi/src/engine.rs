@@ -112,6 +112,8 @@ impl Engine {
                     FlightEventKind::EngineIgnition => 4,
                     FlightEventKind::EngineCutoff => 5,
                     FlightEventKind::EngineThrottle => 6,
+                    FlightEventKind::SoiExit => 7,
+                    FlightEventKind::SoiEntry => 8,
                 },
                 total_epoch_seconds: event.total_epoch_seconds,
             })

@@ -195,6 +195,8 @@ pub enum FlightEventKind {
     EngineIgnition,
     EngineCutoff,
     EngineThrottle,
+    SoiExit,
+    SoiEntry,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -206,6 +208,12 @@ pub struct FlightEvent {
 impl FlightEvent {
     pub fn between(previous: &FlightSnapshot, current: &FlightSnapshot) -> Vec<Self> {
         let mut events = Vec::new();
+        if previous.reference_body_id != current.reference_body_id {
+            events.push(Self {
+                kind: FlightEventKind::SoiExit,
+                total_epoch_seconds: current.total_epoch_seconds,
+            });
+        }
         let atmosphere = match (previous.mach.is_some(), current.mach.is_some()) {
             (true, false) => Some(FlightEventKind::AtmosphericExit),
             (false, true) if previous.total_g_load.is_some() => {

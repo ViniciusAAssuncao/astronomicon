@@ -5,6 +5,7 @@ impl From<SessionPreview> for OrbitPreview {
     fn from(source: SessionPreview) -> Self {
         Self {
             reference_body_id: source.reference_body_id.to_string(),
+            stellar_reference: source.stellar_reference,
             source_epoch_seconds: source.source_epoch_seconds,
             horizon_seconds: source.horizon_seconds,
             rendered_horizon_seconds: source.rendered_horizon_seconds,

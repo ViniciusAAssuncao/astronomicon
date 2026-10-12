@@ -36,7 +36,7 @@ pub async fn run(
             .await?;
     let snapshot = resolve_vehicle_snapshot(pool, vehicle_id, epoch, at_epoch).await?;
     let components = vehicle::list_components_for_vehicle(pool, &vehicle_id).await?;
-    let position = environment.planet_position.raw();
+    let position = environment.reference_position().raw();
 
     let orientation = resolve_planet_orientation(pool, planet_id, epoch, at_epoch).await?;
     let relative_position = state.position().raw() - position;

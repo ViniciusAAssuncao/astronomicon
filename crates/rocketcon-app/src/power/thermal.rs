@@ -98,18 +98,12 @@ pub async fn resolve_vehicle_thermal_budget(
         &vehicle_id,
     ).await?;
 
-    let aero_diag = match physical_state {
-        Some(ref state) => resolve_vehicle_aerodynamics(
-            pool,
-            state,
-            environment.planet.id(),
-            environment.planet_position.raw(),
-            &components,
-            &stages,
-            universe_epoch,
-            at_epoch,
-        ).await?,
-        None => None,
+    let aero_diag = match (physical_state, environment.planet.as_ref(),
+        environment.planet_position) {
+        (Some(ref state), Some(planet), Some(position)) => resolve_vehicle_aerodynamics(
+            pool, state, planet.id(), position.raw(), &components, &stages,
+            universe_epoch, at_epoch).await?,
+        _ => None,
     };
 
     let (air_density, relative_airspeed, mach_number) = match aero_diag {

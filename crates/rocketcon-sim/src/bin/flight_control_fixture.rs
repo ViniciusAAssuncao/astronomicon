@@ -30,12 +30,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let fine_throttle = mode.as_deref() == Some("--fine-throttle") || eccentric;
     let throttleable = fine_throttle || mode.as_deref() == Some("--throttleable");
     let scenario = mode.as_deref().filter(|value|
-        value.starts_with("--node-") || value.starts_with("--c8-") || value.starts_with("--c9-"));
+        value.starts_with("--node-") || value.starts_with("--c8-") ||
+        value.starts_with("--c9-") || value.starts_with("--c10-"));
     if let Some(name) = scenario {
         if !matches!(name, "--node-inclined" | "--node-polar" | "--node-retrograde" |
             "--node-equatorial" | "--node-escape" | "--node-separated" |
             "--c8-meros-equatorial" | "--c8-meros-inclined" |
-            "--c9-soi-outbound" | "--c9-soi-inbound" | "--c9-soi-inbound-stable" | "--c9-soi-inbound-nearcircular" | "--c9-soi-outside") {
+            "--c9-soi-outbound" | "--c9-soi-inbound" | "--c9-soi-inbound-stable" | "--c9-soi-inbound-nearcircular" | "--c9-soi-outside" |
+            "--c10-soi-outbound" | "--c10-soi-inbound" | "--c10-soi-tangent") {
             return Err(format!("unknown orbital scenario: {name}").into());
         }
     }
@@ -74,9 +76,10 @@ async fn create_fixture(
         if let Some(name) = scenario {
             let c8 = name.starts_with("--c8-");
             let c9 = name.starts_with("--c9-");
+            let c10 = name.starts_with("--c10-");
             let equatorial = name == "--node-equatorial";
             let escape = name == "--node-escape";
-            if !(c8 || c9) && (preview.nodes.inclination_rad.is_none() ||
+            if !(c8 || c9 || c10) && (preview.nodes.inclination_rad.is_none() ||
                 preview.nodes.ascending_longitude_rad.is_some() == equatorial ||
                 preview.nodes.next_ascending.is_some() == equatorial ||
                 (!equatorial && !escape && preview.nodes.next_descending.is_none()) ||
@@ -115,11 +118,11 @@ async fn create_fixture(
                 println!("equatorial_next_ascending_s: {:?}", eq.nodes.next_ascending.as_ref().map(|n| n.time_to_seconds));
                 println!("equatorial_next_descending_s: {:?}", eq.nodes.next_descending.as_ref().map(|n| n.time_to_seconds));
             }
-            if c9 {
+            if c9 || name == "--c10-soi-outbound" {
                 let soi = preview.soi.as_ref().ok_or("SOI missing")?;
                 let expected_outside = name == "--c9-soi-outside";
                 let expected_exit = name == "--c9-soi-outbound" ||
-                    name == "--c9-soi-inbound";
+                    name == "--c9-soi-inbound" || name == "--c10-soi-outbound";
                 if soi.outside != expected_outside || soi.exit.is_some() != expected_exit {
                     return Err(format!("C9 SOI scenario invalid: {name} {soi:?}").into());
                 }
@@ -133,6 +136,9 @@ async fn create_fixture(
                     preview.horizon_seconds, preview.rendered_horizon_seconds,
                     preview.relative_points_m.len(), preview.end_reason);
                 println!("next_periapsis_s: {:?}", preview.next_periapsis.as_ref().map(|p| p.time_to_seconds));
+            }
+            if matches!(name, "--c10-soi-inbound" | "--c10-soi-tangent") && preview.soi.is_some() {
+                return Err("stellar-reference fixture has a planetary SOI".into());
             }
             println!("scenario: {name}");
             println!("inclination_deg: {:.4}", preview.nodes.inclination_rad.unwrap().to_degrees());
@@ -165,13 +171,13 @@ async fn populate(
         Duration::new(AT_EPOCH),
     )
     .await?;
-    let radius = environment
-        .planet
+    let planet = environment.planet.as_ref().ok_or("expected a planet in this scenario")?;
+    let radius = planet
         .equatorial_radius()
         .ok_or("planet has no radius")?
         .value();
     let orbital_radius = radius + 200_000.0;
-    let mu = 6.67430e-11 * environment.planet.mass().value();
+    let mu = 6.67430e-11 * planet.mass().value();
     let (_, planet_velocity) = rocketcon_app::orbital::soi::resolve_body_state_at_epoch(
         pool,
         planet_id,
@@ -179,7 +185,7 @@ async fn populate(
         epoch + Duration::new(AT_EPOCH),
     )
     .await?;
-    let position = environment.planet_position.raw();
+    let position = environment.reference_position().raw();
     let velocity = planet_velocity.raw();
 
     sqlx::query("INSERT INTO vehicles (id, name, vehicle_kind) VALUES (?, ?, 'Rocket')")
@@ -330,11 +336,11 @@ async fn populate(
     }
 
     let (offset, relative_velocity) = scenario.map(|name| {
-        if name.starts_with("--c9-") {
-            soi_scenarios::soi_orbit_state(name, &environment.planet, &environment.star)
+        if name.starts_with("--c9-") || name.starts_with("--c10-") {
+            soi_scenarios::soi_orbit_state(name, planet, &environment.star)
         } else if name.starts_with("--c8-") {
             equatorial_orbit_state(name, radius, mu,
-                planet_equatorial_reference(&environment.planet)
+                planet_equatorial_reference(planet)
                     .expect("Meridian test planet must have a physical equator"))
         } else {
             nodal_orbit_state(name, radius, mu)
@@ -348,7 +354,10 @@ async fn populate(
         .bind(velocity.2 + relative_velocity[2])
         .bind(if eccentric { std::f64::consts::FRAC_1_SQRT_2 } else { 1.0 })
         .bind(if eccentric { -std::f64::consts::FRAC_1_SQRT_2 } else { 0.0 })
-        .bind(MEROS_ID).bind(epoch.value()).bind(AT_EPOCH).execute(pool).await?;
+        .bind(if matches!(scenario, Some("--c10-soi-inbound" | "--c10-soi-tangent")) {
+            environment.star.id().to_string()
+        } else { MEROS_ID.to_string() })
+        .bind(epoch.value()).bind(AT_EPOCH).execute(pool).await?;
     Ok(())
 }
 

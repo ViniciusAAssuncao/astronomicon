@@ -23,6 +23,7 @@ pub struct EquatorialOrbitPreview {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OrbitPreview {
     pub reference_body_id: Uuid,
+    pub stellar_reference: bool,
     pub source_epoch_seconds: f64,
     pub horizon_seconds: f64,
     pub rendered_horizon_seconds: f64,
@@ -81,7 +82,8 @@ impl RocketconSession {
             .map(|period| period.value())
             .filter(|value| value.is_finite());
         let mut soi =
-            soi_radius(&environment.planet, &environment.star).map(|radius_m| OrbitSoiPreview {
+            environment.planet.as_ref().and_then(|planet|
+                soi_radius(planet, &environment.star)).map(|radius_m| OrbitSoiPreview {
                 radius_m,
                 outside: position.raw().magnitude() >= radius_m,
                 exit: None,
@@ -104,7 +106,8 @@ impl RocketconSession {
         let visible_horizon = path.elapsed_seconds;
         let relative_points_m = path.points;
         let equatorial =
-            planet_equatorial_reference(&environment.planet).map(|frame| EquatorialOrbitPreview {
+            environment.planet.as_ref().and_then(planet_equatorial_reference)
+                .map(|frame| EquatorialOrbitPreview {
                 nodes: orbit_nodes_in_frame(
                     &elements,
                     position,
@@ -117,6 +120,7 @@ impl RocketconSession {
             });
         Ok(OrbitPreview {
             reference_body_id,
+            stellar_reference: environment.planet.is_none(),
             source_epoch_seconds: epoch.value(),
             horizon_seconds,
             rendered_horizon_seconds: visible_horizon,

@@ -124,9 +124,9 @@ impl RocketconSession {
         let vehicle_components = components.iter()
             .map(|(entry, record)| VehicleVisualComponent::from_assembly(entry, record))
             .collect();
-        let body_position = environment.planet_position.raw();
+        let body_position = environment.reference_position().raw();
         snapshot.reference_body_position_m = Some([body_position.0, body_position.1, body_position.2]);
-        snapshot.reference_body_radius_m = environment.planet.equatorial_radius().map(|radius| radius.value());
+        snapshot.reference_body_radius_m = environment.reference_radius().map(|radius| radius.value());
         if let Some(radius) = snapshot.reference_body_radius_m {
             snapshot.altitude_m = snapshot::geometric_altitude(
                 snapshot.position_m,
@@ -208,8 +208,17 @@ impl RocketconSession {
                 .map_or(*capacity, |(_, mass)| *mass);
             (name.clone(), stored, *capacity)
         }).collect();
-        self.events
-            .extend(FlightEvent::between(&self.snapshot, &next));
+        let mut events = FlightEvent::between(&self.snapshot, &next);
+        if self.snapshot.reference_body_id != next.reference_body_id &&
+            astronomicon_db::repositories::star_repository::get_by_id(
+                &self.pool, &next.reference_body_id).await?.is_none() {
+            for event in &mut events {
+                if event.kind == FlightEventKind::SoiExit {
+                    event.kind = FlightEventKind::SoiEntry;
+                }
+            }
+        }
+        self.events.extend(events);
         self.snapshot = next.clone();
         if let (Some((id, _)), Some(previous_load)) = (self.throttle_ramp, ramp_load_before_tick) {
             if previous_load > 0.0 && self.snapshot.main_engine_loads.iter()
