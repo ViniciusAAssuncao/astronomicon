@@ -134,17 +134,12 @@ async fn advance_vehicle_thermal_network_inner(
     )
     .await?;
 
-    let planet_radius = environment
-        .planet
-        .equatorial_radius()
-        .unwrap_or_else(|| Length::new(6371e3));
-
-    let is_eclipsed = is_in_cylindrical_shadow(
-        vehicle_position,
-        environment.star_position,
-        environment.planet_position,
-        planet_radius,
-    );
+    let is_eclipsed = match (&environment.planet, environment.planet_position) {
+        (Some(planet), Some(position)) => is_in_cylindrical_shadow(
+            vehicle_position, environment.star_position, position,
+            planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3))),
+        _ => false,
+    };
 
     let sun_dir_world = (environment.star_position.raw() - vehicle_position.raw()).normalized();
     let sun_dir_body = vehicle_orientation.inverse().rotate_vector(sun_dir_world);

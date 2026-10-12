@@ -6,10 +6,10 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct EnvironmentSnapshot {
     pub star: Star,
-    pub planet: Planet,
+    pub planet: Option<Planet>,
     pub atmosphere: Option<Atmosphere>,
     pub star_position: Position,
-    pub planet_position: Position,
+    pub planet_position: Option<Position>,
     pub system_id: Uuid,
     pub captured_universe_epoch: Duration,
     pub captured_at_epoch: Duration,
@@ -18,10 +18,10 @@ pub struct EnvironmentSnapshot {
 impl EnvironmentSnapshot {
     pub fn new(
         star: Star,
-        planet: Planet,
+        planet: Option<Planet>,
         atmosphere: Option<Atmosphere>,
         star_position: Position,
-        planet_position: Position,
+        planet_position: Option<Position>,
         system_id: Uuid,
         captured_universe_epoch: Duration,
         captured_at_epoch: Duration,
@@ -41,13 +41,12 @@ impl EnvironmentSnapshot {
         }
 
         if let Some(ref atm) = atmosphere {
-            if atm.planet_id() != planet.id() {
+            if planet.as_ref().is_none_or(|planet| atm.planet_id() != planet.id()) {
                 return Err(RocketDomainError::InvalidInvariant {
                     field: "atmosphere".to_string(),
                     reason: format!(
-                        "atmosphere planet_id '{}' does not match planet id '{}'",
-                        atm.planet_id(),
-                        planet.id()
+                        "atmosphere planet_id '{}' does not match reference planet",
+                        atm.planet_id()
                     ),
                 });
             }
@@ -63,6 +62,19 @@ impl EnvironmentSnapshot {
             captured_universe_epoch,
             captured_at_epoch,
         })
+    }
+
+    pub fn reference_id(&self) -> Uuid {
+        self.planet.as_ref().map_or(self.star.id(), |planet| planet.id())
+    }
+
+    pub fn reference_position(&self) -> Position {
+        self.planet_position.unwrap_or(self.star_position)
+    }
+
+    pub fn reference_radius(&self) -> Option<Length> {
+        self.planet.as_ref().and_then(|planet| planet.equatorial_radius())
+            .or_else(|| self.planet.is_none().then(|| self.star.radius()).flatten())
     }
 
     pub fn captured_total_epoch(&self) -> Duration {
@@ -81,8 +93,9 @@ impl EnvironmentSnapshot {
             return true;
         }
 
-        let pos_diff = (current_planet_position - self.planet_position).magnitude();
-        if pos_diff.value() > max_position_delta.value() {
+        let pos_diff = self.planet_position.map_or(0.0, |position|
+            (current_planet_position - position).magnitude().value());
+        if pos_diff > max_position_delta.value() {
             return true;
         }
 

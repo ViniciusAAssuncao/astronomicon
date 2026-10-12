@@ -314,8 +314,8 @@ async fn create_fixture(
         Duration::new(INITIAL_AT_EPOCH),
     )
     .await?;
-    let radius = environment
-        .planet
+    let planet = environment.planet.as_ref().ok_or("expected a planet in this scenario")?;
+    let radius = planet
         .equatorial_radius()
         .ok_or("planet has no radius")?
         .value();
@@ -323,11 +323,11 @@ async fn create_fixture(
         Scenario::Coast => 200_000.0,
         _ => 10_000.0,
     };
-    let x = environment.planet_position.raw().0 + radius + altitude;
-    let y = environment.planet_position.raw().1;
-    let z = environment.planet_position.raw().2;
+    let x = environment.reference_position().raw().0 + radius + altitude;
+    let y = environment.reference_position().raw().1;
+    let z = environment.reference_position().raw().2;
     let orbital_radius = radius + altitude;
-    let mu = 6.67430e-11 * environment.planet.mass().value();
+    let mu = 6.67430e-11 * planet.mass().value();
     let relative_speed = match scenario {
         Scenario::Coast => (mu / orbital_radius).sqrt(),
         _ => 100.0,

@@ -1,7 +1,7 @@
 use astronomicon_core::units::{Angle, GravitationalParameter, Position, VelocityVector};
-use rocketcon_core::math::orbital::trajectory_prediction::time_between_true_anomalies;
-use rocketcon_core::math::orbital::state_properties::laplace_runge_lenz_vector;
 use rocketcon_core::math::orbital::OsculatingElements;
+use rocketcon_core::math::orbital::state_properties::laplace_runge_lenz_vector;
+use rocketcon_core::math::orbital::trajectory_prediction::time_between_true_anomalies;
 use std::f64::consts::PI;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -18,7 +18,7 @@ pub fn next_apsis(
     anomaly: Angle,
     horizon_seconds: f64,
 ) -> Option<OrbitApsis> {
-    if !(1e-5..1.0).contains(&elements.eccentricity) {
+    if elements.eccentricity < 1e-5 || !elements.eccentricity.is_finite() {
         return None;
     }
     let dt = time_between_true_anomalies(elements, mu, elements.true_anomaly, anomaly)
@@ -46,7 +46,8 @@ pub fn next_apsis(
     }
     let radius = (h * h / mu.value()) / denominator;
     let point = (periapsis_direction * anomaly.value().cos()
-        + transverse_direction * anomaly.value().sin()) * radius;
+        + transverse_direction * anomaly.value().sin())
+        * radius;
     if ![point.0, point.1, point.2]
         .iter()
         .all(|value| value.is_finite())

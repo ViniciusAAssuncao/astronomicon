@@ -37,9 +37,58 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     assert!(preview.relative_points_m.len() >= 2);
     assert!(preview.relative_points_m.len() <= 193);
     assert!(preview.has_impact);
+    if preview.has_inclination {
+        assert!(preview.inclination_rad.is_finite());
+        assert!((0.0..=std::f64::consts::PI).contains(&preview.inclination_rad));
+    }
+    if preview.has_ascending_longitude {
+        assert!(preview.has_inclination);
+        assert!(preview.ascending_longitude_rad.is_finite());
+        assert!((0.0..std::f64::consts::TAU).contains(&preview.ascending_longitude_rad));
+    }
+    if preview.has_next_ascending {
+        assert!(preview.has_ascending_longitude);
+        assert!(preview.next_ascending_seconds.is_finite());
+        assert!(preview.next_ascending_seconds >= 0.0);
+    }
+    if preview.has_next_descending {
+        assert!(preview.has_ascending_longitude);
+        assert!(preview.next_descending_seconds.is_finite());
+        assert!(preview.next_descending_seconds >= 0.0);
+    }
     assert!(preview.has_eccentricity);
     assert!(preview.eccentricity.is_finite());
     assert!(preview.eccentricity >= 1.0);
+    if preview.has_orbit_view_basis {
+        let horizontal = &preview.orbit_horizontal;
+        let vertical = &preview.orbit_vertical;
+        let h_norm = horizontal.x.hypot(horizontal.y).hypot(horizontal.z);
+        let v_norm = vertical.x.hypot(vertical.y).hypot(vertical.z);
+        let dot = horizontal.x * vertical.x +
+            horizontal.y * vertical.y + horizontal.z * vertical.z;
+        assert!((h_norm - 1.0).abs() < 1e-10);
+        assert!((v_norm - 1.0).abs() < 1e-10);
+        assert!(dot.abs() < 1e-10);
+    }
+    assert!(preview.has_soi);
+    assert!(preview.soi_radius_m > 100_000_000.0);
+    assert!(preview.soi_radius_m < 200_000_000.0);
+    assert!(!preview.soi_outside);
+    assert!(!preview.has_soi_exit);
+    assert!(preview.has_equatorial_reference);
+    let normal = &preview.equatorial_normal;
+    let horizontal = &preview.equatorial_horizontal;
+    let vertical = &preview.equatorial_vertical;
+    let length = |v: &rocketcon_ffi::ffi::FfiVec3| v.x.hypot(v.y).hypot(v.z);
+    let dot = |a: &rocketcon_ffi::ffi::FfiVec3, b: &rocketcon_ffi::ffi::FfiVec3|
+        a.x * b.x + a.y * b.y + a.z * b.z;
+    assert!((length(normal) - 1.0).abs() < 1e-10);
+    assert!((length(horizontal) - 1.0).abs() < 1e-10);
+    assert!((length(vertical) - 1.0).abs() < 1e-10);
+    assert!(dot(normal, horizontal).abs() < 1e-10);
+    assert!(dot(normal, vertical).abs() < 1e-10);
+    assert!(preview.equatorial_has_inclination);
+    assert!((0.0..=std::f64::consts::PI).contains(&preview.equatorial_inclination_rad));
     assert!(preview.has_periapsis);
     assert!(preview.periapsis_altitude_m.is_finite());
     assert!(!preview.has_apoapsis);
@@ -101,6 +150,73 @@ fn ffi_loads_steps_and_exposes_snapshot() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[test]
+fn ffi_exposes_inclination_and_nodal_crossings() -> Result<(), Box<dyn Error>> {
+    let path = std::env::temp_dir().join(format!("rocketcon-ffi-nodes-{}.db", Uuid::new_v4()));
+    prepare_save(&path)?;
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let pool = astronomicon_db::connection::open_pool_path(&path).await?;
+        let epoch = rocketcon_app::universe::resolve_universe_epoch(&pool).await?;
+        let meros = Uuid::parse_str(PLANET_ID)?;
+        let environment = rocketcon_app::environment::load_environment_snapshot(
+            &pool, meros, epoch, Duration::new(1.0)).await?;
+        let planet = environment.planet.as_ref().ok_or("expected planetary fixture")?;
+        let radius = planet.equatorial_radius().ok_or("missing radius")?.value() + 200_000.0;
+        let speed = (6.67430e-11 * planet.mass().value() / radius).sqrt();
+        let (_, body_velocity) = rocketcon_app::orbital::soi::resolve_body_state_at_epoch(
+            &pool, meros, environment.system_id, epoch + Duration::new(1.0)).await?;
+        let body_velocity = body_velocity.raw();
+        let inclination = 45.0_f64.to_radians();
+        sqlx::query("UPDATE vehicle_physical_states SET velocity_x_m_s = ?, velocity_y_m_s = ?, velocity_z_m_s = ? WHERE vehicle_id = ?")
+            .bind(body_velocity.0)
+            .bind(body_velocity.1 + speed * inclination.cos())
+            .bind(body_velocity.2 + speed * inclination.sin())
+            .bind(VEHICLE_ID)
+            .execute(&pool).await?;
+        pool.close().await;
+        Ok::<_, Box<dyn Error>>(())
+    })?;
+    let mut engine = create_engine()?;
+    engine.load_save(path.to_str().ok_or("invalid path")?, VEHICLE_ID)?;
+    let preview = engine.orbit_preview()?;
+    assert!(preview.has_inclination);
+    assert!((preview.inclination_rad.to_degrees() - 45.0).abs() < 1e-5);
+    assert!(preview.has_ascending_longitude);
+    assert!(preview.ascending_longitude_rad.abs() < 1e-5);
+    assert!(preview.has_next_descending);
+    assert!(preview.next_descending_seconds > 0.0);
+    assert!(preview.next_descending_position_m.z.abs() < 1e-5);
+    drop(engine);
+    let _ = std::fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
+fn ffi_does_not_invent_equator_when_planet_data_is_missing() -> Result<(), Box<dyn Error>> {
+    let path = std::env::temp_dir().join(format!("rocketcon-ffi-no-equator-{}.db", Uuid::new_v4()));
+    prepare_save(&path)?;
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let pool = astronomicon_db::connection::open_pool_path(&path).await?;
+        let changed = sqlx::query("UPDATE planets SET axial_tilt_rad = NULL WHERE name = 'Meros'")
+            .execute(&pool).await?;
+        assert_eq!(changed.rows_affected(), 1);
+        pool.close().await;
+        Ok::<_, Box<dyn Error>>(())
+    })?;
+    let mut engine = create_engine()?;
+    engine.load_save(path.to_str().ok_or("invalid path")?, VEHICLE_ID)?;
+    let preview = engine.orbit_preview()?;
+    assert!(!preview.has_equatorial_reference);
+    assert!(!preview.equatorial_has_inclination);
+    assert!(!preview.equatorial_has_next_ascending);
+    assert!(preview.has_inclination);
+    drop(engine);
+    let _ = std::fs::remove_file(path);
+    Ok(())
+}
+
 fn prepare_save(path: &Path) -> Result<(), Box<dyn Error>> {
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(async {
@@ -117,8 +233,9 @@ fn prepare_save(path: &Path) -> Result<(), Box<dyn Error>> {
         let environment = rocketcon_app::environment::load_environment_snapshot(
             &pool, Uuid::parse_str(PLANET_ID)?, epoch, Duration::new(1.0),
         ).await?;
-        let radius = environment.planet.equatorial_radius().ok_or("missing radius")?.value();
-        let center = environment.planet_position.raw();
+        let radius = environment.planet.as_ref().ok_or("expected planetary fixture")?
+            .equatorial_radius().ok_or("missing radius")?.value();
+        let center = environment.reference_position().raw();
         let position = center.0 + radius + 200_000.0;
         sqlx::query("INSERT INTO vehicles (id, name, vehicle_kind) VALUES (?, 'FFI Probe', 'Probe')")
             .bind(VEHICLE_ID).execute(&pool).await?;

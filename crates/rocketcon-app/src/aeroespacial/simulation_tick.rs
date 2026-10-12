@@ -16,14 +16,10 @@ use crate::thermal::heat_shield_response::resolve_heat_shield_response;
 use crate::thermal::network_assembly::assemble_vehicle_thermal_network;
 use crate::thermal::network_tick::advance_vehicle_thermal_network_in_existing_transaction;
 use astronomicon_app::climate::temperature::ClimateBodyInputs;
-use astronomicon_app::ephemeris::resolve_planet_orientation;
-use astronomicon_app::shape::effective_polar_radius_for_planet;
-use astronomicon_core::math::rotation::angular_velocity_from_rotation_period;
 use astronomicon_core::units::constants::STANDARD_GRAVITY;
-use astronomicon_core::units::{AngularVelocityVector, Duration, Length, Luminosity, Vector3};
+use astronomicon_core::units::{Duration, Luminosity, Vector3};
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::VehicleControlInput;
-use rocketcon_core::math::collision::resolve_surface_contact;
 use rocketcon_db::repositories::operational_state_repository;
 use rocketcon_db::repositories::vehicle as vehicle_repository;
 use rocketcon_db::repositories::vehicle_physical_state as vehicle_physical_state_repository;
@@ -34,8 +30,12 @@ mod activation;
 mod profile;
 mod report;
 mod transaction;
+mod reference_contact;
+mod soi_transition;
 
 use activation::is_propulsion_or_control_active;
+use reference_contact::contact_for_reference;
+use soi_transition::apply_confirmed_soi_transition;
 pub use profile::{TickProfile, TickStageTiming};
 pub use report::VehicleTickReport;
 pub use transaction::{
@@ -143,49 +143,24 @@ pub(super) async fn advance_vehicle_simulation_inner(
         is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input) ||
         propellant_tick.budget.effective_loads.values().any(|load| *load > 1e-4);
 
-    let aero_diag_current = resolve_vehicle_aerodynamics_in_existing_transaction(
-        pool,
-        &current_physical_state,
-        reference_body_id,
-        environment.planet_position.raw(),
-        &components,
-        vehicle_snapshot.active_stages(),
-        universe_epoch,
-        current_at_epoch,
-        climate_body.as_ref(),
-    )
-    .await?;
+    let aero_diag_current = if environment.planet.is_some() {
+        resolve_vehicle_aerodynamics_in_existing_transaction(
+            pool, &current_physical_state, reference_body_id,
+            environment.reference_position().raw(), &components,
+            vehicle_snapshot.active_stages(), universe_epoch, current_at_epoch,
+            climate_body.as_ref()).await?
+    } else {
+        None
+    };
 
     let has_drag = aero_diag_current
         .as_ref()
         .map_or(false, |a| a.drag_force.magnitude().value() > 1e-4);
 
-    let planet = &environment.planet;
-    let eq_radius = planet
-        .equatorial_radius()
-        .unwrap_or_else(|| Length::new(6371e3));
-    let pol_radius = effective_polar_radius_for_planet(planet);
-
-    let planet_orientation_current =
-        resolve_planet_orientation(pool, planet.id(), universe_epoch, current_at_epoch).await?;
-
-    let rot_period = planet
-        .rotation_period()
-        .unwrap_or_else(|| Duration::new(86400.0));
-    let omega_mag = angular_velocity_from_rotation_period(rot_period);
-    let spin_axis_current = planet_orientation_current.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
-    let planet_omega_current =
-        AngularVelocityVector::from_raw(spin_axis_current * omega_mag.value());
-
-    let surface_contact_current = resolve_surface_contact(
-        eq_radius,
-        pol_radius,
-        environment.planet_position,
-        planet_orientation_current,
-        planet_omega_current,
-        current_physical_state.position(),
-        current_physical_state.velocity(),
-    );
+    let surface_contact_current = contact_for_reference(
+        pool, &environment, universe_epoch, current_at_epoch,
+        environment.reference_position(),
+        current_physical_state.position(), current_physical_state.velocity()).await?;
 
     let has_contact = surface_contact_current.has_contact();
     mark(&mut profile, "initial_aero_and_contact");
@@ -194,7 +169,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
     let mut new_physical_state = if uses_force_integration {
         let initial_aerodynamics = InitialAerodynamics::new(
             current_physical_state,
-            environment.planet_position.raw(),
+            environment.reference_position().raw(),
             &components,
             vehicle_snapshot.active_stages(),
             universe_epoch,
@@ -219,47 +194,33 @@ pub(super) async fn advance_vehicle_simulation_inner(
     propellant_tick.persist(pool, universe_epoch, new_at_epoch).await?;
     mark(&mut profile, "dynamics_or_coast");
 
-    let planet_orientation_new =
-        resolve_planet_orientation(pool, planet.id(), universe_epoch, new_at_epoch).await?;
-
-    let spin_axis_new = planet_orientation_new.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
-    let planet_angular_velocity_new =
-        AngularVelocityVector::from_raw(spin_axis_new * omega_mag.value());
-
     let total_epoch_new = universe_epoch + new_at_epoch;
     let positions_new = astronomicon_app::ephemeris::resolve_system_positions(
-        pool,
-        environment.system_id,
-        total_epoch_new,
-    )
-    .await?;
-    let planet_position_new = positions_new
-        .get(&planet.id())
-        .copied()
-        .unwrap_or(environment.planet_position);
+        pool, environment.system_id, total_epoch_new).await?;
+    let (transitioned, _) = apply_confirmed_soi_transition(
+        pool, new_physical_state, &environment, &positions_new).await?;
+    new_physical_state = transitioned;
 
-    let surface_contact = resolve_surface_contact(
-        eq_radius,
-        pol_radius,
-        planet_position_new,
-        planet_orientation_new,
-        planet_angular_velocity_new,
-        new_physical_state.position(),
-        new_physical_state.velocity(),
-    );
-
-    let aero_diag = resolve_vehicle_aerodynamics_in_existing_transaction(
-        pool,
-        &new_physical_state,
-        new_physical_state.reference_body_id(),
-        planet_position_new.raw(),
-        &components,
-        vehicle_snapshot.active_stages(),
-        universe_epoch,
-        new_at_epoch,
-        climate_body.as_ref(),
-    )
-    .await?;
+    let environment = if new_physical_state.reference_body_id() != reference_body_id {
+        load_environment_snapshot(pool, new_physical_state.reference_body_id(),
+            universe_epoch, new_at_epoch).await?
+    } else {
+        environment
+    };
+    let body_position_new = positions_new.get(&environment.reference_id())
+        .copied().ok_or_else(|| RocketError::Generic(
+            "reference body position unavailable after propagation".into()))?;
+    let surface_contact = contact_for_reference(
+        pool, &environment, universe_epoch, new_at_epoch, body_position_new,
+        new_physical_state.position(), new_physical_state.velocity()).await?;
+    let aero_diag = if environment.planet.is_some() {
+        resolve_vehicle_aerodynamics_in_existing_transaction(
+            pool, &new_physical_state, new_physical_state.reference_body_id(),
+            body_position_new.raw(), &components, vehicle_snapshot.active_stages(),
+            universe_epoch, new_at_epoch, climate_body.as_ref()).await?
+    } else {
+        None
+    };
 
     let raw_stag_flux = aero_diag
         .as_ref()
@@ -391,7 +352,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
     mark(&mut profile, "gravity_maxq_and_report");
 
     let reference_body_velocity = crate::orbital::soi::resolve_body_velocity_at_epoch(
-        pool, planet.id(), environment.system_id, total_epoch_new,
+        pool, environment.reference_id(), environment.system_id, total_epoch_new,
     ).await?;
     let reference_body_velocity = reference_body_velocity.raw();
 
@@ -405,9 +366,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
         axial_g_load,
         lateral_g_load,
         total_g_load,
-        [planet_position_new.raw().0, planet_position_new.raw().1, planet_position_new.raw().2],
+        [body_position_new.raw().0, body_position_new.raw().1, body_position_new.raw().2],
         [reference_body_velocity.0, reference_body_velocity.1, reference_body_velocity.2],
-        eq_radius.value(),
+        environment.reference_radius().map_or(0.0, |radius| radius.value()),
         propellant_tick.main_engine_loads(),
         propellant_tick.tank_stored_kg(),
     ))

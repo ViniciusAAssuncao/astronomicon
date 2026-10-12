@@ -269,7 +269,7 @@ async fn advance_vehicle_physical_state_inner(
         Some(initial)
             if initial.matches(
                 &physical_state,
-                environment.planet_position.raw(),
+                environment.reference_position().raw(),
                 &components,
                 snapshot.active_stages(),
                 universe_epoch,
@@ -282,7 +282,7 @@ async fn advance_vehicle_physical_state_inner(
                 pool,
                 &physical_state,
                 reference_body_id,
-                environment.planet_position.raw(),
+                environment.reference_position().raw(),
                 &components,
                 snapshot.active_stages(),
                 universe_epoch,
@@ -296,7 +296,7 @@ async fn advance_vehicle_physical_state_inner(
                 pool,
                 &physical_state,
                 reference_body_id,
-                environment.planet_position.raw(),
+                environment.reference_position().raw(),
                 &components,
                 snapshot.active_stages(),
                 universe_epoch,
