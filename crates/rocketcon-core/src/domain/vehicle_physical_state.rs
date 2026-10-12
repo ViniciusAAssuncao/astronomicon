@@ -1,7 +1,8 @@
 use crate::error::{RocketDomainError, RocketDomainResult};
 use astronomicon_core::domain::validation::{validate_finite, validate_positive_finite};
 use astronomicon_core::units::{
-    AngularVelocity, AngularVelocityVector, Duration, Position, Quaternion, Speed, VelocityVector,
+    AngularVelocity, AngularVelocityVector, Duration, Position, Pressure, Quaternion, Speed,
+    VelocityVector,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -16,6 +17,8 @@ pub struct VehiclePhysicalState {
     reference_body_id: Uuid,
     captured_universe_epoch: Duration,
     captured_at_epoch: Duration,
+    max_dynamic_pressure: Option<Pressure>,
+    max_dynamic_pressure_epoch: Option<Duration>,
 }
 
 impl VehiclePhysicalState {
@@ -28,6 +31,32 @@ impl VehiclePhysicalState {
         reference_body_id: Uuid,
         captured_universe_epoch: Duration,
         captured_at_epoch: Duration,
+    ) -> RocketDomainResult<Self> {
+        Self::new_with_max_q(
+            vehicle_id,
+            position,
+            velocity,
+            orientation,
+            angular_velocity,
+            reference_body_id,
+            captured_universe_epoch,
+            captured_at_epoch,
+            None,
+            None,
+        )
+    }
+
+    pub fn new_with_max_q(
+        vehicle_id: Uuid,
+        position: Position,
+        velocity: VelocityVector,
+        orientation: Quaternion,
+        angular_velocity: AngularVelocityVector,
+        reference_body_id: Uuid,
+        captured_universe_epoch: Duration,
+        captured_at_epoch: Duration,
+        max_dynamic_pressure: Option<Pressure>,
+        max_dynamic_pressure_epoch: Option<Duration>,
     ) -> RocketDomainResult<Self> {
         if vehicle_id.is_nil() {
             return Err(RocketDomainError::InvalidInvariant {
@@ -70,6 +99,13 @@ impl VehiclePhysicalState {
         validate_positive_finite(captured_universe_epoch.value(), "captured_universe_epoch")?;
         validate_positive_finite(captured_at_epoch.value(), "captured_at_epoch")?;
 
+        if let Some(q) = max_dynamic_pressure {
+            validate_finite(q.value(), "max_dynamic_pressure")?;
+        }
+        if let Some(ep) = max_dynamic_pressure_epoch {
+            validate_finite(ep.value(), "max_dynamic_pressure_epoch")?;
+        }
+
         Ok(Self {
             vehicle_id,
             position,
@@ -79,6 +115,8 @@ impl VehiclePhysicalState {
             reference_body_id,
             captured_universe_epoch,
             captured_at_epoch,
+            max_dynamic_pressure,
+            max_dynamic_pressure_epoch,
         })
     }
 
@@ -124,5 +162,39 @@ impl VehiclePhysicalState {
 
     pub fn angular_speed(&self) -> AngularVelocity {
         self.angular_velocity.magnitude()
+    }
+
+    pub fn max_dynamic_pressure(&self) -> Option<Pressure> {
+        self.max_dynamic_pressure
+    }
+
+    pub fn max_q(&self) -> Option<Pressure> {
+        self.max_dynamic_pressure
+    }
+
+    pub fn max_dynamic_pressure_epoch(&self) -> Option<Duration> {
+        self.max_dynamic_pressure_epoch
+    }
+
+    pub fn max_q_epoch(&self) -> Option<Duration> {
+        self.max_dynamic_pressure_epoch
+    }
+
+    pub fn with_max_dynamic_pressure(
+        mut self,
+        max_dynamic_pressure: Option<Pressure>,
+        max_dynamic_pressure_epoch: Option<Duration>,
+    ) -> Self {
+        self.max_dynamic_pressure = max_dynamic_pressure;
+        self.max_dynamic_pressure_epoch = max_dynamic_pressure_epoch;
+        self
+    }
+
+    pub fn with_max_q(
+        self,
+        max_q: Option<Pressure>,
+        max_q_epoch: Option<Duration>,
+    ) -> Self {
+        self.with_max_dynamic_pressure(max_q, max_q_epoch)
     }
 }

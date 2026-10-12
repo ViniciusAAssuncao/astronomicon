@@ -1,33 +1,23 @@
+
 use crate::domain::{
-    ComponentDetails,
-    ComponentOperationalState,
-    ComponentRecord,
-    EngineSpecification,
-    ReactionControlThrusterSpecification,
-    ReactionWheelSpecification,
-    ReactionWheelState,
-    VehicleComponentEntry,
-    VehicleControlInput,
+    ComponentDetails, ComponentOperationalState, ComponentRecord, EngineSpecification,
+    ReactionControlThrusterSpecification, ReactionWheelSpecification, ReactionWheelState,
+    VehicleComponentEntry, VehicleControlInput,
 };
+use crate::math::attitude_control::RcsControlAllocationMatrix;
 use crate::math::MassProperties;
 use astronomicon_core::units::{
-    Angle,
-    AngularMomentum,
-    AngularVelocity,
-    Duration,
-    ForceVector,
-    Quaternion,
-    TorqueVector,
-    Vector3,
+    Angle, AngularMomentum, AngularVelocity, Duration, ForceVector, Pressure, Quaternion,
+    TorqueVector, Vector3,
 };
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
 pub fn engine_thrust_direction_local(
     neutral_axis: Vector3,
     gimbal_pitch: Angle,
-    gimbal_yaw: Angle
+    gimbal_yaw: Angle,
 ) -> Vector3 {
     let n = neutral_axis.normalized();
     if n.magnitude() < 1e-12 {
@@ -43,7 +33,7 @@ pub fn engine_thrust_direction_local_clamped(
     neutral_axis: Vector3,
     gimbal_pitch: Angle,
     gimbal_yaw: Angle,
-    max_gimbal_deflection: Option<Angle>
+    max_gimbal_deflection: Option<Angle>,
 ) -> Vector3 {
     let (pitch_rad, yaw_rad) = match max_gimbal_deflection {
         Some(max_def) => {
@@ -58,13 +48,47 @@ pub fn engine_thrust_direction_local_clamped(
     engine_thrust_direction_local(neutral_axis, Angle::new(pitch_rad), Angle::new(yaw_rad))
 }
 
+pub fn engine_thrust_magnitude(
+    spec: &EngineSpecification,
+    load_fraction: f64,
+    local_atmospheric_pressure: Pressure,
+) -> f64 {
+    let load = load_fraction.clamp(0.0, 1.0);
+    if load <= 0.0 {
+        return 0.0;
+    }
+
+    let f_vac = spec.max_thrust().value();
+    if f_vac <= 0.0 || !f_vac.is_finite() {
+        return 0.0;
+    }
+
+    let pa = local_atmospheric_pressure.value().max(0.0);
+    let pe = spec.exit_pressure().value();
+    let ae = spec.effective_nozzle_exit_area_m2();
+
+    let unseparated_thrust = (f_vac - pa * ae).max(0.0);
+
+    let base_thrust = if pe > 0.0 && pa > 2.5 * pe {
+        let r = pa / pe;
+        let x = r - 2.5;
+        let sep_factor = 0.20 + 0.80 * (-0.5 * x).exp();
+        let floor = unseparated_thrust.max(0.20 * f_vac);
+        floor * sep_factor
+    } else {
+        unseparated_thrust
+    };
+
+    (base_thrust * load).max(0.0)
+}
+
 pub fn engine_thrust_force(
     spec: &EngineSpecification,
     load_fraction: f64,
-    thrust_direction_world: Vector3
+    thrust_direction_world: Vector3,
+    local_atmospheric_pressure: Pressure,
 ) -> ForceVector {
-    let load = load_fraction.clamp(0.0, 1.0);
-    let mag = spec.max_thrust().value() * load;
+    let mag = engine_thrust_magnitude(spec, load_fraction, local_atmospheric_pressure);
     let dir = thrust_direction_world.normalized();
     ForceVector::from_raw(dir * mag)
 }
@@ -72,7 +96,7 @@ pub fn engine_thrust_force(
 pub fn rcs_thrust_force(
     spec: &ReactionControlThrusterSpecification,
     load_fraction: f64,
-    thrust_direction_world: Vector3
+    thrust_direction_world: Vector3,
 ) -> ForceVector {
     let load = load_fraction.clamp(0.0, 1.0);
     let mag = spec.max_thrust().value() * load;
@@ -85,7 +109,7 @@ pub fn reaction_wheel_torque_and_momentum_delta(
     commanded_torque_fraction: f64,
     axis: Vector3,
     current_stored_momentum: AngularMomentum,
-    dt: Duration
+    dt: Duration,
 ) -> (TorqueVector, AngularMomentum) {
     let dt_s = dt.value();
     let max_torque_val = spec.max_torque().value();
@@ -123,7 +147,7 @@ pub fn gimbal_actuator_step(
     target_pitch: Angle,
     target_yaw: Angle,
     slew_rate: AngularVelocity,
-    dt: Duration
+    dt: Duration,
 ) -> (Angle, Angle) {
     let dt_s = dt.value();
     let rate = slew_rate.value();
@@ -167,7 +191,7 @@ impl VehiclePropulsionForces {
     }
 }
 
-pub fn aggregate_active_thrust_and_torque(
+pub fn aggregate_active_thrust_and_torque_with_ambient_pressure(
     entries_and_records: &[(VehicleComponentEntry, ComponentRecord)],
     active_stages: &[u32],
     mass_properties: &MassProperties,
@@ -175,11 +199,24 @@ pub fn aggregate_active_thrust_and_torque(
     reaction_wheel_states: &HashMap<Uuid, ReactionWheelState>,
     vehicle_orientation: Quaternion,
     control_input: &VehicleControlInput,
-    dt: Duration
+    dt: Duration,
+    ambient_pressure: Pressure,
 ) -> VehiclePropulsionForces {
     let mut total_world_force = Vector3::zero();
     let mut total_body_torque = Vector3::zero();
     let com = mass_properties.center_of_mass();
+
+    let rcs_allocation =
+        if control_input.has_attitude_demand() || control_input.target_translation_force.is_some() {
+            let matrix = RcsControlAllocationMatrix::from_components(
+                entries_and_records,
+                active_stages,
+                com,
+            );
+            matrix.allocate_throttles(control_input)
+        } else {
+            HashMap::new()
+        };
 
     for (entry, record) in entries_and_records {
         if !active_stages.contains(&entry.stage_index()) {
@@ -200,16 +237,18 @@ pub fn aggregate_active_thrust_and_torque(
                 let pitch = op_state
                     .and_then(|s| s.current_gimbal_pitch())
                     .unwrap_or(Angle::new(0.0));
-                let yaw = op_state.and_then(|s| s.current_gimbal_yaw()).unwrap_or(Angle::new(0.0));
+                let yaw = op_state
+                    .and_then(|s| s.current_gimbal_yaw())
+                    .unwrap_or(Angle::new(0.0));
 
                 let thrust_dir_body = engine_thrust_direction_local_clamped(
                     neutral_axis,
                     pitch,
                     yaw,
-                    engine.max_gimbal_deflection()
+                    engine.max_gimbal_deflection(),
                 );
 
-                let thrust_mag = engine.max_thrust().value() * load_fraction.clamp(0.0, 1.0);
+                let thrust_mag = engine_thrust_magnitude(engine, load_fraction, ambient_pressure);
                 let force_body = thrust_dir_body * thrust_mag;
                 let force_world = vehicle_orientation.rotate_vector(force_body);
 
@@ -219,24 +258,45 @@ pub fn aggregate_active_thrust_and_torque(
                 total_body_torque = total_body_torque + torque_body;
             }
             ComponentDetails::ReactionControlThruster(rcs) => {
-                let op_state = operational_states
+                let load_fraction = if let Some(&allocated) = rcs_allocation.get(&entry.id()) {
+                    allocated
+                } else if let Some(cmd) = control_input
+                    .command_for(&entry.id())
+                    .or_else(|| control_input.command_for(&entry.component_id()))
+                {
+                    if let Some(throttle) = cmd.target_rcs_throttle {
+                        throttle.clamp(0.0, 1.0)
+                    } else {
+                        operational_states
+                            .get(&entry.id())
+                            .or_else(|| operational_states.get(&entry.component_id()))
+                            .map(|s| s.load_fraction())
+                            .unwrap_or(0.0)
+                    }
+                } else if let Some(op) = operational_states
                     .get(&entry.id())
-                    .or_else(|| operational_states.get(&entry.component_id()));
-                let load_fraction = op_state.map(|s| s.load_fraction()).unwrap_or(1.0);
+                    .or_else(|| operational_states.get(&entry.component_id()))
+                {
+                    op.load_fraction().clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
 
-                let thrust_axis = entry
-                    .actuation_axis()
-                    .unwrap_or(Vector3::new(0.0, 0.0, 1.0))
-                    .normalized();
+                if load_fraction > 1e-6 {
+                    let thrust_axis = entry
+                        .actuation_axis()
+                        .unwrap_or(Vector3::new(0.0, 0.0, 1.0))
+                        .normalized();
 
-                let thrust_mag = rcs.max_thrust().value() * load_fraction.clamp(0.0, 1.0);
-                let force_body = thrust_axis * thrust_mag;
-                let force_world = vehicle_orientation.rotate_vector(force_body);
+                    let thrust_mag = rcs.max_thrust().value() * load_fraction;
+                    let force_body = thrust_axis * thrust_mag;
+                    let force_world = vehicle_orientation.rotate_vector(force_body);
 
-                total_world_force = total_world_force + force_world;
+                    total_world_force = total_world_force + force_world;
 
-                let torque_body = r_arm.cross(&force_body);
-                total_body_torque = total_body_torque + torque_body;
+                    let torque_body = r_arm.cross(&force_body);
+                    total_body_torque = total_body_torque + torque_body;
+                }
             }
             ComponentDetails::ReactionWheel(rw) => {
                 let axis = entry
@@ -263,7 +323,7 @@ pub fn aggregate_active_thrust_and_torque(
                     torque_frac,
                     axis,
                     current_momentum,
-                    dt
+                    dt,
                 );
 
                 total_body_torque = total_body_torque + torque_vec.raw();
@@ -274,6 +334,29 @@ pub fn aggregate_active_thrust_and_torque(
 
     VehiclePropulsionForces::new(
         ForceVector::from_raw(total_world_force),
-        TorqueVector::from_raw(total_body_torque)
+        TorqueVector::from_raw(total_body_torque),
+    )
+}
+
+pub fn aggregate_active_thrust_and_torque(
+    entries_and_records: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    mass_properties: &MassProperties,
+    operational_states: &HashMap<Uuid, ComponentOperationalState>,
+    reaction_wheel_states: &HashMap<Uuid, ReactionWheelState>,
+    vehicle_orientation: Quaternion,
+    control_input: &VehicleControlInput,
+    dt: Duration,
+) -> VehiclePropulsionForces {
+    aggregate_active_thrust_and_torque_with_ambient_pressure(
+        entries_and_records,
+        active_stages,
+        mass_properties,
+        operational_states,
+        reaction_wheel_states,
+        vehicle_orientation,
+        control_input,
+        dt,
+        Pressure::new(0.0),
     )
 }

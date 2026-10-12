@@ -1,19 +1,19 @@
 use crate::error::{RocketDbError, RocketDbResult};
 use crate::models::ComponentRow;
 use crate::repositories::component_attributes::{
-    fetch_attribute_map, optional_numeric, optional_uuid, required_bool, required_numeric,
-    required_text, required_uuid,
+    fetch_attribute_map, optional_numeric, optional_text, optional_uuid, required_bool,
+    required_numeric, required_text, required_uuid,
 };
 use astronomicon_core::units::{
-    Angle, AngularMomentum, AngularVelocity, Duration, Energy, Force, Impulse, Luminosity, Mass,
-    Speed, Torque, Volume,
+    Angle, AngularMomentum, AngularVelocity, Duration, Energy, Force, Impulse, Length, Luminosity,
+    Mass, Pressure, Speed, Torque, Volume,
 };
 use rocketcon_core::domain::{
     BatterySpecification, Component, ComponentDetails, ComponentKind, ComponentRecord,
-    EngineSpecification, IgnitionType, NuclearReactorSpecification, NuclearReactorType,
-    PayloadSpecification, PropellantTankSpecification, RadiatorSpecification,
-    ReactionControlThrusterSpecification, ReactionWheelSpecification, RtgSpecification,
-    SolarPanelSpecification,
+    EngineSpecification, HeatShieldSpecification, HullSpecification, IgnitionType,
+    NuclearReactorSpecification, NuclearReactorType, PayloadSpecification,
+    PropellantTankSpecification, RadiatorSpecification, ReactionControlThrusterSpecification,
+    ReactionWheelSpecification, RtgSpecification, SolarPanelSpecification,
 };
 use rocketcon_core::error::RocketDomainError;
 use rocketcon_core::physics_reference::{NuclearFuelType, RadioisotopeType};
@@ -36,6 +36,50 @@ async fn fetch_component_details(
 
     match component.kind() {
         ComponentKind::Cpu => Ok(ComponentDetails::Cpu),
+        ComponentKind::Hull => {
+            let material_id = required_uuid(&attr_map, &id, "material_id")?;
+            let wall_thickness_m = match optional_numeric(&attr_map, &id, "wall_thickness_m")? {
+                Some(v) => v,
+                None => required_numeric(&attr_map, &id, "wall_thickness")?,
+            };
+            let is_insulated = match optional_numeric(&attr_map, &id, "is_insulated")? {
+                Some(v) => v == 1.0,
+                None => match optional_numeric(&attr_map, &id, "has_mli")? {
+                    Some(v) => v == 1.0,
+                    None => match optional_text(&attr_map, &id, "is_insulated")? {
+                        Some(t) => t.eq_ignore_ascii_case("true") || t == "1",
+                        None => match optional_text(&attr_map, &id, "has_mli")? {
+                            Some(t) => t.eq_ignore_ascii_case("true") || t == "1",
+                            None => false,
+                        },
+                    },
+                },
+            };
+
+            let spec = HullSpecification::new(
+                id,
+                material_id,
+                Length::new(wall_thickness_m),
+                is_insulated,
+            )?;
+
+            Ok(ComponentDetails::Hull(spec))
+        }
+        ComponentKind::HeatShield => {
+            let material_id = required_uuid(&attr_map, &id, "material_id")?;
+            let shield_thickness_m = match optional_numeric(&attr_map, &id, "shield_thickness_m")? {
+                Some(v) => v,
+                None => required_numeric(&attr_map, &id, "shield_thickness")?,
+            };
+
+            let spec = HeatShieldSpecification::new(
+                id,
+                material_id,
+                Length::new(shield_thickness_m),
+            )?;
+
+            Ok(ComponentDetails::HeatShield(spec))
+        }
         ComponentKind::Engine => {
             let fuel_propellant_id = required_uuid(&attr_map, &id, "fuel_propellant_id")?;
             let specific_impulse_vacuum_s =
@@ -66,6 +110,10 @@ async fn fetch_component_details(
                 optional_numeric(&attr_map, &id, "min_throttle_fraction")?;
             let oxidizer_to_fuel_mass_ratio =
                 optional_numeric(&attr_map, &id, "oxidizer_to_fuel_mass_ratio")?;
+            let nozzle_exit_area_m2 =
+                optional_numeric(&attr_map, &id, "nozzle_exit_area_m2")?;
+            let chamber_pressure_pa =
+                optional_numeric(&attr_map, &id, "chamber_pressure_pa")?;
 
             let spec = EngineSpecification::builder(
                 id,
@@ -83,6 +131,8 @@ async fn fetch_component_details(
             .with_gimbal_slew_rate(gimbal_slew_rate_rad_s.map(AngularVelocity::new))
             .with_min_throttle_fraction(min_throttle_fraction)
             .with_oxidizer_to_fuel_mass_ratio(oxidizer_to_fuel_mass_ratio)
+            .with_nozzle_exit_area_m2(nozzle_exit_area_m2)
+            .with_chamber_pressure(chamber_pressure_pa.map(Pressure::new))
             .build()?;
 
             Ok(ComponentDetails::Engine(spec))

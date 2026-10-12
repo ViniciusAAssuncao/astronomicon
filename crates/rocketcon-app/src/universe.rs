@@ -5,6 +5,7 @@ use rocketcon_core::domain::{
     ComponentOperationalState,
     EnergyReservoirState,
     ReactionWheelState,
+    TrajectoryPatch,
     VehiclePhysicalState,
     VehicleSnapshot,
 };
@@ -12,6 +13,7 @@ use rocketcon_db::repositories::{
     energy_reservoir as energy_reservoir_repository,
     operational_state as operational_state_repository,
     reaction_wheel_state as reaction_wheel_state_repository,
+    trajectory_patch as trajectory_patch_repository,
     vehicle as vehicle_repository,
     vehicle_physical_state as vehicle_physical_state_repository,
 };
@@ -82,6 +84,38 @@ pub async fn persist_reaction_wheel_states(
         reaction_wheel_state_repository::upsert(pool, state).await?;
     }
     Ok(())
+}
+
+pub async fn persist_trajectory_patch(
+    pool: &SqlitePool,
+    patch: &TrajectoryPatch,
+) -> RocketResult<()> {
+    trajectory_patch_repository::insert_patch(pool, patch).await?;
+    Ok(())
+}
+
+pub async fn persist_trajectory_patches(
+    pool: &SqlitePool,
+    patches: &[TrajectoryPatch],
+) -> RocketResult<()> {
+    trajectory_patch_repository::insert_patches(pool, patches).await?;
+    Ok(())
+}
+
+pub async fn delete_vehicle_trajectory_patches(
+    pool: &SqlitePool,
+    vehicle_id: &Uuid,
+) -> RocketResult<()> {
+    trajectory_patch_repository::delete_patches_for_vehicle(pool, vehicle_id).await?;
+    Ok(())
+}
+
+pub async fn list_vehicle_trajectory_patches(
+    pool: &SqlitePool,
+    vehicle_id: &Uuid,
+) -> RocketResult<Vec<TrajectoryPatch>> {
+    let patches = trajectory_patch_repository::list_for_vehicle(pool, vehicle_id).await?;
+    Ok(patches)
 }
 
 pub async fn persist_vehicle_checkpoint(

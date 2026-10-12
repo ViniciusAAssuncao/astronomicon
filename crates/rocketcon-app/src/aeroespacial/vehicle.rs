@@ -241,6 +241,19 @@ pub async fn resolve_vehicle_snapshot_with_options(
     at_epoch: Duration
 ) -> RocketResult<VehicleSnapshot> {
     let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
+    resolve_vehicle_snapshot_with_components(pool, vehicle_id, &components, active_stages,
+        propellant_load_fraction, universe_epoch, at_epoch).await
+}
+
+pub async fn resolve_vehicle_snapshot_with_components(
+    pool: &SqlitePool,
+    vehicle_id: Uuid,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: Option<&[u32]>,
+    propellant_load_fraction: f64,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> RocketResult<VehicleSnapshot> {
 
     let resolved_stages = match active_stages {
         Some(stages) => {
@@ -264,7 +277,7 @@ pub async fn resolve_vehicle_snapshot_with_options(
     let mut reservoir_states = HashMap::new();
     let mut operational_states = HashMap::new();
 
-    for (entry, _) in &components {
+    for (entry, _) in components {
         if
             let Some(res) = energy_reservoir_repository::get_by_vehicle_component_id(
                 pool,

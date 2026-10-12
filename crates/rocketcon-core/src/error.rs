@@ -4,6 +4,8 @@ pub enum RocketDomainError {
     InvalidInvariant { field: String, reason: String },
     #[error("Numerical convergence failed in '{context}': {reason}")]
     NumericalConvergence { context: String, reason: String },
+    #[error("Structural failure: {reason}")]
+    StructuralFailure { reason: String },
     #[error(transparent)]
     Astronomicon(#[from] astronomicon_core::error::DomainError),
 }

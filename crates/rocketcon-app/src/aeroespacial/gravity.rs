@@ -82,13 +82,13 @@ pub async fn resolve_vehicle_gravitational_acceleration(
 
     let ref_id = physical_state.reference_body_id();
 
-    let (mu, eq_radius, j2_opt, body_pos_fallback, orientation) = if ref_id == environment.planet.id() {
-        let p = &environment.planet;
+    let (mu, eq_radius, j2_opt, body_pos_fallback, orientation) = if environment.planet.as_ref().is_some_and(|planet| ref_id == planet.id()) {
+        let p = environment.planet.as_ref().unwrap();
         (
             gravitational_parameter(p.mass()),
             p.equatorial_radius(),
             p.oblateness_j2(),
-            environment.planet_position,
+            environment.reference_position(),
             planet_orientation(p, total_epoch),
         )
     } else if ref_id == environment.star.id() {
@@ -106,7 +106,7 @@ pub async fn resolve_vehicle_gravitational_acceleration(
             gravitational_parameter(p.mass()),
             p.equatorial_radius(),
             p.oblateness_j2(),
-            environment.planet_position,
+            environment.reference_position(),
             planet_orientation(&p, total_epoch),
         )
     } else if let Some(row) = star_repository::get_by_id(pool, &ref_id).await? {

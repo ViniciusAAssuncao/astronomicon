@@ -6,9 +6,9 @@ pub fn gravitational_acceleration_at_snapshot(
     snapshot: &EnvironmentSnapshot,
     point: Position,
 ) -> AccelerationVector {
-    let sources = [
-        (snapshot.star_position, snapshot.star.mass()),
-        (snapshot.planet_position, snapshot.planet.mass()),
-    ];
+    let mut sources = vec![(snapshot.star_position, snapshot.star.mass())];
+    if let (Some(planet), Some(position)) = (&snapshot.planet, snapshot.planet_position) {
+        sources.push((position, planet.mass()));
+    }
     gravitational_acceleration_at(point, &sources)
 }

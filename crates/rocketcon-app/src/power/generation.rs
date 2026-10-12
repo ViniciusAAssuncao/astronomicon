@@ -110,17 +110,12 @@ pub async fn resolve_component_generation(
             )
             .await?;
 
-            let planet_radius = environment
-                .planet
-                .equatorial_radius()
-                .unwrap_or_else(|| Length::new(6371e3));
-
-            let is_eclipsed = is_in_cylindrical_shadow(
-                vehicle_position,
-                environment.star_position,
-                environment.planet_position,
-                planet_radius,
-            );
+            let is_eclipsed = match (&environment.planet, environment.planet_position) {
+                (Some(planet), Some(position)) => is_in_cylindrical_shadow(
+                    vehicle_position, environment.star_position, position,
+                    planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3))),
+                _ => false,
+            };
 
             let operational_state =
                 operational_state_repository::get_by_vehicle_component_id(pool, &entry.id())
