@@ -1,5 +1,5 @@
 use crate::error::{RocketError, RocketResult};
-use crate::orbital::soi::{resolve_body_state_at_epoch, resolve_body_velocity_at_epoch};
+use astronomicon_app::ephemeris::{CelestialState, EphemerisCatalog};
 use astronomicon_core::math::gravity::gravitational_parameter;
 use astronomicon_core::units::{Duration, GravitationalParameter, Position, VelocityVector};
 use astronomicon_db::SqlitePool;
@@ -7,6 +7,8 @@ use rocketcon_core::domain::VehiclePhysicalState;
 use rocketcon_core::environment::EnvironmentSnapshot;
 use rocketcon_core::math::orbital::propagate_universal_state_vectors;
 use rocketcon_db::repositories::vehicle_physical_state as physical_repository;
+use std::collections::HashMap;
+use uuid::Uuid;
 
 fn propagate_in_moving_reference(
     position: Position,
@@ -33,6 +35,8 @@ pub async fn propagate_coasting_vehicle(
     physical_state: &VehiclePhysicalState,
     environment: &EnvironmentSnapshot,
     dt: Duration,
+    catalog: &EphemerisCatalog,
+    future_states: &HashMap<Uuid, CelestialState>,
 ) -> RocketResult<VehiclePhysicalState> {
     if environment.reference_id() != physical_state.reference_body_id()
         || environment.captured_universe_epoch != physical_state.captured_universe_epoch()
@@ -44,7 +48,6 @@ pub async fn propagate_coasting_vehicle(
     }
 
     let current_epoch = environment.captured_total_epoch();
-    let next_epoch = current_epoch + dt;
     let reference_id = environment.reference_id();
     let mu = gravitational_parameter(
         environment
@@ -52,18 +55,24 @@ pub async fn propagate_coasting_vehicle(
             .as_ref()
             .map_or(environment.star.mass(), |planet| planet.mass()),
     );
-    let reference_velocity =
-        resolve_body_velocity_at_epoch(pool, reference_id, environment.system_id, current_epoch)
-            .await?;
-    let (future_reference_position, future_reference_velocity) =
-        resolve_body_state_at_epoch(pool, reference_id, environment.system_id, next_epoch).await?;
+    let current = catalog
+        .states(current_epoch)?
+        .get(&reference_id)
+        .copied()
+        .ok_or_else(|| {
+            RocketError::Generic("coasting reference has no current ephemeris".into())
+        })?;
+    let future = future_states
+        .get(&reference_id)
+        .copied()
+        .ok_or_else(|| RocketError::Generic("coasting reference has no future ephemeris".into()))?;
     let (position, velocity) = propagate_in_moving_reference(
         physical_state.position(),
         physical_state.velocity(),
         environment.reference_position(),
-        reference_velocity,
-        future_reference_position,
-        future_reference_velocity,
+        current.velocity,
+        future.position,
+        future.velocity,
         mu,
         dt,
     )?;
@@ -83,6 +92,52 @@ pub async fn propagate_coasting_vehicle(
     )?;
     physical_repository::upsert(pool, &next).await?;
     Ok(next)
+}
+
+pub(crate) fn propagate_coasting_segment(
+    physical_state: &VehiclePhysicalState,
+    catalog: &EphemerisCatalog,
+    reference_id: Uuid,
+    duration: Duration,
+) -> RocketResult<VehiclePhysicalState> {
+    let mu = catalog.mass_of_body(reference_id)
+        .map(gravitational_parameter)
+        .ok_or_else(|| RocketError::Generic(
+            format!("reference body '{reference_id}' has no gravitational mass"),
+        ))?;
+    let begin_epoch = physical_state.captured_total_epoch();
+    let begin = catalog.states(begin_epoch)?
+        .get(&reference_id).copied()
+        .ok_or_else(|| RocketError::Generic(
+            format!("reference '{reference_id}' has no initial state"),
+        ))?;
+    let end = catalog.states(begin_epoch + duration)?
+        .get(&reference_id).copied()
+        .ok_or_else(|| RocketError::Generic(
+            format!("reference '{reference_id}' has no final state"),
+        ))?;
+    let (position, velocity) = propagate_in_moving_reference(
+        physical_state.position(),
+        physical_state.velocity(),
+        begin.position,
+        begin.velocity,
+        end.position,
+        end.velocity,
+        mu,
+        duration,
+    )?;
+    Ok(VehiclePhysicalState::new_with_max_q(
+        physical_state.vehicle_id(),
+        position,
+        velocity,
+        physical_state.orientation().integrate(physical_state.angular_velocity(), duration),
+        physical_state.angular_velocity(),
+        reference_id,
+        physical_state.captured_universe_epoch(),
+        physical_state.captured_at_epoch() + duration,
+        physical_state.max_dynamic_pressure(),
+        physical_state.max_dynamic_pressure_epoch(),
+    )?)
 }
 
 #[cfg(test)]

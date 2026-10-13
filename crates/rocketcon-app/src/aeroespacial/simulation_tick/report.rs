@@ -7,6 +7,12 @@ use rocketcon_core::math::power_budget::VehiclePowerBudget;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SoiTransitionReport {
+    pub elapsed_seconds: f64,
+    pub entering: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VehicleTickReport {
     pub physical_state: VehiclePhysicalState,
@@ -23,6 +29,7 @@ pub struct VehicleTickReport {
     pub reference_body_radius_m: f64,
     pub main_engine_loads: Vec<(Uuid, f64)>,
     pub tank_stored_kg: Vec<(Uuid, f64)>,
+    pub soi_transitions: Vec<SoiTransitionReport>,
 }
 
 impl VehicleTickReport {
@@ -41,6 +48,7 @@ impl VehicleTickReport {
         reference_body_radius_m: f64,
         main_engine_loads: Vec<(Uuid, f64)>,
         tank_stored_kg: Vec<(Uuid, f64)>,
+        soi_transitions: Vec<SoiTransitionReport>,
     ) -> Self {
         Self {
             physical_state,
@@ -57,6 +65,7 @@ impl VehicleTickReport {
             reference_body_radius_m,
             main_engine_loads,
             tank_stored_kg,
+            soi_transitions,
         }
     }
 

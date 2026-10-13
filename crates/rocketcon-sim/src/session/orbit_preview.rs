@@ -9,9 +9,11 @@ use super::orbit_soi::{OrbitSoiPreview, soi_radius};
 use super::orbit_view_basis::orbit_view_basis;
 use super::planet_equatorial_reference;
 use crate::{RocketError, RocketResult};
+use astronomicon_core::domain::{OrbitalParent, Planet};
+use astronomicon_db::repositories::planet_repository;
 use rocketcon_app::orbital::resolve_relative_state_for_body;
-use rocketcon_core::math::orbital::{OrbitType, cartesian_to_osculating_elements};
 use rocketcon_core::math::orbital::state_properties::orbital_period_if_bound;
+use rocketcon_core::math::orbital::{OrbitType, cartesian_to_osculating_elements};
 use rocketcon_db::repositories::vehicle_physical_state;
 use uuid::Uuid;
 
@@ -85,9 +87,27 @@ impl RocketconSession {
         let period_seconds = orbital_period_if_bound(&elements, mu)
             .map(|period| period.value())
             .filter(|value| value.is_finite());
-        let mut soi =
-            environment.planet.as_ref().and_then(|planet|
-                soi_radius(planet, &environment.star)).map(|radius_m| OrbitSoiPreview {
+        let parent_mass = if let Some(planet) = environment.planet.as_ref() {
+            match planet.orbital_parent() {
+                OrbitalParent::Star(id) if id == environment.star.id() => {
+                    Some(environment.star.mass())
+                }
+                OrbitalParent::Planet(id) => planet_repository::get_by_id(&self.pool, &id)
+                    .await?
+                    .map(Planet::try_from)
+                    .transpose()?
+                    .map(|parent| parent.mass()),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let mut soi = environment
+            .planet
+            .as_ref()
+            .zip(parent_mass)
+            .and_then(|(planet, mass)| soi_radius(planet, mass))
+            .map(|radius_m| OrbitSoiPreview {
                 radius_m,
                 outside: position.raw().magnitude() >= radius_m,
                 exit: None,
@@ -109,9 +129,11 @@ impl RocketconSession {
         let impact_epoch_seconds = path.impact_seconds.map(|elapsed| epoch.value() + elapsed);
         let visible_horizon = path.elapsed_seconds;
         let relative_points_m = path.points;
-        let equatorial =
-            environment.planet.as_ref().and_then(planet_equatorial_reference)
-                .map(|frame| EquatorialOrbitPreview {
+        let equatorial = environment
+            .planet
+            .as_ref()
+            .and_then(planet_equatorial_reference)
+            .map(|frame| EquatorialOrbitPreview {
                 nodes: orbit_nodes_in_frame(
                     &elements,
                     position,
@@ -124,8 +146,10 @@ impl RocketconSession {
             });
         Ok(OrbitPreview {
             reference_body_id,
-            reference_body_name: environment.planet.as_ref()
-                .map_or_else(|| environment.star.name().to_owned(), |body| body.name().to_owned()),
+            reference_body_name: environment.planet.as_ref().map_or_else(
+                || environment.star.name().to_owned(),
+                |body| body.name().to_owned(),
+            ),
             orbit_classification: match elements.orbit_type() {
                 OrbitType::Circular => 0,
                 OrbitType::Elliptic => 1,
@@ -158,8 +182,14 @@ impl RocketconSession {
             next_apoapsis: next_apoapsis(&elements, position, velocity, mu, visible_horizon),
             relative_points_m,
             osculating_closed_points_m: if environment.planet.is_none() {
-                closed_osculating_reference(position, velocity, mu, &elements,
-                    environment.star.radius()).unwrap_or_default()
+                closed_osculating_reference(
+                    position,
+                    velocity,
+                    mu,
+                    &elements,
+                    environment.star.radius(),
+                )
+                .unwrap_or_default()
             } else {
                 Vec::new()
             },

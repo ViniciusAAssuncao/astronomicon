@@ -17,6 +17,7 @@ use crate::thermal::heat_shield_response::resolve_heat_shield_response;
 use crate::thermal::network_assembly::assemble_vehicle_thermal_network;
 use crate::thermal::network_tick::advance_vehicle_thermal_network_in_existing_transaction;
 use astronomicon_app::climate::temperature::ClimateBodyInputs;
+use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::units::constants::STANDARD_GRAVITY;
 use astronomicon_core::units::{Duration, Luminosity, Vector3};
 use astronomicon_db::SqlitePool;
@@ -32,13 +33,14 @@ mod profile;
 mod report;
 mod transaction;
 mod reference_contact;
+mod soi_crossing;
 mod soi_transition;
 
 use activation::is_propulsion_or_control_active;
 use reference_contact::contact_for_reference;
 use soi_transition::apply_confirmed_soi_transition;
 pub use profile::{TickProfile, TickStageTiming};
-pub use report::VehicleTickReport;
+pub use report::{SoiTransitionReport, VehicleTickReport};
 pub use transaction::{
     advance_vehicle_simulation, advance_vehicle_simulation_in_session,
     advance_vehicle_simulation_profiled, advance_vehicle_simulation_profiled_in_session,
@@ -167,6 +169,11 @@ pub(super) async fn advance_vehicle_simulation_inner(
     mark(&mut profile, "initial_aero_and_contact");
 
     let uses_force_integration = is_propelling || has_drag || has_contact;
+    let total_epoch_new = universe_epoch + new_at_epoch;
+    let ephemeris = EphemerisCatalog::load(pool, environment.system_id).await?;
+    let states_new = ephemeris.states(total_epoch_new)?;
+    let positions_new: HashMap<_, _> = states_new.iter()
+        .map(|(id, state)| (*id, state.position)).collect();
     let mut new_physical_state = if uses_force_integration {
         let initial_aerodynamics = InitialAerodynamics::new(
             current_physical_state,
@@ -188,16 +195,17 @@ pub(super) async fn advance_vehicle_simulation_inner(
         invalidate_vehicle_trajectory_patches(pool, vehicle_id).await?;
         state
     } else {
-        propagate_coasting_vehicle(pool, &current_physical_state, &environment, dt).await?
+        propagate_coasting_vehicle(
+            pool, &current_physical_state, &environment, dt, &ephemeris, &states_new,
+        ).await?
     };
     propellant_tick.persist(pool, universe_epoch, new_at_epoch).await?;
     mark(&mut profile, "dynamics_or_coast");
 
-    let total_epoch_new = universe_epoch + new_at_epoch;
-    let positions_new = astronomicon_app::ephemeris::resolve_system_positions(
-        pool, environment.system_id, total_epoch_new).await?;
-    let (transitioned, _) = apply_confirmed_soi_transition(
-        pool, new_physical_state, &environment, &positions_new).await?;
+    let (transitioned, soi_crossings) = apply_confirmed_soi_transition(
+        pool, &current_physical_state, new_physical_state, &ephemeris,
+        dt, uses_force_integration,
+    ).await?;
     new_physical_state = transitioned;
 
     let environment = if new_physical_state.reference_body_id() != reference_body_id {
@@ -350,10 +358,10 @@ pub(super) async fn advance_vehicle_simulation_inner(
     }
     mark(&mut profile, "gravity_maxq_and_report");
 
-    let reference_body_velocity = crate::orbital::soi::resolve_body_velocity_at_epoch(
-        pool, environment.reference_id(), environment.system_id, total_epoch_new,
-    ).await?;
-    let reference_body_velocity = reference_body_velocity.raw();
+    let reference_body_velocity = states_new.get(&environment.reference_id())
+        .ok_or_else(|| RocketError::Generic(
+            "reference body has no final ephemeris state".into()))?
+        .velocity.raw();
 
     Ok(VehicleTickReport::new(
         new_physical_state,
@@ -370,5 +378,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
         environment.reference_radius().map_or(0.0, |radius| radius.value()),
         propellant_tick.main_engine_loads(),
         propellant_tick.tank_stored_kg(),
+        soi_crossings.into_iter().map(|event| SoiTransitionReport {
+            elapsed_seconds: event.elapsed_seconds,
+            entering: event.entering,
+        }).collect(),
     ))
 }

@@ -50,6 +50,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
         crossings += 1;
+        let crossing_event = session
+            .events()
+            .iter()
+            .rev()
+            .find(|event| {
+                matches!(
+                    event.kind,
+                    FlightEventKind::SoiEntry | FlightEventKind::SoiExit,
+                )
+            })
+            .ok_or("SOI transition has no flight event")?;
+        if crossing_event.total_epoch_seconds < old.total_epoch_seconds
+            || crossing_event.total_epoch_seconds > current.total_epoch_seconds
+        {
+            return Err("SOI event epoch is outside the integration step".into());
+        }
+        println!(
+            "EVENT_IN_STEP offset_s={:.6} step_s={:.6}",
+            crossing_event.total_epoch_seconds - old.total_epoch_seconds,
+            current.total_epoch_seconds - old.total_epoch_seconds,
+        );
         let position_delta = old
             .position_m
             .iter()

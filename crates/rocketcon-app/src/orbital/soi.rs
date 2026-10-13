@@ -6,7 +6,7 @@ use astronomicon_core::units::{Duration, Length, Position, Temperature, Velocity
 use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{atmosphere_repository, planet_repository, star_repository};
 use rocketcon_core::math::orbital::sphere_of_influence::{
-    laplace_sphere_of_influence_radius, CelestialBodySoi,
+    CelestialBodySoi, laplace_sphere_of_influence_radius,
 };
 use uuid::Uuid;
 
@@ -16,12 +16,15 @@ pub async fn resolve_body_state_at_epoch(
     system_id: Uuid,
     total_epoch: Duration,
 ) -> RocketResult<(Position, VelocityVector)> {
-    let positions = astronomicon_app::ephemeris::resolve_system_positions(pool, system_id, total_epoch).await?;
-    let position = positions.get(&body_id).copied().ok_or_else(|| {
-        RocketError::Generic(format!("position for body '{}' not found in system '{}'", body_id, system_id))
+    let catalog = astronomicon_app::ephemeris::EphemerisCatalog::load(pool, system_id).await?;
+    let states = catalog.states(total_epoch)?;
+    let state = states.get(&body_id).ok_or_else(|| {
+        RocketError::Generic(format!(
+            "ephemeris state for body '{}' not found in system '{}'",
+            body_id, system_id,
+        ))
     })?;
-    let velocity = resolve_body_velocity_at_epoch(pool, body_id, system_id, total_epoch).await?;
-    Ok((position, velocity))
+    Ok((state.position, state.velocity))
 }
 
 pub async fn resolve_body_velocity_at_epoch(
@@ -30,20 +33,7 @@ pub async fn resolve_body_velocity_at_epoch(
     system_id: Uuid,
     total_epoch: Duration,
 ) -> RocketResult<VelocityVector> {
-    let interval = 10.0;
-    let before = astronomicon_app::ephemeris::resolve_system_positions(
-        pool, system_id, total_epoch - Duration::new(interval),
-    ).await?;
-    let after = astronomicon_app::ephemeris::resolve_system_positions(
-        pool, system_id, total_epoch + Duration::new(interval),
-    ).await?;
-    let earlier = before.get(&body_id).copied().ok_or_else(|| {
-        RocketError::Generic(format!("earlier position for body '{}' not found", body_id))
-    })?;
-    let later = after.get(&body_id).copied().ok_or_else(|| {
-        RocketError::Generic(format!("later position for body '{}' not found", body_id))
-    })?;
-    let velocity = VelocityVector::from_raw((later.raw() - earlier.raw()) / (2.0 * interval));
+    let (_, velocity) = resolve_body_state_at_epoch(pool, body_id, system_id, total_epoch).await?;
     Ok(velocity)
 }
 
@@ -64,12 +54,16 @@ pub async fn resolve_system_soi_bodies(
         planets.push(Planet::try_from(row)?);
     }
 
-    let positions = astronomicon_app::ephemeris::resolve_system_positions(pool, system_id, total_epoch).await?;
+    let positions =
+        astronomicon_app::ephemeris::resolve_system_positions(pool, system_id, total_epoch).await?;
 
     let mut result = Vec::new();
 
     for star in &stars {
-        let star_pos = positions.get(&star.id()).copied().unwrap_or_else(Position::zero);
+        let star_pos = positions
+            .get(&star.id())
+            .copied()
+            .unwrap_or_else(Position::zero);
         result.push(CelestialBodySoi::new_with_geometry(
             star.id(),
             None,
@@ -81,25 +75,44 @@ pub async fn resolve_system_soi_bodies(
     }
 
     for planet in &planets {
-        let planet_pos = positions.get(&planet.id()).copied().unwrap_or_else(Position::zero);
+        let planet_pos = positions
+            .get(&planet.id())
+            .copied()
+            .unwrap_or_else(Position::zero);
 
         let (parent_id, parent_mass, sma) = match planet.orbital_parent() {
             astronomicon_core::domain::OrbitalParent::Star(star_id) => {
                 let parent_star = stars.iter().find(|s| s.id() == star_id);
-                let mass = parent_star.map(|s| s.mass()).unwrap_or_else(|| astronomicon_core::units::Mass::new(1.989e30));
-                let sma = planet.orbital_elements().map(|e| e.semi_major_axis()).unwrap_or_else(|| Length::new(1.496e11));
+                let mass = parent_star
+                    .map(|s| s.mass())
+                    .unwrap_or_else(|| astronomicon_core::units::Mass::new(1.989e30));
+                let sma = planet
+                    .orbital_elements()
+                    .map(|e| e.semi_major_axis())
+                    .unwrap_or_else(|| Length::new(1.496e11));
                 (Some(star_id), mass, sma)
             }
             astronomicon_core::domain::OrbitalParent::Planet(parent_planet_id) => {
                 let parent_p = planets.iter().find(|p| p.id() == parent_planet_id);
-                let mass = parent_p.map(|p| p.mass()).unwrap_or_else(|| astronomicon_core::units::Mass::new(5.972e24));
-                let sma = planet.orbital_elements().map(|e| e.semi_major_axis()).unwrap_or_else(|| Length::new(3.844e8));
+                let mass = parent_p
+                    .map(|p| p.mass())
+                    .unwrap_or_else(|| astronomicon_core::units::Mass::new(5.972e24));
+                let sma = planet
+                    .orbital_elements()
+                    .map(|e| e.semi_major_axis())
+                    .unwrap_or_else(|| Length::new(3.844e8));
                 (Some(parent_planet_id), mass, sma)
             }
             _ => {
-                let default_mass = stars.first().map(|s| s.mass()).unwrap_or_else(|| astronomicon_core::units::Mass::new(1.989e30));
+                let default_mass = stars
+                    .first()
+                    .map(|s| s.mass())
+                    .unwrap_or_else(|| astronomicon_core::units::Mass::new(1.989e30));
                 let default_star_id = stars.first().map(|s| s.id());
-                let sma = planet.orbital_elements().map(|e| e.semi_major_axis()).unwrap_or_else(|| Length::new(1.496e11));
+                let sma = planet
+                    .orbital_elements()
+                    .map(|e| e.semi_major_axis())
+                    .unwrap_or_else(|| Length::new(1.496e11));
                 (default_star_id, default_mass, sma)
             }
         };
@@ -110,7 +123,9 @@ pub async fn resolve_system_soi_bodies(
 
         let rel_pos = Position::from_raw(planet_pos.raw() - parent_pos.raw());
         let soi_radius = laplace_sphere_of_influence_radius(sma, planet.mass(), parent_mass);
-        let eq_radius = planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3));
+        let eq_radius = planet
+            .equatorial_radius()
+            .unwrap_or_else(|| Length::new(6371e3));
 
         let mut body_soi = CelestialBodySoi::new_with_geometry(
             planet.id(),
@@ -127,14 +142,13 @@ pub async fn resolve_system_soi_bodies(
             let surface_g = surface_gravity(mu, eq_radius);
             if let Ok(scale_h) = atm.scale_height(surface_g, surface_temp) {
                 let boundary_h = Length::new(scale_h.value() * 12.0);
-                let molar_mass = atm.mean_molar_mass().unwrap_or(astronomicon_core::units::MolarMass::new(0.02897));
-                let surface_density = ideal_gas_density(atm.surface_pressure(), molar_mass, surface_temp);
-                body_soi = body_soi.with_atmosphere(
-                    eq_radius,
-                    boundary_h,
-                    scale_h,
-                    surface_density,
-                );
+                let molar_mass = atm
+                    .mean_molar_mass()
+                    .unwrap_or(astronomicon_core::units::MolarMass::new(0.02897));
+                let surface_density =
+                    ideal_gas_density(atm.surface_pressure(), molar_mass, surface_temp);
+                body_soi =
+                    body_soi.with_atmosphere(eq_radius, boundary_h, scale_h, surface_density);
             }
         }
 
@@ -152,13 +166,17 @@ pub async fn resolve_active_soi_for_position(
     current_parent_id: Uuid,
 ) -> RocketResult<Uuid> {
     let soi_bodies = resolve_system_soi_bodies(pool, system_id, total_epoch).await?;
-    let positions = astronomicon_app::ephemeris::resolve_system_positions(pool, system_id, total_epoch).await?;
+    let positions =
+        astronomicon_app::ephemeris::resolve_system_positions(pool, system_id, total_epoch).await?;
 
     let mut selected_id = current_parent_id;
     let mut min_radius = f64::INFINITY;
 
     for body in &soi_bodies {
-        let body_pos_system = positions.get(&body.id()).copied().unwrap_or_else(Position::zero);
+        let body_pos_system = positions
+            .get(&body.id())
+            .copied()
+            .unwrap_or_else(Position::zero);
         let dist = (vehicle_position.raw() - body_pos_system.raw()).magnitude();
         if dist <= body.soi_radius().value() && body.soi_radius().value() < min_radius {
             min_radius = body.soi_radius().value();

@@ -210,13 +210,18 @@ impl RocketconSession {
             (name.clone(), stored, *capacity)
         }).collect();
         let mut events = FlightEvent::between(&self.snapshot, &next);
-        if self.snapshot.reference_body_id != next.reference_body_id &&
-            astronomicon_db::repositories::star_repository::get_by_id(
-                &self.pool, &next.reference_body_id).await?.is_none() {
-            for event in &mut events {
-                if event.kind == FlightEventKind::SoiExit {
-                    event.kind = FlightEventKind::SoiEntry;
-                }
+        if !report.soi_transitions.is_empty() {
+            events.retain(|event| event.kind != FlightEventKind::SoiExit);
+            for transition in &report.soi_transitions {
+                events.push(FlightEvent {
+                    kind: if transition.entering {
+                        FlightEventKind::SoiEntry
+                    } else {
+                        FlightEventKind::SoiExit
+                    },
+                    total_epoch_seconds:
+                        self.snapshot.total_epoch_seconds + transition.elapsed_seconds,
+                });
             }
         }
         self.events.extend(events);
