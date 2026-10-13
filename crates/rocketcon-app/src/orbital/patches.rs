@@ -14,16 +14,56 @@ use uuid::Uuid;
 
 const COASTING_PATCH_LOOKAHEAD_S: f64 = 10.0;
 
+#[cfg(test)]
+#[path = "patches/timing_test.rs"]
+mod timing_test;
+
+fn patch_active_at(
+    patch: &TrajectoryPatch,
+    start_at_epoch: Option<Duration>,
+    at_epoch: Duration,
+    total_epoch: Duration,
+) -> bool {
+    if let Some(start) = start_at_epoch {
+        let elapsed = at_epoch - start;
+        return elapsed.value() >= 0.0
+            && patch
+                .end_universe_epoch()
+                .is_none_or(|end| elapsed <= end - patch.start_universe_epoch());
+    }
+    patch.is_active_at(total_epoch)
+}
+
 pub async fn resolve_active_trajectory_patch(
     pool: &SqlitePool,
     vehicle_id: Uuid,
     universe_epoch: Duration,
     at_epoch: Duration,
 ) -> RocketResult<Option<TrajectoryPatch>> {
+    Ok(
+        resolve_active_trajectory_patch_with_local_epoch(
+            pool,
+            vehicle_id,
+            universe_epoch,
+            at_epoch,
+        )
+        .await?
+        .map(|(patch, _)| patch),
+    )
+}
+
+async fn resolve_active_trajectory_patch_with_local_epoch(
+    pool: &SqlitePool,
+    vehicle_id: Uuid,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> RocketResult<Option<(TrajectoryPatch, Option<Duration>)>> {
     let total_epoch = universe_epoch + at_epoch;
-    let patches = trajectory_patch_repository::list_for_vehicle(pool, &vehicle_id).await?;
-    let active = patches.into_iter().find(|p| p.is_active_at(total_epoch));
-    Ok(active)
+    let patches =
+        trajectory_patch_repository::list_for_vehicle_with_local_epoch(pool, &vehicle_id).await?;
+    Ok(patches
+        .into_iter()
+        .find(|(patch, local_epoch)| patch_active_at(patch, *local_epoch, at_epoch, total_epoch)))
 }
 
 pub async fn invalidate_vehicle_trajectory_patches(
@@ -92,6 +132,7 @@ pub async fn generate_and_save_trajectory_patches(
     )?;
     trajectory_patch_repository::delete_patches_for_vehicle(pool, &vehicle_id).await?;
     trajectory_patch_repository::insert_patches(pool, std::slice::from_ref(&patch)).await?;
+    trajectory_patch_repository::store_patch_local_epoch(pool, patch.id(), at_epoch).await?;
     Ok(vec![patch])
 }
 pub async fn propagate_coasting_vehicle(
@@ -114,58 +155,79 @@ pub async fn propagate_coasting_vehicle(
     let new_at_epoch = current_at_epoch + dt;
     let target_total_epoch = universe_epoch + new_at_epoch;
 
-    let patch =
-        match resolve_active_trajectory_patch(pool, vehicle_id, universe_epoch, current_at_epoch)
-            .await?
-        {
-            Some(p) if p.reference_body_id() == physical_state.reference_body_id() => p,
-            _ => {
-                let patches = generate_and_save_trajectory_patches(
-                    pool,
-                    vehicle_id,
-                    universe_epoch,
-                    current_at_epoch,
-                )
-                .await?;
-                patches
-                    .into_iter()
-                    .find(|p| p.is_active_at(current_total_epoch))
-                    .ok_or_else(|| {
-                        RocketError::Generic(format!(
-                            "failed to generate valid trajectory patch for vehicle '{}'",
-                            vehicle_id
-                        ))
-                    })?
-            }
-        };
-
-    let active_patch = if patch.is_active_at(target_total_epoch) {
-        patch
-    } else {
-        let patches = trajectory_patch_repository::list_for_vehicle(pool, &vehicle_id).await?;
-        match patches.into_iter().find(|p| {
-            p.is_active_at(target_total_epoch)
-                && p.reference_body_id() == physical_state.reference_body_id()
-        }) {
-            Some(next_patch) => next_patch,
-            None => {
-                let regenerated = generate_and_save_trajectory_patches(
-                    pool,
-                    vehicle_id,
-                    universe_epoch,
-                    current_at_epoch,
-                )
-                .await?;
-                regenerated
-                    .into_iter()
-                    .find(|p| p.is_active_at(target_total_epoch))
-                    .unwrap_or(patch)
-            }
+    let patch = match resolve_active_trajectory_patch_with_local_epoch(
+        pool,
+        vehicle_id,
+        universe_epoch,
+        current_at_epoch,
+    )
+    .await?
+    {
+        Some((p, local_epoch)) if p.reference_body_id() == physical_state.reference_body_id() => {
+            (p, local_epoch)
+        }
+        _ => {
+            let patches = generate_and_save_trajectory_patches(
+                pool,
+                vehicle_id,
+                universe_epoch,
+                current_at_epoch,
+            )
+            .await?;
+            let patch = patches
+                .into_iter()
+                .find(|p| p.is_active_at(current_total_epoch))
+                .ok_or_else(|| {
+                    RocketError::Generic(format!(
+                        "failed to generate valid trajectory patch for vehicle '{}'",
+                        vehicle_id
+                    ))
+                })?;
+            (patch, Some(current_at_epoch))
         }
     };
 
+    let (active_patch, start_at_epoch) =
+        if patch_active_at(&patch.0, patch.1, new_at_epoch, target_total_epoch) {
+            patch
+        } else {
+            let patches =
+                trajectory_patch_repository::list_for_vehicle_with_local_epoch(pool, &vehicle_id)
+                    .await?;
+            match patches.into_iter().find(|(p, start)| {
+                patch_active_at(p, *start, new_at_epoch, target_total_epoch)
+                    && p.reference_body_id() == physical_state.reference_body_id()
+            }) {
+                Some(next_patch) => next_patch,
+                None => {
+                    let regenerated = generate_and_save_trajectory_patches(
+                        pool,
+                        vehicle_id,
+                        universe_epoch,
+                        current_at_epoch,
+                    )
+                    .await?;
+                    match regenerated
+                        .into_iter()
+                        .find(|p| p.is_active_at(target_total_epoch))
+                    {
+                        Some(p) => (p, Some(current_at_epoch)),
+                        None => patch,
+                    }
+                }
+            }
+        };
+
     let ref_id = active_patch.reference_body_id();
-    let (rel_pos, rel_vel) = active_patch.evaluate_state_at(target_total_epoch)?;
+    let elapsed = match start_at_epoch {
+        Some(start) => new_at_epoch - start,
+        None => target_total_epoch - active_patch.start_universe_epoch(),
+    };
+    let (rel_pos, rel_vel) = if active_patch.is_conic() {
+        active_patch.evaluate_state_after(elapsed)?
+    } else {
+        active_patch.evaluate_state_at(target_total_epoch)?
+    };
 
     let system_id = if let Some(p_row) = planet_repository::get_by_id(pool, &ref_id).await? {
         let planet = Planet::try_from(p_row)?;
