@@ -14,10 +14,6 @@ use uuid::Uuid;
 
 const COASTING_PATCH_LOOKAHEAD_S: f64 = 10.0;
 
-#[cfg(test)]
-#[path = "patches/timing_test.rs"]
-mod timing_test;
-
 fn patch_active_at(
     patch: &TrajectoryPatch,
     start_at_epoch: Option<Duration>,
