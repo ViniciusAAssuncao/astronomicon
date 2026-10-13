@@ -4,6 +4,7 @@ use super::orbit_apsides::{OrbitApsis, next_apoapsis, next_periapsis};
 use super::orbit_nodes::{orbit_nodes, orbit_nodes_in_frame};
 use super::orbit_preview_horizon::preview_horizon;
 use super::orbit_preview_path::{PreviewEndReason, sample_preview_path};
+use super::orbit_reference_curve::closed_osculating_reference;
 use super::orbit_soi::{OrbitSoiPreview, soi_radius};
 use super::orbit_view_basis::orbit_view_basis;
 use super::planet_equatorial_reference;
@@ -41,6 +42,7 @@ pub struct OrbitPreview {
     pub next_periapsis: Option<OrbitApsis>,
     pub next_apoapsis: Option<OrbitApsis>,
     pub relative_points_m: Vec<[f64; 3]>,
+    pub osculating_closed_points_m: Vec<[f64; 3]>,
 }
 
 impl RocketconSession {
@@ -145,6 +147,12 @@ impl RocketconSession {
             next_periapsis: next_periapsis(&elements, position, velocity, mu, visible_horizon),
             next_apoapsis: next_apoapsis(&elements, position, velocity, mu, visible_horizon),
             relative_points_m,
+            osculating_closed_points_m: if environment.planet.is_none() {
+                closed_osculating_reference(position, velocity, mu, &elements,
+                    environment.star.radius()).unwrap_or_default()
+            } else {
+                Vec::new()
+            },
         })
     }
 }

@@ -104,6 +104,11 @@ impl From<SessionPreview> for OrbitPreview {
                 .into_iter()
                 .map(FfiVec3::from)
                 .collect(),
+            osculating_closed_points_m: source
+                .osculating_closed_points_m
+                .into_iter()
+                .map(FfiVec3::from)
+                .collect(),
         }
     }
 }

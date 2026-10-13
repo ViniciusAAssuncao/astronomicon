@@ -7,7 +7,8 @@ use crate::aeroespacial::propellant_tick::PropellantTick;
 use crate::aeroespacial::vehicle::resolve_vehicle_snapshot_with_components;
 use crate::environment::load_environment_snapshot;
 use crate::error::{RocketError, RocketResult};
-use crate::orbital::{invalidate_vehicle_trajectory_patches, propagate_coasting_vehicle};
+use crate::orbital::coasting::propagate_coasting_vehicle;
+use crate::orbital::invalidate_vehicle_trajectory_patches;
 use crate::power::battery::apply_power_delta;
 use crate::power::budget::resolve_vehicle_power_budget;
 use crate::power::consumption::resolve_component_consumption;
@@ -188,7 +189,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
         invalidate_vehicle_trajectory_patches(pool, vehicle_id).await?;
         state
     } else {
-        propagate_coasting_vehicle(pool, vehicle_id, dt, universe_epoch, current_at_epoch).await?
+        propagate_coasting_vehicle(pool, &current_physical_state, &environment, dt).await?
     };
     propellant_tick.persist(pool, universe_epoch, new_at_epoch).await?;
     mark(&mut profile, "dynamics_or_coast");

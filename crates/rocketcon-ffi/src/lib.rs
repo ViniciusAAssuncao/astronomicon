@@ -143,6 +143,7 @@ pub mod ffi {
         next_apoapsis_seconds: f64,
         next_apoapsis_position_m: FfiVec3,
         relative_points_m: Vec<FfiVec3>,
+        osculating_closed_points_m: Vec<FfiVec3>,
     }
 
     extern "Rust" {

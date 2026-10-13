@@ -1,3 +1,4 @@
+pub mod coasting;
 pub mod maneuvers;
 pub mod orbit;
 pub mod patches;

@@ -3,7 +3,7 @@ use crate::aeroespacial::aerodynamics::{
     resolve_vehicle_aerodynamics_in_existing_transaction,
 };
 use crate::aeroespacial::dynamics_step::evaluate_rigid_body_derivative_with_ambient_pressure;
-use crate::aeroespacial::gravity::resolve_vehicle_gravitational_acceleration;
+use crate::aeroespacial::gravity::GravityField;
 use crate::aeroespacial::vehicle::resolve_vehicle_snapshot;
 use crate::environment::load_environment_snapshot;
 use crate::error::{RocketError, RocketResult};
@@ -256,12 +256,10 @@ async fn advance_vehicle_physical_state_inner(
         load_environment_snapshot(pool, reference_body_id, universe_epoch, current_at_epoch)
             .await?;
 
-    let grav_acc = resolve_vehicle_gravitational_acceleration(
+    let gravity_field = GravityField::load(
         pool,
         &environment,
-        &physical_state,
-        universe_epoch,
-        current_at_epoch,
+        universe_epoch + current_at_epoch,
     )
     .await?;
 
@@ -322,7 +320,7 @@ async fn advance_vehicle_physical_state_inner(
             &operational_states,
             &reaction_wheel_states,
             control_input,
-            grav_acc,
+            gravity_field.acceleration_at(sub_state.position),
             drag_force,
             dt,
             ambient_pressure,
