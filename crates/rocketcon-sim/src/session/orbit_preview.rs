@@ -10,7 +10,7 @@ use super::orbit_view_basis::orbit_view_basis;
 use super::planet_equatorial_reference;
 use crate::{RocketError, RocketResult};
 use rocketcon_app::orbital::resolve_relative_state_for_body;
-use rocketcon_core::math::orbital::cartesian_to_osculating_elements;
+use rocketcon_core::math::orbital::{OrbitType, cartesian_to_osculating_elements};
 use rocketcon_core::math::orbital::state_properties::orbital_period_if_bound;
 use rocketcon_db::repositories::vehicle_physical_state;
 use uuid::Uuid;
@@ -24,6 +24,8 @@ pub struct EquatorialOrbitPreview {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OrbitPreview {
     pub reference_body_id: Uuid,
+    pub reference_body_name: String,
+    pub orbit_classification: u8,
     pub stellar_reference: bool,
     pub source_epoch_seconds: f64,
     pub horizon_seconds: f64,
@@ -122,6 +124,14 @@ impl RocketconSession {
             });
         Ok(OrbitPreview {
             reference_body_id,
+            reference_body_name: environment.planet.as_ref()
+                .map_or_else(|| environment.star.name().to_owned(), |body| body.name().to_owned()),
+            orbit_classification: match elements.orbit_type() {
+                OrbitType::Circular => 0,
+                OrbitType::Elliptic => 1,
+                OrbitType::Parabolic => 2,
+                OrbitType::Hyperbolic => 3,
+            },
             stellar_reference: environment.planet.is_none(),
             source_epoch_seconds: epoch.value(),
             horizon_seconds,

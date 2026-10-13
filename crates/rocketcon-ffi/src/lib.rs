@@ -87,6 +87,8 @@ pub mod ffi {
     #[derive(Debug, PartialEq)]
     struct OrbitPreview {
         reference_body_id: String,
+        reference_body_name: String,
+        orbit_classification: u8,
         stellar_reference: bool,
         source_epoch_seconds: f64,
         horizon_seconds: f64,
