@@ -11,8 +11,9 @@ use astronomicon_core::units::{Angle, AngularMomentum, Duration, ForceVector, Pr
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::{
     ComponentDetails, ComponentOperationalState, ComponentRecord, ReactionWheelState,
-    VehicleComponentEntry, VehicleControlInput, VehiclePhysicalState,
+    VehicleComponentEntry, VehicleControlInput, VehiclePhysicalState, VehicleSnapshot,
 };
+use rocketcon_core::environment::EnvironmentSnapshot;
 use rocketcon_core::math::numerical_integration::rk4_step;
 use rocketcon_core::math::{
     RigidBodyState, gimbal_actuator_step, reaction_wheel_torque_and_momentum_delta,
@@ -27,45 +28,27 @@ use uuid::Uuid;
 
 pub(crate) struct InitialAerodynamics<'a> {
     state: VehiclePhysicalState,
-    planet_position: Vector3,
+    environment: &'a EnvironmentSnapshot,
     components: &'a [(VehicleComponentEntry, ComponentRecord)],
-    active_stages: &'a [u32],
-    universe_epoch: Duration,
+    snapshot: &'a VehicleSnapshot,
     diagnostic: Option<AerodynamicDiagnostic>,
 }
 
 impl<'a> InitialAerodynamics<'a> {
     pub(crate) fn new(
         state: VehiclePhysicalState,
-        planet_position: Vector3,
+        environment: &'a EnvironmentSnapshot,
         components: &'a [(VehicleComponentEntry, ComponentRecord)],
-        active_stages: &'a [u32],
-        universe_epoch: Duration,
+        snapshot: &'a VehicleSnapshot,
         diagnostic: Option<AerodynamicDiagnostic>,
     ) -> Self {
         Self {
             state,
-            planet_position,
+            environment,
             components,
-            active_stages,
-            universe_epoch,
+            snapshot,
             diagnostic,
         }
-    }
-
-    fn matches(
-        &self,
-        state: &VehiclePhysicalState,
-        planet_position: Vector3,
-        components: &[(VehicleComponentEntry, ComponentRecord)],
-        active_stages: &[u32],
-        universe_epoch: Duration,
-    ) -> bool {
-        self.state == *state
-            && self.planet_position == planet_position
-            && self.components == components
-            && self.active_stages == active_stages
-            && self.universe_epoch == universe_epoch
     }
 }
 
@@ -121,26 +104,51 @@ async fn advance_vehicle_physical_state_inner(
     effective_engine_loads: Option<&HashMap<Uuid, f64>>,
     existing_transaction: bool,
 ) -> RocketResult<VehiclePhysicalState> {
-    let physical_state = vehicle_physical_state_repository::get_by_vehicle_id(pool, &vehicle_id)
-        .await?
-        .ok_or_else(|| {
-            RocketError::Generic(format!(
-                "physical state for vehicle '{}' not found",
-                vehicle_id
-            ))
-        })?;
-
+    let physical_state = if let Some(initial) = initial_aerodynamics.as_ref() {
+        initial.state
+    } else {
+        vehicle_physical_state_repository::get_by_vehicle_id(pool, &vehicle_id)
+            .await?
+            .ok_or_else(|| {
+                RocketError::Generic(format!(
+                    "physical state for vehicle '{}' not found",
+                    vehicle_id
+                ))
+            })?
+    };
     let current_at_epoch = physical_state.captured_at_epoch();
     let new_at_epoch = current_at_epoch + dt;
     let reference_body_id = physical_state.reference_body_id();
 
-    let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
-
-    let snapshot =
-        resolve_vehicle_snapshot(pool, vehicle_id, universe_epoch, current_at_epoch).await?;
+    let owned_components;
+    let components: &[(VehicleComponentEntry, ComponentRecord)] =
+        if let Some(initial) = initial_aerodynamics.as_ref() {
+            initial.components
+        } else {
+            owned_components =
+                vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
+            &owned_components
+        };
+    let owned_snapshot;
+    let snapshot: &VehicleSnapshot = if let Some(initial) = initial_aerodynamics.as_ref() {
+        initial.snapshot
+    } else {
+        owned_snapshot =
+            resolve_vehicle_snapshot(pool, vehicle_id, universe_epoch, current_at_epoch).await?;
+        &owned_snapshot
+    };
+    let owned_environment;
+    let environment: &EnvironmentSnapshot = if let Some(initial) = initial_aerodynamics.as_ref() {
+        initial.environment
+    } else {
+        owned_environment =
+            load_environment_snapshot(pool, reference_body_id, universe_epoch, current_at_epoch)
+                .await?;
+        &owned_environment
+    };
 
     let mut operational_states = HashMap::new();
-    for (entry, _) in &components {
+    for (entry, _) in components {
         if let Some(op) =
             operational_state_repository::get_by_vehicle_component_id(pool, &entry.id()).await?
         {
@@ -149,7 +157,7 @@ async fn advance_vehicle_physical_state_inner(
     }
 
     let mut reaction_wheel_states = HashMap::new();
-    for (entry, _) in &components {
+    for (entry, _) in components {
         if let Some(rw) =
             reaction_wheel_state_repository::get_by_vehicle_component_id(pool, &entry.id()).await?
         {
@@ -157,7 +165,7 @@ async fn advance_vehicle_physical_state_inner(
         }
     }
 
-    for (entry, record) in &components {
+    for (entry, record) in components {
         if !snapshot.is_stage_active(entry.stage_index()) {
             continue;
         }
@@ -209,14 +217,18 @@ async fn advance_vehicle_physical_state_inner(
         for (id, load) in loads {
             let previous = operational_states.get(id).copied();
             let effective = ComponentOperationalState::new(
-                *id, *load, previous.and_then(|state| state.current_gimbal_pitch()),
+                *id,
+                *load,
+                previous.and_then(|state| state.current_gimbal_pitch()),
                 previous.and_then(|state| state.current_gimbal_yaw()),
-                universe_epoch, current_at_epoch)?;
+                universe_epoch,
+                current_at_epoch,
+            )?;
             operational_states.insert(*id, effective);
         }
     }
 
-    for (entry, record) in &components {
+    for (entry, record) in components {
         if !snapshot.is_stage_active(entry.stage_index()) {
             continue;
         }
@@ -252,36 +264,18 @@ async fn advance_vehicle_physical_state_inner(
         }
     }
 
-    let environment =
-        load_environment_snapshot(pool, reference_body_id, universe_epoch, current_at_epoch)
-            .await?;
+    let gravity_field =
+        GravityField::load(pool, environment, universe_epoch + current_at_epoch).await?;
 
-    let gravity_field = GravityField::load(
-        pool,
-        &environment,
-        universe_epoch + current_at_epoch,
-    )
-    .await?;
-
-    let aero_diag = match initial_aerodynamics {
-        Some(initial)
-            if initial.matches(
-                &physical_state,
-                environment.reference_position().raw(),
-                &components,
-                snapshot.active_stages(),
-                universe_epoch,
-            ) =>
-        {
-            initial.diagnostic
-        }
+    let aero_diag = match initial_aerodynamics.as_ref() {
+        Some(initial) => initial.diagnostic,
         _ if existing_transaction => {
             resolve_vehicle_aerodynamics_in_existing_transaction(
                 pool,
                 &physical_state,
                 reference_body_id,
                 environment.reference_position().raw(),
-                &components,
+                components,
                 snapshot.active_stages(),
                 universe_epoch,
                 current_at_epoch,
@@ -295,7 +289,7 @@ async fn advance_vehicle_physical_state_inner(
                 &physical_state,
                 reference_body_id,
                 environment.reference_position().raw(),
-                &components,
+                components,
                 snapshot.active_stages(),
                 universe_epoch,
                 current_at_epoch,
@@ -315,7 +309,7 @@ async fn advance_vehicle_physical_state_inner(
         evaluate_rigid_body_derivative_with_ambient_pressure(
             sub_state,
             snapshot.mass_properties(),
-            &components,
+            components,
             snapshot.active_stages(),
             &operational_states,
             &reaction_wheel_states,

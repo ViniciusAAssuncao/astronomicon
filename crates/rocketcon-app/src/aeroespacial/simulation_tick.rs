@@ -170,10 +170,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
     let mut new_physical_state = if uses_force_integration {
         let initial_aerodynamics = InitialAerodynamics::new(
             current_physical_state,
-            environment.reference_position().raw(),
+            &environment,
             &components,
-            vehicle_snapshot.active_stages(),
-            universe_epoch,
+            &vehicle_snapshot,
             aero_diag_current,
         );
         let state = advance_vehicle_physical_state_with_initial_aerodynamics(
