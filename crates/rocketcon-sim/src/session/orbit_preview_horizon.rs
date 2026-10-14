@@ -5,7 +5,7 @@ use rocketcon_core::math::orbital::trajectory_prediction::{
 };
 
 const MAX_OPEN_HORIZON: f64 = 259_200.0;
-const MAX_BOUND_HORIZON: f64 = 172_800.0;
+pub const MAX_BOUND_HORIZON: f64 = 172_800.0;
 
 pub fn preview_horizon(
     elements: &OsculatingElements,

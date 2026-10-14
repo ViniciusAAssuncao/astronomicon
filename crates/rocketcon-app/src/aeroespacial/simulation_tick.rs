@@ -41,6 +41,7 @@ use reference_contact::contact_for_reference;
 use soi_transition::apply_confirmed_soi_transition;
 pub use profile::{TickProfile, TickStageTiming};
 pub use report::{SoiTransitionReport, VehicleTickReport};
+pub use soi_crossing::{SoiCrossing, first_crossing};
 pub use transaction::{
     advance_vehicle_simulation, advance_vehicle_simulation_in_session,
     advance_vehicle_simulation_profiled, advance_vehicle_simulation_profiled_in_session,

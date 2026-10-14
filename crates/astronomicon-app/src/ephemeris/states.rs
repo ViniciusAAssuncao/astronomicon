@@ -61,15 +61,41 @@ impl EphemerisCatalog {
         })
     }
 
+    pub fn stars(&self) -> &[Star] {
+        &self.stars
+    }
+
     pub fn planets(&self) -> &[Planet] {
         &self.planets
     }
 
+    pub fn radius_of_body(&self, id: Uuid) -> Option<f64> {
+        self.stars
+            .iter()
+            .find(|body| body.id() == id)
+            .and_then(|body| body.radius())
+            .map(|radius| radius.value())
+            .or_else(|| {
+                self.planets
+                    .iter()
+                    .find(|body| body.id() == id)
+                    .and_then(|body| body.equatorial_radius().or(body.polar_radius()))
+                    .map(|radius| radius.value())
+            })
+            .filter(|radius| radius.is_finite() && *radius > 0.0)
+    }
+
     pub fn mass_of_body(&self, id: Uuid) -> Option<Mass> {
-        self.stars.iter().find(|body| body.id() == id)
+        self.stars
+            .iter()
+            .find(|body| body.id() == id)
             .map(|body| body.mass())
-            .or_else(|| self.planets.iter().find(|body| body.id() == id)
-                .map(|body| body.mass()))
+            .or_else(|| {
+                self.planets
+                    .iter()
+                    .find(|body| body.id() == id)
+                    .map(|body| body.mass())
+            })
     }
 
     pub fn positions(&self, epoch: Duration) -> DomainResult<HashMap<Uuid, Position>> {

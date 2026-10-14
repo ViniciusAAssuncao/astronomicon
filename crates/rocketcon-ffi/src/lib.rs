@@ -1,7 +1,7 @@
 mod engine;
+mod orbit_preview;
 mod snapshot;
 mod vehicle;
-mod orbit_preview;
 
 pub use engine::Engine;
 
@@ -85,6 +85,29 @@ pub mod ffi {
     }
 
     #[derive(Debug, PartialEq)]
+    struct FfiForecastArc {
+        reference_body_id: String,
+        start_seconds: f64,
+        end_seconds: f64,
+        points_m: Vec<FfiVec3>,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FfiForecastEvent {
+        kind: u8,
+        body_name: String,
+        seconds: f64,
+        position_m: FfiVec3,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FfiForecastBody {
+        name: String,
+        radius_m: f64,
+        position_m: FfiVec3,
+    }
+
+    #[derive(Debug, PartialEq)]
     struct OrbitPreview {
         reference_body_id: String,
         reference_body_name: String,
@@ -146,6 +169,9 @@ pub mod ffi {
         next_apoapsis_position_m: FfiVec3,
         relative_points_m: Vec<FfiVec3>,
         osculating_closed_points_m: Vec<FfiVec3>,
+        future_arcs: Vec<FfiForecastArc>,
+        forecast_events: Vec<FfiForecastEvent>,
+        forecast_bodies: Vec<FfiForecastBody>,
     }
 
     extern "Rust" {
@@ -154,7 +180,11 @@ pub mod ffi {
         fn create_engine() -> Result<Box<Engine>>;
         fn load_save(self: &mut Engine, save_path_utf8: &str, vehicle_uuid: &str) -> Result<()>;
         fn set_control(self: &mut Engine, pitch: f64, yaw: f64, roll: f64) -> Result<()>;
-        fn set_main_engine_load(self: &mut Engine, instance_id: &str, load_fraction: f64) -> Result<()>;
+        fn set_main_engine_load(
+            self: &mut Engine,
+            instance_id: &str,
+            load_fraction: f64,
+        ) -> Result<()>;
         fn set_main_engine_ramp(self: &mut Engine, instance_id: &str, direction: i8) -> Result<()>;
         fn step(self: &mut Engine, dt_seconds: f64) -> Result<()>;
         fn snapshot(self: &Engine) -> Result<FlightSnapshot>;

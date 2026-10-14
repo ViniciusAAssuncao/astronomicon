@@ -1,15 +1,18 @@
 use super::OrbitViewBasis;
 use super::RocketconSession;
 use super::orbit_apsides::{OrbitApsis, next_apoapsis, next_periapsis};
+use super::orbit_forecast::{ForecastArc, ForecastBody, ForecastEvent, sample_patched_forecast};
 use super::orbit_nodes::{orbit_nodes, orbit_nodes_in_frame};
-use super::orbit_preview_horizon::preview_horizon;
+use super::orbit_preview_horizon::{MAX_BOUND_HORIZON, preview_horizon};
 use super::orbit_preview_path::{PreviewEndReason, sample_preview_path};
 use super::orbit_reference_curve::closed_osculating_reference;
 use super::orbit_soi::{OrbitSoiPreview, soi_radius};
 use super::orbit_view_basis::orbit_view_basis;
 use super::planet_equatorial_reference;
 use crate::{RocketError, RocketResult};
+use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::domain::{OrbitalParent, Planet};
+use astronomicon_core::units::Length;
 use astronomicon_db::repositories::planet_repository;
 use rocketcon_app::orbital::resolve_relative_state_for_body;
 use rocketcon_core::math::orbital::state_properties::orbital_period_if_bound;
@@ -47,6 +50,9 @@ pub struct OrbitPreview {
     pub next_apoapsis: Option<OrbitApsis>,
     pub relative_points_m: Vec<[f64; 3]>,
     pub osculating_closed_points_m: Vec<[f64; 3]>,
+    pub future_arcs: Vec<ForecastArc>,
+    pub forecast_events: Vec<ForecastEvent>,
+    pub forecast_bodies: Vec<ForecastBody>,
 }
 
 impl RocketconSession {
@@ -144,6 +150,23 @@ impl RocketconSession {
                 ),
                 frame,
             });
+        let catalog = EphemerisCatalog::load(&self.pool, environment.system_id).await?;
+        let mut forecast_horizon = horizon_seconds.max(MAX_BOUND_HORIZON);
+        if let Some(period) = period_seconds {
+            if period.is_finite() && period > 0.0 && period <= 400.0 * 86400.0 {
+                forecast_horizon = forecast_horizon.max(period);
+            }
+        }
+        let forecast = sample_patched_forecast(
+            &catalog, epoch, reference_body_id, state.position(), state.velocity(),
+            forecast_horizon,
+        )?;
+        let forecast_impact = forecast.impact_seconds
+            .map(|elapsed| epoch.value() + elapsed);
+        let impact_epoch_seconds = forecast_impact.or(impact_epoch_seconds);
+        let forecast_events = forecast.events;
+        let forecast_bodies = forecast.bodies;
+        let future_arcs = forecast.arcs;
         Ok(OrbitPreview {
             reference_body_id,
             reference_body_name: environment.planet.as_ref().map_or_else(
@@ -181,18 +204,12 @@ impl RocketconSession {
             next_periapsis: next_periapsis(&elements, position, velocity, mu, visible_horizon),
             next_apoapsis: next_apoapsis(&elements, position, velocity, mu, visible_horizon),
             relative_points_m,
-            osculating_closed_points_m: if environment.planet.is_none() {
-                closed_osculating_reference(
-                    position,
-                    velocity,
-                    mu,
-                    &elements,
-                    environment.star.radius(),
-                )
-                .unwrap_or_default()
-            } else {
-                Vec::new()
-            },
+            future_arcs,
+            forecast_events,
+            forecast_bodies,
+            osculating_closed_points_m: closed_osculating_reference(
+                position, velocity, mu, &elements, body_radius.map(Length::new),
+            ).unwrap_or_default(),
         })
     }
 }

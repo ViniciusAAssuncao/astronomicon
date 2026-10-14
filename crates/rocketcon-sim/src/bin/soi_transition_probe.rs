@@ -18,7 +18,82 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut session = RocketconSession::load(path, vehicle_id).await?;
     let initial = session.snapshot().clone();
     let initial_body = initial.reference_body_id;
-    let entering = session.orbit_preview().await?.soi.is_none();
+    let forecast_started = Instant::now();
+    let preview = session.orbit_preview().await?;
+    println!(
+        "FORECAST arcs={} milliseconds={:.3} rendered_seconds={:.3}",
+        preview.future_arcs.len(),
+        forecast_started.elapsed().as_secs_f64() * 1000.0,
+        preview.rendered_horizon_seconds,
+    );
+    for arc in &preview.future_arcs {
+        let distance = match (arc.points_m.first(), arc.points_m.last()) {
+            (Some(start), Some(end)) => start
+                .iter()
+                .zip(end.iter())
+                .map(|(a, b)| (a - b).powi(2))
+                .sum::<f64>()
+                .sqrt(),
+            _ => 0.0,
+        };
+        println!(
+            "FORECAST_ARC ref={} vertices={} from_s={:.3} to_s={:.3} displacement_m={:.3}",
+            arc.reference_body_id,
+            arc.points_m.len(),
+            arc.start_seconds,
+            arc.end_seconds,
+            distance,
+        );
+    }
+    for event in &preview.forecast_events {
+        println!(
+            "FORECAST_EVENT kind={} body={} seconds={:.3} position={:?}",
+            event.kind, event.body_name, event.seconds, event.position_m,
+        );
+        if event.kind == 2 {
+            let residual = preview.forecast_bodies.iter()
+                .filter(|body| body.name == event.body_name)
+                .map(|body| {
+                    let distance = body.position_m.iter().zip(event.position_m.iter())
+                        .map(|(a, b)| (a - b).powi(2)).sum::<f64>().sqrt();
+                    (distance - body.radius_m).abs()
+                })
+                .fold(f64::INFINITY, f64::min);
+            println!("IMPACT_SURFACE_RESIDUAL_M={residual:.6}");
+            if residual > 1.0 {
+                return Err("impact marker does not meet the displayed body surface".into());
+            }
+        }
+    }
+    if option.as_deref() == Some("--preview-only") {
+        session.close().await;
+        return Ok(());
+    }
+    for pair in preview.future_arcs.windows(2) {
+        let before = pair[0].points_m.last().ok_or("empty forecast arc")?;
+        let after = pair[1].points_m.first().ok_or("empty forecast arc")?;
+        let separation = before
+            .iter()
+            .zip(after.iter())
+            .map(|(a, b)| (a - b).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        println!(
+            "FORECAST_BOUNDARY ref={} -> {} at={:.3} delta_m={:.6}",
+            pair[0].reference_body_id, pair[1].reference_body_id, pair[0].end_seconds, separation,
+        );
+        if separation > 1.0 {
+            return Err("forecast arc discontinuity".into());
+        }
+    }
+    if option.as_deref() == Some("--forecast-only") {
+        if preview.future_arcs.len() < 2 {
+            return Err("expected two or more future orbit arcs".into());
+        }
+        session.close().await;
+        return Ok(());
+    }
+    let entering = preview.soi.is_none();
     if powered {
         let id = initial
             .main_engine_loads

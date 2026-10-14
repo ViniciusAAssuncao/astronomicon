@@ -2,6 +2,8 @@ mod snapshot;
 mod vehicle_visual;
 mod engine_control;
 mod orbit_preview;
+mod orbit_forecast;
+mod orbit_forecast_events;
 mod orbit_apsides;
 mod orbit_view_basis;
 mod orbit_nodes;

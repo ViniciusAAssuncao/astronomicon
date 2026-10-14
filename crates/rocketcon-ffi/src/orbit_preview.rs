@@ -1,4 +1,4 @@
-use crate::ffi::{FfiVec3, OrbitPreview};
+use crate::ffi::{FfiForecastArc, FfiForecastBody, FfiForecastEvent, FfiVec3, OrbitPreview};
 use rocketcon_sim::OrbitPreview as SessionPreview;
 
 impl From<SessionPreview> for OrbitPreview {
@@ -106,6 +106,23 @@ impl From<SessionPreview> for OrbitPreview {
                 .into_iter()
                 .map(FfiVec3::from)
                 .collect(),
+            future_arcs: source.future_arcs.into_iter().map(|arc| FfiForecastArc {
+                reference_body_id: arc.reference_body_id.to_string(),
+                start_seconds: arc.start_seconds,
+                end_seconds: arc.end_seconds,
+                points_m: arc.points_m.into_iter().map(FfiVec3::from).collect(),
+            }).collect(),
+            forecast_events: source.forecast_events.into_iter().map(|event| FfiForecastEvent {
+                kind: event.kind,
+                body_name: event.body_name,
+                seconds: event.seconds,
+                position_m: FfiVec3::from(event.position_m),
+            }).collect(),
+            forecast_bodies: source.forecast_bodies.into_iter().map(|body| FfiForecastBody {
+                name: body.name,
+                radius_m: body.radius_m,
+                position_m: FfiVec3::from(body.position_m),
+            }).collect(),
             osculating_closed_points_m: source
                 .osculating_closed_points_m
                 .into_iter()
