@@ -85,6 +85,19 @@ impl EphemerisCatalog {
             .filter(|radius| radius.is_finite() && *radius > 0.0)
     }
 
+    pub fn gravitating_bodies(&self) -> Vec<(Uuid, Mass)> {
+        self.stars
+            .iter()
+            .map(|body| (body.id(), body.mass()))
+            .chain(self.planets.iter().map(|body| (body.id(), body.mass())))
+            .chain(
+                self.minor_planets
+                    .iter()
+                    .map(|body| (body.id(), body.mass())),
+            )
+            .collect()
+    }
+
     pub fn mass_of_body(&self, id: Uuid) -> Option<Mass> {
         self.stars
             .iter()
@@ -105,6 +118,58 @@ impl EphemerisCatalog {
             &self.barycenters,
             &self.minor_planets,
             epoch,
+        )
+    }
+
+    pub fn positions_at_offset(
+        &self,
+        epoch: Duration,
+        offset_seconds: f64,
+    ) -> DomainResult<HashMap<Uuid, Position>> {
+        if !epoch.value().is_finite()
+            || !offset_seconds.is_finite()
+            || !(epoch.value() + offset_seconds).is_finite()
+        {
+            return Err(DomainError::InvalidInvariant {
+                field: "ephemeris_time".into(),
+                reason: "invalid base epoch or relative offset".into(),
+            });
+        }
+        if offset_seconds == 0.0 {
+            return self.positions(epoch);
+        }
+        crate::ephemeris::positions::compute_system_positions_at_offset(
+            &self.stars,
+            &self.planets,
+            &self.barycenters,
+            &self.minor_planets,
+            epoch,
+            offset_seconds,
+        )
+    }
+    pub fn positions_for_ids_at_offset(
+        &self,
+        epoch: Duration,
+        offset_seconds: f64,
+        ids: &[Uuid],
+    ) -> DomainResult<HashMap<Uuid, Position>> {
+        if !epoch.value().is_finite()
+            || !offset_seconds.is_finite()
+            || !(epoch.value() + offset_seconds).is_finite()
+        {
+            return Err(DomainError::InvalidInvariant {
+                field: "ephemeris_time".into(),
+                reason: "invalid base epoch or relative offset".into(),
+            });
+        }
+        crate::ephemeris::positions::compute_selected_system_positions_at_offset(
+            &self.stars,
+            &self.planets,
+            &self.barycenters,
+            &self.minor_planets,
+            epoch,
+            offset_seconds,
+            ids,
         )
     }
 

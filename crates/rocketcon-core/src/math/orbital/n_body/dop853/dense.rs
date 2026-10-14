@@ -2,6 +2,7 @@
 pub struct Dop853DenseSegment<const N: usize> {
     pub start_seconds: f64,
     pub end_seconds: f64,
+    pub valid_until_seconds: f64,
     pub start_state: [f64; N],
     pub coefficients: [[f64; N]; 7],
 }
@@ -11,7 +12,7 @@ impl<const N: usize> Dop853DenseSegment<N> {
         if !seconds.is_finite()
             || self.end_seconds <= self.start_seconds
             || seconds < self.start_seconds
-            || seconds > self.end_seconds
+            || seconds > self.valid_until_seconds
         {
             return None;
         }

@@ -7,6 +7,9 @@ use crate::aeroespacial::gravity::GravityField;
 use crate::aeroespacial::vehicle::resolve_vehicle_snapshot;
 use crate::environment::load_environment_snapshot;
 use crate::error::{RocketError, RocketResult};
+use crate::orbital::nbody_field::CatalogGravityField;
+use crate::orbital::nbody_powered::integrate_nbody_rigid_body;
+use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::units::{Angle, AngularMomentum, Duration, ForceVector, Pressure, Vector3};
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::{
@@ -68,6 +71,7 @@ pub async fn advance_vehicle_physical_state(
         None,
         None,
         false,
+        None,
     )
     .await
 }
@@ -80,6 +84,7 @@ pub(crate) async fn advance_vehicle_physical_state_with_initial_aerodynamics(
     control_input: &VehicleControlInput,
     initial_aerodynamics: InitialAerodynamics<'_>,
     effective_engine_loads: &HashMap<Uuid, f64>,
+    nbody_catalog: Option<&EphemerisCatalog>,
 ) -> RocketResult<VehiclePhysicalState> {
     advance_vehicle_physical_state_inner(
         pool,
@@ -90,6 +95,7 @@ pub(crate) async fn advance_vehicle_physical_state_with_initial_aerodynamics(
         Some(initial_aerodynamics),
         Some(effective_engine_loads),
         true,
+        nbody_catalog,
     )
     .await
 }
@@ -103,6 +109,7 @@ async fn advance_vehicle_physical_state_inner(
     initial_aerodynamics: Option<InitialAerodynamics<'_>>,
     effective_engine_loads: Option<&HashMap<Uuid, f64>>,
     existing_transaction: bool,
+    nbody_catalog: Option<&EphemerisCatalog>,
 ) -> RocketResult<VehiclePhysicalState> {
     let physical_state = if let Some(initial) = initial_aerodynamics.as_ref() {
         initial.state
@@ -264,8 +271,11 @@ async fn advance_vehicle_physical_state_inner(
         }
     }
 
-    let gravity_field =
-        GravityField::load(pool, environment, universe_epoch + current_at_epoch).await?;
+    let gravity_field = if nbody_catalog.is_none() {
+        Some(GravityField::load(pool, environment, universe_epoch + current_at_epoch).await?)
+    } else {
+        None
+    };
 
     let aero_diag = match initial_aerodynamics.as_ref() {
         Some(initial) => initial.diagnostic,
@@ -305,21 +315,48 @@ async fn advance_vehicle_physical_state_inner(
 
     let initial_rigid_state = RigidBodyState::from_physical_state(&physical_state);
 
-    let new_rigid_state = rk4_step(&initial_rigid_state, dt, |sub_state| {
-        evaluate_rigid_body_derivative_with_ambient_pressure(
-            sub_state,
-            snapshot.mass_properties(),
-            components,
-            snapshot.active_stages(),
-            &operational_states,
-            &reaction_wheel_states,
-            control_input,
-            gravity_field.acceleration_at(sub_state.position),
-            drag_force,
-            dt,
-            ambient_pressure,
-        )
-    });
+    let new_rigid_state = if let Some(catalog) = nbody_catalog {
+        let mut gravity = CatalogGravityField::new(
+            catalog,
+            physical_state.captured_total_epoch(),
+            initial_rigid_state.position.raw(),
+        )?;
+        integrate_nbody_rigid_body(&initial_rigid_state, dt, |t, sub_state| {
+            let acceleration = gravity.acceleration_at(t, sub_state.position.raw())?;
+            Ok(evaluate_rigid_body_derivative_with_ambient_pressure(
+                sub_state,
+                snapshot.mass_properties(),
+                components,
+                snapshot.active_stages(),
+                &operational_states,
+                &reaction_wheel_states,
+                control_input,
+                acceleration,
+                drag_force,
+                dt,
+                ambient_pressure,
+            ))
+        })?
+    } else {
+        let field = gravity_field
+            .as_ref()
+            .ok_or_else(|| RocketError::Generic("legacy gravity field unavailable".into()))?;
+        rk4_step(&initial_rigid_state, dt, |sub_state| {
+            evaluate_rigid_body_derivative_with_ambient_pressure(
+                sub_state,
+                snapshot.mass_properties(),
+                components,
+                snapshot.active_stages(),
+                &operational_states,
+                &reaction_wheel_states,
+                control_input,
+                field.acceleration_at(sub_state.position),
+                drag_force,
+                dt,
+                ambient_pressure,
+            )
+        })
+    };
 
     let (max_q, max_q_epoch) = match (physical_state.max_dynamic_pressure(), aero_diag) {
         (Some(prev_q), Some(diag)) => {

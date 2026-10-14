@@ -64,6 +64,7 @@ pub struct Dop853Result<const N: usize> {
     pub accepted_steps: usize,
     pub rejected_steps: usize,
     pub evaluations: usize,
+    pub event_seconds: Option<f64>,
 }
 
 fn evaluate<const N: usize, F, C>(
@@ -188,6 +189,7 @@ where
     Ok(Dop853DenseSegment {
         start_seconds: seconds,
         end_seconds: seconds + h,
+        valid_until_seconds: seconds + h,
         start_state: *start,
         coefficients,
     })
@@ -197,12 +199,30 @@ pub fn solve_dop853<const N: usize, F, C>(
     initial: [f64; N],
     end_seconds: f64,
     config: Dop853Config<N>,
-    mut derivative: F,
-    mut cancelled: C,
+    derivative: F,
+    cancelled: C,
 ) -> Result<Dop853Result<N>, Dop853Error>
 where
     F: FnMut(f64, &[f64; N]) -> Result<[f64; N], Dop853Error>,
     C: FnMut() -> bool,
+{
+    solve_dop853_with_event(initial, end_seconds, config, derivative, cancelled, |_| {
+        Ok(None)
+    })
+}
+
+pub fn solve_dop853_with_event<const N: usize, F, C, O>(
+    initial: [f64; N],
+    end_seconds: f64,
+    config: Dop853Config<N>,
+    mut derivative: F,
+    mut cancelled: C,
+    mut observe: O,
+) -> Result<Dop853Result<N>, Dop853Error>
+where
+    F: FnMut(f64, &[f64; N]) -> Result<[f64; N], Dop853Error>,
+    C: FnMut() -> bool,
+    O: FnMut(&Dop853DenseSegment<N>) -> Result<Option<f64>, Dop853Error>,
 {
     config.validate()?;
     if !end_seconds.is_finite() || end_seconds <= 0.0 || !initial.iter().all(|x| x.is_finite()) {
@@ -215,6 +235,7 @@ where
         accepted_steps: 0,
         rejected_steps: 0,
         evaluations: 0,
+        event_seconds: None,
     };
     let mut state = initial;
     let mut seconds = 0.0;
@@ -288,6 +309,21 @@ where
             result.accepted_steps += 1;
             result.final_state = state;
             result.reached_seconds = seconds;
+            let event = observe(&segment)?;
+            if let Some(time) = event {
+                if !time.is_finite() || time < segment.start_seconds || time > segment.end_seconds {
+                    return Err(Dop853Error::NumericalBreakdown);
+                }
+                result.final_state = segment
+                    .evaluate(time)
+                    .ok_or(Dop853Error::NumericalBreakdown)?;
+                result.reached_seconds = time;
+                result.event_seconds = Some(time);
+                let mut segment = segment;
+                segment.valid_until_seconds = time;
+                result.segments.push(segment);
+                return Ok(result);
+            }
             result.segments.push(segment);
             step = (h * if previous_rejected {
                 factor.min(1.0)

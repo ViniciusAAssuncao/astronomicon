@@ -9,6 +9,8 @@ use crate::environment::load_environment_snapshot;
 use crate::error::{RocketError, RocketResult};
 use crate::orbital::coasting::propagate_coasting_vehicle;
 use crate::orbital::invalidate_vehicle_trajectory_patches;
+use crate::orbital::nbody_coasting::{coasting_nbody_requested, propagate_nbody_coasting_vehicle};
+use crate::orbital::nbody_field::{CatalogGravityField, powered_nbody_requested};
 use crate::power::battery::apply_power_delta;
 use crate::power::budget::resolve_vehicle_power_budget;
 use crate::power::consumption::resolve_component_consumption;
@@ -30,18 +32,18 @@ use uuid::Uuid;
 
 mod activation;
 mod profile;
-mod report;
-mod transaction;
 mod reference_contact;
+mod report;
 mod soi_crossing;
 mod soi_transition;
+mod transaction;
 
 use activation::is_propulsion_or_control_active;
-use reference_contact::contact_for_reference;
-use soi_transition::apply_confirmed_soi_transition;
 pub use profile::{TickProfile, TickStageTiming};
+use reference_contact::contact_for_reference;
 pub use report::{SoiTransitionReport, VehicleTickReport};
 pub use soi_crossing::{SoiCrossing, first_crossing};
+use soi_transition::apply_confirmed_soi_transition;
 pub use transaction::{
     advance_vehicle_simulation, advance_vehicle_simulation_in_session,
     advance_vehicle_simulation_profiled, advance_vehicle_simulation_profiled_in_session,
@@ -88,7 +90,15 @@ pub(super) async fn advance_vehicle_simulation_inner(
 
     let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
     let vehicle_snapshot = resolve_vehicle_snapshot_with_components(
-        pool, vehicle_id, &components, None, 1.0, universe_epoch, current_at_epoch).await?;
+        pool,
+        vehicle_id,
+        &components,
+        None,
+        1.0,
+        universe_epoch,
+        current_at_epoch,
+    )
+    .await?;
     mark(&mut profile, "load_state_environment_snapshot");
 
     let power_budget = resolve_vehicle_power_budget(
@@ -112,8 +122,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
     .await?;
     mark(&mut profile, "power_and_battery");
 
-    let propellant_tick = PropellantTick::prepare(
-        pool, &components, &vehicle_snapshot, dt).await?;
+    let propellant_tick = PropellantTick::prepare(pool, &components, &vehicle_snapshot, dt).await?;
 
     let mut component_waste_heats: HashMap<Uuid, Luminosity> =
         HashMap::with_capacity(components.len());
@@ -144,15 +153,26 @@ pub(super) async fn advance_vehicle_simulation_inner(
     mark(&mut profile, "component_heat_inputs");
 
     let is_propelling =
-        is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input) ||
-        propellant_tick.budget.effective_loads.values().any(|load| *load > 1e-4);
+        is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input)
+            || propellant_tick
+                .budget
+                .effective_loads
+                .values()
+                .any(|load| *load > 1e-4);
 
     let aero_diag_current = if environment.planet.is_some() {
         resolve_vehicle_aerodynamics_in_existing_transaction(
-            pool, &current_physical_state, reference_body_id,
-            environment.reference_position().raw(), &components,
-            vehicle_snapshot.active_stages(), universe_epoch, current_at_epoch,
-            climate_body.as_ref()).await?
+            pool,
+            &current_physical_state,
+            reference_body_id,
+            environment.reference_position().raw(),
+            &components,
+            vehicle_snapshot.active_stages(),
+            universe_epoch,
+            current_at_epoch,
+            climate_body.as_ref(),
+        )
+        .await?
     } else {
         None
     };
@@ -162,19 +182,30 @@ pub(super) async fn advance_vehicle_simulation_inner(
         .map_or(false, |a| a.drag_force.magnitude().value() > 1e-4);
 
     let surface_contact_current = contact_for_reference(
-        pool, &environment, universe_epoch, current_at_epoch,
+        pool,
+        &environment,
+        universe_epoch,
+        current_at_epoch,
         environment.reference_position(),
-        current_physical_state.position(), current_physical_state.velocity()).await?;
+        current_physical_state.position(),
+        current_physical_state.velocity(),
+    )
+    .await?;
 
     let has_contact = surface_contact_current.has_contact();
     mark(&mut profile, "initial_aero_and_contact");
 
     let uses_force_integration = is_propelling || has_drag || has_contact;
+    let use_nbody_coast = !uses_force_integration && coasting_nbody_requested()?;
+    let use_nbody_powered =
+        uses_force_integration && !has_drag && !has_contact && powered_nbody_requested()?;
     let total_epoch_new = universe_epoch + new_at_epoch;
     let ephemeris = EphemerisCatalog::load(pool, environment.system_id).await?;
     let states_new = ephemeris.states(total_epoch_new)?;
-    let positions_new: HashMap<_, _> = states_new.iter()
-        .map(|(id, state)| (*id, state.position)).collect();
+    let positions_new: HashMap<_, _> = states_new
+        .iter()
+        .map(|(id, state)| (*id, state.position))
+        .collect();
     let mut new_physical_state = if uses_force_integration {
         let initial_aerodynamics = InitialAerodynamics::new(
             current_physical_state,
@@ -191,41 +222,91 @@ pub(super) async fn advance_vehicle_simulation_inner(
             control_input,
             initial_aerodynamics,
             &propellant_tick.budget.effective_loads,
+            if use_nbody_powered {
+                Some(&ephemeris)
+            } else {
+                None
+            },
         )
         .await?;
+        if use_nbody_powered {
+            mark(&mut profile, "nbody_powered_integration");
+        }
+        invalidate_vehicle_trajectory_patches(pool, vehicle_id).await?;
+        state
+    } else if use_nbody_coast {
+        let state =
+            propagate_nbody_coasting_vehicle(pool, &current_physical_state, dt, &ephemeris).await?;
+        mark(&mut profile, "nbody_coast_integration");
         invalidate_vehicle_trajectory_patches(pool, vehicle_id).await?;
         state
     } else {
         propagate_coasting_vehicle(
-            pool, &current_physical_state, &environment, dt, &ephemeris, &states_new,
-        ).await?
+            pool,
+            &current_physical_state,
+            &environment,
+            dt,
+            &ephemeris,
+            &states_new,
+        )
+        .await?
     };
-    propellant_tick.persist(pool, universe_epoch, new_at_epoch).await?;
+    propellant_tick
+        .persist(pool, universe_epoch, new_at_epoch)
+        .await?;
     mark(&mut profile, "dynamics_or_coast");
 
     let (transitioned, soi_crossings) = apply_confirmed_soi_transition(
-        pool, &current_physical_state, new_physical_state, &ephemeris,
-        dt, uses_force_integration,
-    ).await?;
+        pool,
+        &current_physical_state,
+        new_physical_state,
+        &ephemeris,
+        dt,
+        uses_force_integration || use_nbody_coast,
+    )
+    .await?;
     new_physical_state = transitioned;
 
     let environment = if new_physical_state.reference_body_id() != reference_body_id {
-        load_environment_snapshot(pool, new_physical_state.reference_body_id(),
-            universe_epoch, new_at_epoch).await?
+        load_environment_snapshot(
+            pool,
+            new_physical_state.reference_body_id(),
+            universe_epoch,
+            new_at_epoch,
+        )
+        .await?
     } else {
         environment
     };
-    let body_position_new = positions_new.get(&environment.reference_id())
-        .copied().ok_or_else(|| RocketError::Generic(
-            "reference body position unavailable after propagation".into()))?;
+    let body_position_new = positions_new
+        .get(&environment.reference_id())
+        .copied()
+        .ok_or_else(|| {
+            RocketError::Generic("reference body position unavailable after propagation".into())
+        })?;
     let surface_contact = contact_for_reference(
-        pool, &environment, universe_epoch, new_at_epoch, body_position_new,
-        new_physical_state.position(), new_physical_state.velocity()).await?;
+        pool,
+        &environment,
+        universe_epoch,
+        new_at_epoch,
+        body_position_new,
+        new_physical_state.position(),
+        new_physical_state.velocity(),
+    )
+    .await?;
     let aero_diag = if environment.planet.is_some() {
         resolve_vehicle_aerodynamics_in_existing_transaction(
-            pool, &new_physical_state, new_physical_state.reference_body_id(),
-            body_position_new.raw(), &components, vehicle_snapshot.active_stages(),
-            universe_epoch, new_at_epoch, climate_body.as_ref()).await?
+            pool,
+            &new_physical_state,
+            new_physical_state.reference_body_id(),
+            body_position_new.raw(),
+            &components,
+            vehicle_snapshot.active_stages(),
+            universe_epoch,
+            new_at_epoch,
+            climate_body.as_ref(),
+        )
+        .await?
     } else {
         None
     };
@@ -288,14 +369,27 @@ pub(super) async fn advance_vehicle_simulation_inner(
     .await?;
     mark(&mut profile, "thermal_network");
 
-    let grav_acc = resolve_vehicle_gravitational_acceleration(
-        pool,
-        &environment,
-        &new_physical_state,
-        universe_epoch,
-        new_at_epoch,
-    )
-    .await?;
+    let grav_acc = if use_nbody_coast || use_nbody_powered {
+        let mut field = CatalogGravityField::new(
+            &ephemeris,
+            new_physical_state.captured_total_epoch(),
+            new_physical_state.position().raw(),
+        )?;
+        field
+            .acceleration_at(0.0, Vector3::zero())
+            .map_err(|error| {
+                RocketError::Generic(format!("N-body telemetry gravity failed: {error:?}"))
+            })?
+    } else {
+        resolve_vehicle_gravitational_acceleration(
+            pool,
+            &environment,
+            &new_physical_state,
+            universe_epoch,
+            new_at_epoch,
+        )
+        .await?
+    };
 
     let (max_q, max_q_epoch) = match (new_physical_state.max_dynamic_pressure(), aero_diag) {
         (Some(prev_q), Some(diag)) => {
@@ -359,10 +453,11 @@ pub(super) async fn advance_vehicle_simulation_inner(
     }
     mark(&mut profile, "gravity_maxq_and_report");
 
-    let reference_body_velocity = states_new.get(&environment.reference_id())
-        .ok_or_else(|| RocketError::Generic(
-            "reference body has no final ephemeris state".into()))?
-        .velocity.raw();
+    let reference_body_velocity = states_new
+        .get(&environment.reference_id())
+        .ok_or_else(|| RocketError::Generic("reference body has no final ephemeris state".into()))?
+        .velocity
+        .raw();
 
     Ok(VehicleTickReport::new(
         new_physical_state,
@@ -374,14 +469,27 @@ pub(super) async fn advance_vehicle_simulation_inner(
         axial_g_load,
         lateral_g_load,
         total_g_load,
-        [body_position_new.raw().0, body_position_new.raw().1, body_position_new.raw().2],
-        [reference_body_velocity.0, reference_body_velocity.1, reference_body_velocity.2],
-        environment.reference_radius().map_or(0.0, |radius| radius.value()),
+        [
+            body_position_new.raw().0,
+            body_position_new.raw().1,
+            body_position_new.raw().2,
+        ],
+        [
+            reference_body_velocity.0,
+            reference_body_velocity.1,
+            reference_body_velocity.2,
+        ],
+        environment
+            .reference_radius()
+            .map_or(0.0, |radius| radius.value()),
         propellant_tick.main_engine_loads(),
         propellant_tick.tank_stored_kg(),
-        soi_crossings.into_iter().map(|event| SoiTransitionReport {
-            elapsed_seconds: event.elapsed_seconds,
-            entering: event.entering,
-        }).collect(),
+        soi_crossings
+            .into_iter()
+            .map(|event| SoiTransitionReport {
+                elapsed_seconds: event.elapsed_seconds,
+                entering: event.entering,
+            })
+            .collect(),
     ))
 }

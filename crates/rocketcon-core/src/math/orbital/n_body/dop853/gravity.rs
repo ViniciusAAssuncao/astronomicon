@@ -20,6 +20,16 @@ where
         return Err(Dop853Error::InvalidGravitySource);
     }
     let sources = ephemeris(seconds)?;
+    inertial_point_mass_derivative_from_sources(state, &sources)
+}
+
+pub fn inertial_point_mass_derivative_from_sources(
+    state: &[f64; 6],
+    sources: &[GravitySource],
+) -> Result<[f64; 6], Dop853Error> {
+    if sources.is_empty() || !state.iter().all(|value| value.is_finite()) {
+        return Err(Dop853Error::InvalidGravitySource);
+    }
     let mut acceleration = [0.0; 3];
     let mut correction = [0.0; 3];
     for (index, body) in sources.iter().enumerate() {

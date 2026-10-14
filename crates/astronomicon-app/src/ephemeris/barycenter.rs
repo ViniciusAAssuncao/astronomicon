@@ -1,9 +1,9 @@
+use crate::ephemeris::time_offset::OrbitalTime;
 use astronomicon_core::domain::{Barycenter, BarycenterMember, MinorPlanet, Planet, Star};
 use astronomicon_core::error::{DomainError, DomainResult};
 use astronomicon_core::math::gravity::{calculate_effective_mass, gravitational_parameter};
-use astronomicon_core::math::kepler::orbital_position_secular;
 use astronomicon_core::math::perturbation::resolve_secular_precession;
-use astronomicon_core::units::{Duration, Mass, Position};
+use astronomicon_core::units::{Mass, Position};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -15,7 +15,7 @@ pub fn split_barycenter_positions(
     planet_map: &HashMap<Uuid, &Planet>,
     minor_planet_map: &HashMap<Uuid, &MinorPlanet>,
     memo: &mut HashMap<Uuid, Position>,
-    time_since_epoch: Duration,
+    time_since_epoch: OrbitalTime,
 ) -> DomainResult<()> {
     let bary =
         barycenter_map
@@ -39,12 +39,8 @@ pub fn split_barycenter_positions(
     let mu_int = gravitational_parameter(Mass::new(m_total));
     let secular_rates =
         resolve_secular_precession(&bary.internal_orbital_elements(), mu_int, None, None);
-    let r_rel_int = orbital_position_secular(
-        &bary.internal_orbital_elements(),
-        mu_int,
-        &secular_rates,
-        time_since_epoch,
-    )?;
+    let r_rel_int =
+        time_since_epoch.position(&bary.internal_orbital_elements(), mu_int, &secular_rates)?;
 
     let (frac_pri, frac_sec) = if m_total > 0.0 {
         (m_pri.value() / m_total, m_sec.value() / m_total)

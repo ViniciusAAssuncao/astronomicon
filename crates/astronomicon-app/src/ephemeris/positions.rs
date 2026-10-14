@@ -1,4 +1,5 @@
-use crate::ephemeris::node_resolution::resolve_node;
+use crate::ephemeris::node_resolution::resolve_node_at_offset;
+use crate::ephemeris::time_offset::OrbitalTime;
 use crate::error::AppResult;
 use astronomicon_core::domain::{Barycenter, MinorPlanet, Planet, Star};
 use astronomicon_core::error::{DomainError, DomainResult};
@@ -17,6 +18,82 @@ pub fn compute_system_positions(
     minor_planets: &[MinorPlanet],
     time_since_epoch: Duration,
 ) -> DomainResult<HashMap<Uuid, Position>> {
+    compute_system_positions_at_offset(
+        stars,
+        planets,
+        barycenters,
+        minor_planets,
+        time_since_epoch,
+        0.0,
+    )
+}
+
+pub fn compute_system_positions_at_offset(
+    stars: &[Star],
+    planets: &[Planet],
+    barycenters: &[Barycenter],
+    minor_planets: &[MinorPlanet],
+    base: Duration,
+    offset_seconds: f64,
+) -> DomainResult<HashMap<Uuid, Position>> {
+    compute_positions(
+        stars,
+        planets,
+        barycenters,
+        minor_planets,
+        base,
+        offset_seconds,
+        None,
+    )
+}
+
+pub fn compute_selected_system_positions_at_offset(
+    stars: &[Star],
+    planets: &[Planet],
+    barycenters: &[Barycenter],
+    minor_planets: &[MinorPlanet],
+    base: Duration,
+    offset_seconds: f64,
+    requested: &[Uuid],
+) -> DomainResult<HashMap<Uuid, Position>> {
+    if requested.is_empty()
+        || requested
+            .iter()
+            .enumerate()
+            .any(|(index, id)| requested[..index].contains(id))
+    {
+        return Err(DomainError::InvalidInvariant {
+            field: "ephemeris_body_selection".into(),
+            reason: "selection must contain unique body identifiers and cannot be empty".into(),
+        });
+    }
+    compute_positions(
+        stars,
+        planets,
+        barycenters,
+        minor_planets,
+        base,
+        offset_seconds,
+        Some(requested),
+    )
+}
+
+fn compute_positions(
+    stars: &[Star],
+    planets: &[Planet],
+    barycenters: &[Barycenter],
+    minor_planets: &[MinorPlanet],
+    base: Duration,
+    offset_seconds: f64,
+    selected: Option<&[Uuid]>,
+) -> DomainResult<HashMap<Uuid, Position>> {
+    if !base.value().is_finite() || !offset_seconds.is_finite() {
+        return Err(DomainError::InvalidInvariant {
+            field: "ephemeris_time".into(),
+            reason: "non-finite epoch or offset".into(),
+        });
+    }
+    let time_since_epoch = OrbitalTime::at(base, offset_seconds);
     let star_map: HashMap<Uuid, &Star> = stars.iter().map(|s| (s.id(), s)).collect();
     let planet_map: HashMap<Uuid, &Planet> = planets.iter().map(|p| (p.id(), p)).collect();
     let barycenter_map: HashMap<Uuid, &Barycenter> =
@@ -48,8 +125,27 @@ pub fn compute_system_positions(
     );
     let mut visiting: HashSet<Uuid> = HashSet::new();
 
+    if let Some(requested) = selected {
+        let mut filtered = HashMap::with_capacity(requested.len());
+        for id in requested {
+            let position = resolve_node_at_offset(
+                *id,
+                &member_of,
+                &star_map,
+                &planet_map,
+                &barycenter_map,
+                &minor_planet_map,
+                &mut memo,
+                &mut visiting,
+                time_since_epoch,
+            )?;
+            filtered.insert(*id, position);
+        }
+        return Ok(filtered);
+    }
+
     for barycenter in barycenters {
-        resolve_node(
+        resolve_node_at_offset(
             barycenter.id(),
             &member_of,
             &star_map,
@@ -63,7 +159,7 @@ pub fn compute_system_positions(
     }
 
     for star in stars {
-        resolve_node(
+        resolve_node_at_offset(
             star.id(),
             &member_of,
             &star_map,
@@ -77,7 +173,7 @@ pub fn compute_system_positions(
     }
 
     for planet in planets {
-        resolve_node(
+        resolve_node_at_offset(
             planet.id(),
             &member_of,
             &star_map,
@@ -91,7 +187,7 @@ pub fn compute_system_positions(
     }
 
     for minor_planet in minor_planets {
-        resolve_node(
+        resolve_node_at_offset(
             minor_planet.id(),
             &member_of,
             &star_map,

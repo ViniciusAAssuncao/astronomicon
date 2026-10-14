@@ -1,5 +1,6 @@
 use super::{
     Dop853Config, Dop853Error, GravitySource, inertial_point_mass_derivative, solve_dop853,
+    solve_dop853_with_event,
 };
 use crate::math::orbital::propagate_universal_state_vectors;
 use astronomicon_core::units::GravitationalParameter;
@@ -272,6 +273,38 @@ fn inertial_force_resolves_each_body_at_the_stage_epoch() {
         ])
     });
     assert!(matches!(duplicate, Err(Dop853Error::InvalidGravitySource)));
+}
+
+#[test]
+fn event_stops_dense_output_before_the_segment_endpoint() {
+    let config = Dop853Config {
+        absolute_tolerances: [1e-8],
+        relative_tolerance: 1e-12,
+        initial_step_s: 10.0,
+        minimum_step_s: 1e-6,
+        maximum_step_s: 10.0,
+        maximum_attempts: 16,
+        maximum_evaluations: 256,
+        maximum_segments: 16,
+    };
+    let solution = solve_dop853_with_event(
+        [0.0],
+        20.0,
+        config,
+        |_, _| Ok([1.0]),
+        || false,
+        |segment| {
+            Ok(Some(
+                segment.start_seconds + 0.25 * (segment.end_seconds - segment.start_seconds),
+            ))
+        },
+    )
+    .unwrap();
+    let event = solution.event_seconds.unwrap();
+    assert!((event - 2.5).abs() < 1e-10);
+    assert!((solution.final_state[0] - event).abs() < 1e-9);
+    assert!(solution.segments[0].evaluate(event).is_some());
+    assert!(solution.segments[0].evaluate(event + 0.1).is_none());
 }
 
 #[test]
