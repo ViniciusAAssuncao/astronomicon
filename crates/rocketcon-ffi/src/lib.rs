@@ -1,9 +1,11 @@
 mod engine;
+mod forecast_reader;
 mod orbit_preview;
 mod snapshot;
 mod vehicle;
 
 pub use engine::Engine;
+pub use forecast_reader::PreviewEngine;
 
 #[cxx::bridge(namespace = "rocketcon")]
 pub mod ffi {
@@ -177,6 +179,12 @@ pub mod ffi {
     extern "Rust" {
         type Engine;
 
+        type PreviewEngine;
+
+        fn create_preview_engine() -> Result<Box<PreviewEngine>>;
+        fn load_read_only(self: &mut PreviewEngine, save_path_utf8: &str, vehicle_uuid: &str) -> Result<()>;
+        fn predict(self: &PreviewEngine, under_thrust: bool) -> Result<OrbitPreview>;
+
         fn create_engine() -> Result<Box<Engine>>;
         fn load_save(self: &mut Engine, save_path_utf8: &str, vehicle_uuid: &str) -> Result<()>;
         fn set_control(self: &mut Engine, pitch: f64, yaw: f64, roll: f64) -> Result<()>;
@@ -196,3 +204,4 @@ pub mod ffi {
 }
 
 pub use engine::create_engine;
+pub use forecast_reader::create_preview_engine;

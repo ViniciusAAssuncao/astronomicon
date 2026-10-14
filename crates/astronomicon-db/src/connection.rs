@@ -31,6 +31,18 @@ pub async fn open_pool_path(path: &Path) -> DbResult<SqlitePool> {
     open_pool_with_options(options).await
 }
 
+pub async fn open_read_only_pool_path(path: &Path) -> DbResult<SqlitePool> {
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .read_only(true)
+        .create_if_missing(false)
+        .pragma("busy_timeout", "5000");
+    Ok(SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await?)
+}
+
 async fn open_pool_with_options(options: SqliteConnectOptions) -> DbResult<SqlitePool> {
     let pool = SqlitePoolOptions::new().connect_with(options).await?;
 
