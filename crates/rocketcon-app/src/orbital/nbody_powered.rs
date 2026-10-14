@@ -3,7 +3,8 @@ use crate::error::{RocketError, RocketResult};
 use astronomicon_core::units::{
     AngularVelocityVector, Duration, Position, Quaternion, Vector3, VelocityVector,
 };
-use rocketcon_core::math::orbital::n_body::dop853::{Dop853Error, solve_dop853};
+use rocketcon_core::math::orbital::n_body::dop853::Dop853DenseSegment;
+use rocketcon_core::math::orbital::n_body::dop853::{Dop853Error, solve_dop853_with_event};
 use rocketcon_core::math::{RigidBodyDerivative, RigidBodyState};
 
 fn stage_state(y: &[f64; 13]) -> RigidBodyState {
@@ -37,13 +38,16 @@ fn stage_derivative(state: &RigidBodyState, derivative: RigidBodyDerivative) -> 
     ]
 }
 
-pub(crate) fn integrate_nbody_rigid_body<F>(
+pub(crate) fn integrate_nbody_rigid_body<F, O>(
     initial: &RigidBodyState,
     dt: Duration,
     mut evaluate: F,
+    mut observe: O,
+    position_segments: &mut Vec<Dop853DenseSegment<3>>,
 ) -> RocketResult<RigidBodyState>
 where
     F: FnMut(f64, &RigidBodyState) -> Result<RigidBodyDerivative, Dop853Error>,
+    O: FnMut(&Dop853DenseSegment<13>) -> Result<Option<f64>, Dop853Error>,
 {
     let origin = initial.position.raw();
     let v = initial.velocity.raw();
@@ -75,7 +79,7 @@ where
             1e-3, 1e-3, 1e-3, 1e-5, 1e-5, 1e-5, 1e-9, 1e-9, 1e-9, 1e-9, 1e-7, 1e-7, 1e-7,
         ],
     )?;
-    let solved = solve_dop853(
+    let solved = solve_dop853_with_event(
         y,
         dt.value(),
         configuration,
@@ -85,6 +89,7 @@ where
             Ok(stage_derivative(&sub_state, derivative))
         },
         || false,
+        |segment| observe(segment),
     )
     .map_err(|error| {
         RocketError::Generic(format!("powered N-body integration failed: {error:?}"))
@@ -94,6 +99,16 @@ where
             "powered N-body did not complete the authoritative tick".into(),
         ));
     }
+    let projected = solved
+        .segments
+        .iter()
+        .map(|segment| {
+            segment.position_segment().ok_or_else(|| {
+                RocketError::Generic("N-body rigid-body dense position unavailable".into())
+            })
+        })
+        .collect::<RocketResult<Vec<_>>>()?;
+    position_segments.extend(projected);
     let result = stage_state(&solved.final_state);
     let quaternion = result.orientation;
     let norm = quaternion.norm();
@@ -126,14 +141,20 @@ mod tests {
             AngularVelocityVector::zero(),
         );
         let duration = Duration::new(0.2);
-        let result = integrate_nbody_rigid_body(&state, duration, |_, sub| {
-            Ok(RigidBodyDerivative::new(
-                sub.velocity,
-                AccelerationVector::from_raw(Vector3::new(4.0, 6.0, 0.0)),
-                sub.angular_velocity,
-                AngularAccelerationVector::zero(),
-            ))
-        })
+        let result = integrate_nbody_rigid_body(
+            &state,
+            duration,
+            |_, sub| {
+                Ok(RigidBodyDerivative::new(
+                    sub.velocity,
+                    AccelerationVector::from_raw(Vector3::new(4.0, 6.0, 0.0)),
+                    sub.angular_velocity,
+                    AngularAccelerationVector::zero(),
+                ))
+            },
+            |_| Ok(None),
+            &mut Vec::new(),
+        )
         .unwrap();
         let delta = result.position.raw() - state.position.raw();
         assert!((delta.0 - 3.08).abs() < 1e-6);
@@ -151,14 +172,20 @@ mod tests {
             Quaternion::identity(),
             AngularVelocityVector::zero(),
         );
-        let result = integrate_nbody_rigid_body(&initial, Duration::new(0.1), |_, sub| {
-            Ok(RigidBodyDerivative::new(
-                sub.velocity,
-                AccelerationVector::zero(),
-                sub.angular_velocity,
-                AngularAccelerationVector::from_raw(Vector3::new(0.0, 0.0, 2.0)),
-            ))
-        })
+        let result = integrate_nbody_rigid_body(
+            &initial,
+            Duration::new(0.1),
+            |_, sub| {
+                Ok(RigidBodyDerivative::new(
+                    sub.velocity,
+                    AccelerationVector::zero(),
+                    sub.angular_velocity,
+                    AngularAccelerationVector::from_raw(Vector3::new(0.0, 0.0, 2.0)),
+                ))
+            },
+            |_| Ok(None),
+            &mut Vec::new(),
+        )
         .unwrap();
         assert!((result.angular_velocity.raw().2 - 0.2).abs() < 1e-9);
         assert!((result.orientation.z() - 0.005).abs() < 1e-6);

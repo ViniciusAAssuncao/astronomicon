@@ -1,5 +1,7 @@
 use super::*;
+use rocketcon_core::math::orbital::n_body::dop853::Dop853DenseSegment;
 use rocketcon_core::math::orbital::n_body::dop853::{Dop853Config, solve_dop853};
+use uuid::Uuid;
 
 fn segment() -> Dop853DenseSegment<6> {
     let settings = Dop853Config {

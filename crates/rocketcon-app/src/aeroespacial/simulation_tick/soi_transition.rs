@@ -4,9 +4,10 @@ use crate::orbital::coasting::propagate_coasting_segment;
 use crate::orbital::invalidate_vehicle_trajectory_patches;
 use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::math::gravity::gravitational_parameter;
-use astronomicon_core::units::{Duration, Position, VelocityVector};
+use astronomicon_core::units::{Duration, Position, Vector3, VelocityVector};
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::VehiclePhysicalState;
+use rocketcon_core::math::orbital::n_body::dop853::Dop853DenseSegment;
 use rocketcon_core::math::orbital::propagate_universal_state_vectors;
 use rocketcon_db::repositories::vehicle_physical_state as physical_repository;
 
@@ -17,6 +18,7 @@ pub(super) async fn apply_confirmed_soi_transition(
     catalog: &EphemerisCatalog,
     duration: Duration,
     uses_force_integration: bool,
+    dense_segments: Option<&[Dop853DenseSegment<3>]>,
 ) -> RocketResult<(VehiclePhysicalState, Vec<SoiCrossing>)> {
     let total = duration.value();
     let initial_epoch = initial.captured_total_epoch();
@@ -34,20 +36,29 @@ pub(super) async fn apply_confirmed_soi_transition(
             break;
         }
         let crossing = if uses_force_integration {
+            let start_position = if let Some(segments) = dense_segments {
+                nbody_world_position(segments, initial.position(), elapsed)?
+            } else {
+                interpolate_world_position(initial, &proposed, elapsed / total, total)
+            };
             first_crossing(
                 catalog,
                 initial_epoch + Duration::new(elapsed),
                 current_reference,
                 remaining,
-                interpolate_world_position(initial, &proposed, elapsed / total, total),
+                start_position,
                 proposed.position(),
                 |t, _| {
-                    Ok(interpolate_world_position(
-                        initial,
-                        &proposed,
-                        (elapsed + t) / total,
-                        total,
-                    ))
+                    if let Some(segments) = dense_segments {
+                        nbody_world_position(segments, initial.position(), elapsed + t)
+                    } else {
+                        Ok(interpolate_world_position(
+                            initial,
+                            &proposed,
+                            (elapsed + t) / total,
+                            total,
+                        ))
+                    }
                 },
             )?
         } else {
@@ -131,6 +142,24 @@ pub(super) async fn apply_confirmed_soi_transition(
     Ok((endpoint, events))
 }
 
+fn nbody_world_position(
+    segments: &[Dop853DenseSegment<3>],
+    origin: Position,
+    elapsed: f64,
+) -> RocketResult<Position> {
+    let local = segments
+        .iter()
+        .find_map(|segment| segment.evaluate(elapsed))
+        .ok_or_else(|| {
+            RocketError::Generic(format!(
+                "N-body dense SOI state absent at elapsed {elapsed} seconds"
+            ))
+        })?;
+    Ok(Position::from_raw(
+        origin.raw() + Vector3::new(local[0], local[1], local[2]),
+    ))
+}
+
 fn with_reference(
     state: VehiclePhysicalState,
     reference_body_id: uuid::Uuid,
@@ -147,4 +176,27 @@ fn with_reference(
         state.max_dynamic_pressure(),
         state.max_dynamic_pressure_epoch(),
     )?)
+}
+
+#[cfg(test)]
+mod dense_path_tests {
+    use super::*;
+
+    #[test]
+    fn soi_position_uses_integrator_dense_segment_and_fixed_inertial_origin() {
+        let mut coefficients = [[0.0; 3]; 7];
+        coefficients[0][0] = 40.0;
+        let segment = Dop853DenseSegment {
+            start_seconds: 1.0,
+            end_seconds: 3.0,
+            valid_until_seconds: 3.0,
+            start_state: [2.0, 0.0, 0.0],
+            coefficients,
+        };
+        let origin = Position::from_raw(Vector3::new(100.0, 200.0, 0.0));
+        let result = nbody_world_position(&[segment], origin, 2.0).unwrap().raw();
+        assert!((result.0 - 122.0).abs() < 1e-12);
+        assert!((result.1 - 200.0).abs() < 1e-12);
+        assert!(nbody_world_position(&[], origin, 2.0).is_err());
+    }
 }

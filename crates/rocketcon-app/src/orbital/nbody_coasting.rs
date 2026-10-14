@@ -1,40 +1,31 @@
 use super::nbody_field::{CatalogGravityField, tick_policy};
+use super::nbody_impact::CatalogImpactMonitor;
 use crate::error::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::units::{Duration, Position, Vector3, VelocityVector};
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::VehiclePhysicalState;
-use rocketcon_core::math::orbital::n_body::dop853::solve_dop853;
+use rocketcon_core::math::orbital::n_body::dop853::solve_dop853_with_event;
 use rocketcon_db::repositories::vehicle_physical_state as physical_repository;
-
-pub(crate) fn opt_in_enabled(value: Option<&str>) -> RocketResult<bool> {
-    match value {
-        None | Some("0") => Ok(false),
-        Some("1") => Ok(true),
-        Some(_) => Err(RocketError::Generic(
-            "ROCKETCON_C15_NBODY_COAST accepts only 0 or 1".into(),
-        )),
-    }
-}
-
-pub(crate) fn coasting_nbody_requested() -> RocketResult<bool> {
-    match std::env::var("ROCKETCON_C15_NBODY_COAST") {
-        Ok(value) => opt_in_enabled(Some(&value)),
-        Err(std::env::VarError::NotPresent) => opt_in_enabled(None),
-        Err(std::env::VarError::NotUnicode(_)) => Err(RocketError::Generic(
-            "ROCKETCON_C15_NBODY_COAST is not valid Unicode".into(),
-        )),
-    }
-}
+use uuid::Uuid;
 
 fn integrate_coast(
     initial: &VehiclePhysicalState,
     dt: Duration,
     catalog: &EphemerisCatalog,
+    selected_ids: &[Uuid],
+    position_segments: &mut Vec<
+        rocketcon_core::math::orbital::n_body::dop853::Dop853DenseSegment<3>,
+    >,
 ) -> RocketResult<(Position, VelocityVector)> {
     let origin = initial.position().raw();
     let current_velocity = initial.velocity().raw();
-    let mut gravity = CatalogGravityField::new(catalog, initial.captured_total_epoch(), origin)?;
+    let mut gravity = CatalogGravityField::new(
+        catalog,
+        initial.captured_total_epoch(),
+        origin,
+        Some(selected_ids),
+    )?;
     if ![current_velocity.0, current_velocity.1, current_velocity.2]
         .iter()
         .all(|v| v.is_finite())
@@ -44,7 +35,13 @@ fn integrate_coast(
         ));
     }
     let config = tick_policy(dt, [1e-3, 1e-3, 1e-3, 1e-5, 1e-5, 1e-5])?;
-    let solved = solve_dop853(
+    let impact = CatalogImpactMonitor::new(
+        catalog,
+        initial.captured_total_epoch(),
+        origin,
+        gravity.impact_candidates(),
+    );
+    let solved = solve_dop853_with_event(
         [
             0.0,
             0.0,
@@ -69,6 +66,7 @@ fn integrate_coast(
             ])
         },
         || false,
+        |segment| Ok(impact.first_in(segment)?.map(|event| event.elapsed_seconds)),
     )
     .map_err(|error| RocketError::Generic(format!("N-body coasting failed: {error:?}")))?;
     if solved.event_seconds.is_some() || solved.reached_seconds != dt.value() {
@@ -76,6 +74,16 @@ fn integrate_coast(
             "incomplete N-body coasting tick".into(),
         ));
     }
+    let projected = solved
+        .segments
+        .iter()
+        .map(|segment| {
+            segment.position_segment().ok_or_else(|| {
+                RocketError::Generic("N-body coasting dense position unavailable".into())
+            })
+        })
+        .collect::<RocketResult<Vec<_>>>()?;
+    position_segments.extend(projected);
     let y = solved.final_state;
     Ok((
         Position::from_raw(origin + Vector3::new(y[0], y[1], y[2])),
@@ -88,8 +96,13 @@ pub(crate) async fn propagate_nbody_coasting_vehicle(
     previous: &VehiclePhysicalState,
     dt: Duration,
     catalog: &EphemerisCatalog,
+    selected_ids: &[Uuid],
+    position_segments: &mut Vec<
+        rocketcon_core::math::orbital::n_body::dop853::Dop853DenseSegment<3>,
+    >,
 ) -> RocketResult<VehiclePhysicalState> {
-    let (position, velocity) = integrate_coast(previous, dt, catalog)?;
+    let (position, velocity) =
+        integrate_coast(previous, dt, catalog, selected_ids, position_segments)?;
     let next = VehiclePhysicalState::new_with_max_q(
         previous.vehicle_id(),
         position,
@@ -111,16 +124,6 @@ pub(crate) async fn propagate_nbody_coasting_vehicle(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn nbody_opt_in_is_disabled_by_default_and_rejects_unknown_values() {
-        assert!(!opt_in_enabled(None).unwrap());
-        assert!(!opt_in_enabled(Some("0")).unwrap());
-        assert!(opt_in_enabled(Some("1")).unwrap());
-        for value in ["", "true", "yes", "2", "-1"] {
-            assert!(opt_in_enabled(Some(value)).is_err());
-        }
-    }
 
     #[test]
     fn time_policy_scales_step_sizes_without_fixed_physical_dt() {

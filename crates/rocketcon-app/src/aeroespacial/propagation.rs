@@ -8,6 +8,7 @@ use crate::aeroespacial::vehicle::resolve_vehicle_snapshot;
 use crate::environment::load_environment_snapshot;
 use crate::error::{RocketError, RocketResult};
 use crate::orbital::nbody_field::CatalogGravityField;
+use crate::orbital::nbody_impact::CatalogImpactMonitor;
 use crate::orbital::nbody_powered::integrate_nbody_rigid_body;
 use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::units::{Angle, AngularMomentum, Duration, ForceVector, Pressure, Vector3};
@@ -18,6 +19,7 @@ use rocketcon_core::domain::{
 };
 use rocketcon_core::environment::EnvironmentSnapshot;
 use rocketcon_core::math::numerical_integration::rk4_step;
+use rocketcon_core::math::orbital::n_body::dop853::Dop853DenseSegment;
 use rocketcon_core::math::{
     RigidBodyState, gimbal_actuator_step, reaction_wheel_torque_and_momentum_delta,
 };
@@ -72,6 +74,7 @@ pub async fn advance_vehicle_physical_state(
         None,
         false,
         None,
+        &mut Vec::new(),
     )
     .await
 }
@@ -84,7 +87,8 @@ pub(crate) async fn advance_vehicle_physical_state_with_initial_aerodynamics(
     control_input: &VehicleControlInput,
     initial_aerodynamics: InitialAerodynamics<'_>,
     effective_engine_loads: &HashMap<Uuid, f64>,
-    nbody_catalog: Option<&EphemerisCatalog>,
+    nbody_catalog: Option<(&EphemerisCatalog, &[Uuid])>,
+    position_segments: &mut Vec<Dop853DenseSegment<3>>,
 ) -> RocketResult<VehiclePhysicalState> {
     advance_vehicle_physical_state_inner(
         pool,
@@ -96,6 +100,7 @@ pub(crate) async fn advance_vehicle_physical_state_with_initial_aerodynamics(
         Some(effective_engine_loads),
         true,
         nbody_catalog,
+        position_segments,
     )
     .await
 }
@@ -109,7 +114,8 @@ async fn advance_vehicle_physical_state_inner(
     initial_aerodynamics: Option<InitialAerodynamics<'_>>,
     effective_engine_loads: Option<&HashMap<Uuid, f64>>,
     existing_transaction: bool,
-    nbody_catalog: Option<&EphemerisCatalog>,
+    nbody_catalog: Option<(&EphemerisCatalog, &[Uuid])>,
+    position_segments: &mut Vec<Dop853DenseSegment<3>>,
 ) -> RocketResult<VehiclePhysicalState> {
     let physical_state = if let Some(initial) = initial_aerodynamics.as_ref() {
         initial.state
@@ -315,28 +321,41 @@ async fn advance_vehicle_physical_state_inner(
 
     let initial_rigid_state = RigidBodyState::from_physical_state(&physical_state);
 
-    let new_rigid_state = if let Some(catalog) = nbody_catalog {
+    let new_rigid_state = if let Some((catalog, selected_ids)) = nbody_catalog {
         let mut gravity = CatalogGravityField::new(
             catalog,
             physical_state.captured_total_epoch(),
             initial_rigid_state.position.raw(),
+            Some(selected_ids),
         )?;
-        integrate_nbody_rigid_body(&initial_rigid_state, dt, |t, sub_state| {
-            let acceleration = gravity.acceleration_at(t, sub_state.position.raw())?;
-            Ok(evaluate_rigid_body_derivative_with_ambient_pressure(
-                sub_state,
-                snapshot.mass_properties(),
-                components,
-                snapshot.active_stages(),
-                &operational_states,
-                &reaction_wheel_states,
-                control_input,
-                acceleration,
-                drag_force,
-                dt,
-                ambient_pressure,
-            ))
-        })?
+        let impact = CatalogImpactMonitor::new(
+            catalog,
+            physical_state.captured_total_epoch(),
+            initial_rigid_state.position.raw(),
+            gravity.impact_candidates(),
+        );
+        integrate_nbody_rigid_body(
+            &initial_rigid_state,
+            dt,
+            |t, sub_state| {
+                let acceleration = gravity.acceleration_at(t, sub_state.position.raw())?;
+                Ok(evaluate_rigid_body_derivative_with_ambient_pressure(
+                    sub_state,
+                    snapshot.mass_properties(),
+                    components,
+                    snapshot.active_stages(),
+                    &operational_states,
+                    &reaction_wheel_states,
+                    control_input,
+                    acceleration,
+                    drag_force,
+                    dt,
+                    ambient_pressure,
+                ))
+            },
+            |segment| Ok(impact.first_in(segment)?.map(|event| event.elapsed_seconds)),
+            position_segments,
+        )?
     } else {
         let field = gravity_field
             .as_ref()

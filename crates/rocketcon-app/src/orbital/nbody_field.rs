@@ -5,6 +5,7 @@ use astronomicon_core::units::{AccelerationVector, Duration, Vector3};
 use rocketcon_core::math::orbital::n_body::dop853::{
     Dop853Config, Dop853Error, GravitySource, inertial_point_mass_derivative_from_sources,
 };
+use rocketcon_core::math::orbital::n_body::impact::ImpactCandidate;
 use uuid::Uuid;
 
 pub(crate) struct CatalogGravityField<'a> {
@@ -13,7 +14,7 @@ pub(crate) struct CatalogGravityField<'a> {
     origin: Vector3,
     ids: Vec<Uuid>,
     sources: Vec<GravitySource>,
-    radii: Vec<Option<f64>>,
+    candidates: Vec<ImpactCandidate>,
 }
 
 impl<'a> CatalogGravityField<'a> {
@@ -21,6 +22,7 @@ impl<'a> CatalogGravityField<'a> {
         catalog: &'a EphemerisCatalog,
         epoch: Duration,
         origin: Vector3,
+        selected_ids: Option<&[Uuid]>,
     ) -> RocketResult<Self> {
         if ![origin.0, origin.1, origin.2, epoch.value()]
             .iter()
@@ -57,7 +59,37 @@ impl<'a> CatalogGravityField<'a> {
             ));
         }
         bodies.sort_by_key(|(source, _)| source.body_id);
-        let (sources, radii): (Vec<_>, Vec<_>) = bodies.into_iter().unzip();
+        let candidates = bodies
+            .iter()
+            .filter_map(|(source, radius)| {
+                radius.map(|radius_m| ImpactCandidate {
+                    body_id: source.body_id,
+                    radius_m,
+                })
+            })
+            .collect();
+        let mut sources = bodies
+            .into_iter()
+            .map(|(source, _)| source)
+            .collect::<Vec<_>>();
+        if let Some(selected) = selected_ids {
+            let mut sorted = selected.to_vec();
+            sorted.sort();
+            sorted.dedup();
+            if sorted.len() != selected.len()
+                || sorted.is_empty()
+                || sorted.iter().any(|id| {
+                    sources
+                        .binary_search_by_key(id, |source| source.body_id)
+                        .is_err()
+                })
+            {
+                return Err(RocketError::Generic(
+                    "invalid selected N-body source set".into(),
+                ));
+            }
+            sources.retain(|source| sorted.binary_search(&source.body_id).is_ok());
+        }
         let ids = sources.iter().map(|source| source.body_id).collect();
         Ok(Self {
             catalog,
@@ -65,8 +97,12 @@ impl<'a> CatalogGravityField<'a> {
             origin,
             ids,
             sources,
-            radii,
+            candidates,
         })
+    }
+
+    pub(crate) fn impact_candidates(&self) -> Vec<ImpactCandidate> {
+        self.candidates.clone()
     }
 
     pub(crate) fn acceleration_at(
@@ -78,7 +114,7 @@ impl<'a> CatalogGravityField<'a> {
             .catalog
             .positions_for_ids_at_offset(self.epoch, elapsed_seconds, &self.ids)
             .map_err(|error| Dop853Error::Derivative(error.to_string()))?;
-        for (source, radius) in self.sources.iter_mut().zip(self.radii.iter()) {
+        for source in &mut self.sources {
             let world = positions
                 .get(&source.body_id)
                 .ok_or_else(|| {
@@ -93,12 +129,6 @@ impl<'a> CatalogGravityField<'a> {
             let distance_squared = delta.dot(&delta);
             if !distance_squared.is_finite() || distance_squared <= 0.0 {
                 return Err(Dop853Error::GravitationalSingularity);
-            }
-            if radius.is_some_and(|r| distance_squared <= r * r) {
-                return Err(Dop853Error::Derivative(format!(
-                    "N-body trajectory intersects body {}",
-                    source.body_id
-                )));
             }
             source.position_m = [relative.0, relative.1, relative.2];
         }
@@ -139,15 +169,4 @@ pub(crate) fn tick_policy<const N: usize>(
         maximum_evaluations: 2048,
         maximum_segments: 128,
     })
-}
-
-pub(crate) fn powered_nbody_requested() -> RocketResult<bool> {
-    match std::env::var("ROCKETCON_C15_NBODY_POWERED") {
-        Ok(value) if value == "1" => Ok(true),
-        Ok(value) if value == "0" => Ok(false),
-        Err(std::env::VarError::NotPresent) => Ok(false),
-        _ => Err(RocketError::Generic(
-            "ROCKETCON_C15_NBODY_POWERED accepts only 0 or 1".into(),
-        )),
-    }
 }
