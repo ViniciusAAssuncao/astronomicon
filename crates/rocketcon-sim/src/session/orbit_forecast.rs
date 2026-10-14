@@ -11,7 +11,7 @@ use rocketcon_core::math::orbital::{
 use uuid::Uuid;
 
 const MAX_VERTICES: usize = 385;
-const MAX_ARCS: usize = 8;
+pub(super) const MAX_ARCS: usize = 8;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForecastArc {
@@ -45,7 +45,7 @@ pub struct ForecastResult {
     pub impact_seconds: Option<f64>,
 }
 
-fn body_name(catalog: &EphemerisCatalog, id: Uuid) -> String {
+pub(super) fn body_name(catalog: &EphemerisCatalog, id: Uuid) -> String {
     catalog
         .stars()
         .iter()

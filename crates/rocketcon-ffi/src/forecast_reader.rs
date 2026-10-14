@@ -1,7 +1,29 @@
-use crate::ffi::OrbitPreview;
+use crate::ffi::{ForecastProgress, OrbitPreview};
 use rocketcon_sim::ForecastReader;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::runtime::Runtime;
 use uuid::Uuid;
+
+pub struct ForecastControl {
+    generation: AtomicU64,
+}
+
+pub fn create_forecast_control() -> Box<ForecastControl> {
+    Box::new(ForecastControl {
+        generation: AtomicU64::new(0),
+    })
+}
+
+impl ForecastControl {
+    pub fn select_generation(&self, generation: u64) {
+        self.generation.store(generation, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self, generation: u64) -> bool {
+        self.generation.load(Ordering::Acquire) != generation
+    }
+}
 
 pub struct PreviewEngine {
     runtime: Runtime,
@@ -34,13 +56,27 @@ impl PreviewEngine {
         Ok(())
     }
 
-    pub fn predict(&self, under_thrust: bool) -> Result<OrbitPreview, String> {
+    pub fn predict(
+        &self,
+        under_thrust: bool,
+        control: &ForecastControl,
+        generation: u64,
+        mut progress: Pin<&mut ForecastProgress>,
+    ) -> Result<OrbitPreview, String> {
+        let mut cancelled = || control.is_cancelled(generation);
+        if cancelled() {
+            return Err("forecast cancelled".into());
+        }
         self.runtime
             .block_on(
                 self.reader
                     .as_ref()
                     .ok_or("no forecast save loaded")?
-                    .preview(under_thrust),
+                    .preview_cancelled(under_thrust, &mut cancelled, &mut |partial| {
+                        if !control.is_cancelled(generation) {
+                            progress.as_mut().publish(partial.into(), generation);
+                        }
+                    }),
             )
             .map(OrbitPreview::from)
             .map_err(|error| error.to_string())
@@ -52,5 +88,21 @@ impl Drop for PreviewEngine {
         if let Some(reader) = self.reader.take() {
             self.runtime.block_on(reader.close());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn changing_generation_cancels_only_obsolete_requests() {
+        let control = create_forecast_control();
+        control.select_generation(12);
+        assert!(!control.is_cancelled(12));
+        assert!(control.is_cancelled(11));
+        control.select_generation(13);
+        assert!(control.is_cancelled(12));
+        assert!(!control.is_cancelled(13));
     }
 }

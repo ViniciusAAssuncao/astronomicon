@@ -18,61 +18,127 @@ impl From<SessionPreview> for OrbitPreview {
             soi_radius_m: source.soi.as_ref().map_or(0.0, |s| s.radius_m),
             soi_outside: source.soi.as_ref().is_some_and(|s| s.outside),
             has_soi_exit: source.soi.as_ref().is_some_and(|s| s.exit.is_some()),
-            soi_exit_seconds: source.soi.as_ref().and_then(|s| s.exit.as_ref())
+            soi_exit_seconds: source
+                .soi
+                .as_ref()
+                .and_then(|s| s.exit.as_ref())
                 .map_or(0.0, |event| event.time_to_seconds),
-            soi_exit_position_m: source.soi.as_ref().and_then(|s| s.exit.as_ref())
-                .map_or([0.0; 3], |event| event.relative_position_m).into(),
+            soi_exit_position_m: source
+                .soi
+                .as_ref()
+                .and_then(|s| s.exit.as_ref())
+                .map_or([0.0; 3], |event| event.relative_position_m)
+                .into(),
             under_thrust: source.under_thrust,
+            forecast_target_seconds: source.forecast_target_seconds,
+            forecast_completed_seconds: source.forecast_completed_seconds,
+            forecast_complete: source.forecast_complete,
             has_inclination: source.nodes.inclination_rad.is_some(),
             inclination_rad: source.nodes.inclination_rad.unwrap_or_default(),
             has_ascending_longitude: source.nodes.ascending_longitude_rad.is_some(),
             ascending_longitude_rad: source.nodes.ascending_longitude_rad.unwrap_or_default(),
             has_next_ascending: source.nodes.next_ascending.is_some(),
-            next_ascending_seconds: source.nodes.next_ascending.as_ref()
+            next_ascending_seconds: source
+                .nodes
+                .next_ascending
+                .as_ref()
                 .map_or(0.0, |event| event.time_to_seconds),
-            next_ascending_position_m: source.nodes.next_ascending.as_ref()
-                .map_or([0.0; 3], |event| event.relative_position_m).into(),
+            next_ascending_position_m: source
+                .nodes
+                .next_ascending
+                .as_ref()
+                .map_or([0.0; 3], |event| event.relative_position_m)
+                .into(),
             has_next_descending: source.nodes.next_descending.is_some(),
-            next_descending_seconds: source.nodes.next_descending.as_ref()
+            next_descending_seconds: source
+                .nodes
+                .next_descending
+                .as_ref()
                 .map_or(0.0, |event| event.time_to_seconds),
-            next_descending_position_m: source.nodes.next_descending.as_ref()
-                .map_or([0.0; 3], |event| event.relative_position_m).into(),
+            next_descending_position_m: source
+                .nodes
+                .next_descending
+                .as_ref()
+                .map_or([0.0; 3], |event| event.relative_position_m)
+                .into(),
             has_orbit_view_basis: source.orbit_view_basis.is_some(),
-            orbit_horizontal: source.orbit_view_basis.as_ref()
-                .map_or([0.0; 3], |basis| basis.horizontal).into(),
-            orbit_vertical: source.orbit_view_basis.as_ref()
-                .map_or([0.0; 3], |basis| basis.vertical).into(),
+            orbit_horizontal: source
+                .orbit_view_basis
+                .as_ref()
+                .map_or([0.0; 3], |basis| basis.horizontal)
+                .into(),
+            orbit_vertical: source
+                .orbit_view_basis
+                .as_ref()
+                .map_or([0.0; 3], |basis| basis.vertical)
+                .into(),
             has_equatorial_reference: source.equatorial.is_some(),
-            equatorial_normal: source.equatorial.as_ref()
-                .map(|eq| eq.frame.as_arrays().0).unwrap_or([0.0; 3]).into(),
-            equatorial_horizontal: source.equatorial.as_ref()
-                .map(|eq| eq.frame.as_arrays().1).unwrap_or([0.0; 3]).into(),
-            equatorial_vertical: source.equatorial.as_ref()
-                .map(|eq| eq.frame.as_arrays().2).unwrap_or([0.0; 3]).into(),
-            equatorial_has_inclination: source.equatorial.as_ref()
+            equatorial_normal: source
+                .equatorial
+                .as_ref()
+                .map(|eq| eq.frame.as_arrays().0)
+                .unwrap_or([0.0; 3])
+                .into(),
+            equatorial_horizontal: source
+                .equatorial
+                .as_ref()
+                .map(|eq| eq.frame.as_arrays().1)
+                .unwrap_or([0.0; 3])
+                .into(),
+            equatorial_vertical: source
+                .equatorial
+                .as_ref()
+                .map(|eq| eq.frame.as_arrays().2)
+                .unwrap_or([0.0; 3])
+                .into(),
+            equatorial_has_inclination: source
+                .equatorial
+                .as_ref()
                 .is_some_and(|eq| eq.nodes.inclination_rad.is_some()),
-            equatorial_inclination_rad: source.equatorial.as_ref()
-                .and_then(|eq| eq.nodes.inclination_rad).unwrap_or_default(),
-            equatorial_has_ascending_longitude: source.equatorial.as_ref()
+            equatorial_inclination_rad: source
+                .equatorial
+                .as_ref()
+                .and_then(|eq| eq.nodes.inclination_rad)
+                .unwrap_or_default(),
+            equatorial_has_ascending_longitude: source
+                .equatorial
+                .as_ref()
                 .is_some_and(|eq| eq.nodes.ascending_longitude_rad.is_some()),
-            equatorial_ascending_longitude_rad: source.equatorial.as_ref()
-                .and_then(|eq| eq.nodes.ascending_longitude_rad).unwrap_or_default(),
-            equatorial_has_next_ascending: source.equatorial.as_ref()
+            equatorial_ascending_longitude_rad: source
+                .equatorial
+                .as_ref()
+                .and_then(|eq| eq.nodes.ascending_longitude_rad)
+                .unwrap_or_default(),
+            equatorial_has_next_ascending: source
+                .equatorial
+                .as_ref()
                 .is_some_and(|eq| eq.nodes.next_ascending.is_some()),
-            equatorial_next_ascending_seconds: source.equatorial.as_ref()
+            equatorial_next_ascending_seconds: source
+                .equatorial
+                .as_ref()
                 .and_then(|eq| eq.nodes.next_ascending.as_ref())
                 .map_or(0.0, |node| node.time_to_seconds),
-            equatorial_next_ascending_position_m: source.equatorial.as_ref()
+            equatorial_next_ascending_position_m: source
+                .equatorial
+                .as_ref()
                 .and_then(|eq| eq.nodes.next_ascending.as_ref())
-                .map_or([0.0; 3], |node| node.relative_position_m).into(),
-            equatorial_has_next_descending: source.equatorial.as_ref()
+                .map_or([0.0; 3], |node| node.relative_position_m)
+                .into(),
+            equatorial_has_next_descending: source
+                .equatorial
+                .as_ref()
                 .is_some_and(|eq| eq.nodes.next_descending.is_some()),
-            equatorial_next_descending_seconds: source.equatorial.as_ref()
+            equatorial_next_descending_seconds: source
+                .equatorial
+                .as_ref()
                 .and_then(|eq| eq.nodes.next_descending.as_ref())
                 .map_or(0.0, |node| node.time_to_seconds),
-            equatorial_next_descending_position_m: source.equatorial.as_ref()
+            equatorial_next_descending_position_m: source
+                .equatorial
+                .as_ref()
                 .and_then(|eq| eq.nodes.next_descending.as_ref())
-                .map_or([0.0; 3], |node| node.relative_position_m).into(),
+                .map_or([0.0; 3], |node| node.relative_position_m)
+                .into(),
             has_eccentricity: source.eccentricity.is_some(),
             eccentricity: source.eccentricity.unwrap_or_default(),
             has_periapsis: source.periapsis_altitude_m.is_some(),
@@ -106,23 +172,35 @@ impl From<SessionPreview> for OrbitPreview {
                 .into_iter()
                 .map(FfiVec3::from)
                 .collect(),
-            future_arcs: source.future_arcs.into_iter().map(|arc| FfiForecastArc {
-                reference_body_id: arc.reference_body_id.to_string(),
-                start_seconds: arc.start_seconds,
-                end_seconds: arc.end_seconds,
-                points_m: arc.points_m.into_iter().map(FfiVec3::from).collect(),
-            }).collect(),
-            forecast_events: source.forecast_events.into_iter().map(|event| FfiForecastEvent {
-                kind: event.kind,
-                body_name: event.body_name,
-                seconds: event.seconds,
-                position_m: FfiVec3::from(event.position_m),
-            }).collect(),
-            forecast_bodies: source.forecast_bodies.into_iter().map(|body| FfiForecastBody {
-                name: body.name,
-                radius_m: body.radius_m,
-                position_m: FfiVec3::from(body.position_m),
-            }).collect(),
+            future_arcs: source
+                .future_arcs
+                .into_iter()
+                .map(|arc| FfiForecastArc {
+                    reference_body_id: arc.reference_body_id.to_string(),
+                    start_seconds: arc.start_seconds,
+                    end_seconds: arc.end_seconds,
+                    points_m: arc.points_m.into_iter().map(FfiVec3::from).collect(),
+                })
+                .collect(),
+            forecast_events: source
+                .forecast_events
+                .into_iter()
+                .map(|event| FfiForecastEvent {
+                    kind: event.kind,
+                    body_name: event.body_name,
+                    seconds: event.seconds,
+                    position_m: FfiVec3::from(event.position_m),
+                })
+                .collect(),
+            forecast_bodies: source
+                .forecast_bodies
+                .into_iter()
+                .map(|body| FfiForecastBody {
+                    name: body.name,
+                    radius_m: body.radius_m,
+                    position_m: FfiVec3::from(body.position_m),
+                })
+                .collect(),
             osculating_closed_points_m: source
                 .osculating_closed_points_m
                 .into_iter()

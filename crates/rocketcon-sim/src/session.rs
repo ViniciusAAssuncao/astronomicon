@@ -1,39 +1,42 @@
-mod snapshot;
-mod vehicle_visual;
 mod engine_control;
-mod orbit_preview;
-mod orbit_forecast;
-mod orbit_forecast_events;
 mod forecast_reader;
 mod orbit_apsides;
-mod orbit_view_basis;
+mod orbit_forecast;
+mod orbit_forecast_events;
+mod orbit_forecast_geometry;
+mod orbit_forecast_hybrid;
+mod orbit_forecast_hybrid_window;
 mod orbit_nodes;
-mod orbit_reference;
-mod orbit_soi;
+mod orbit_preview;
 mod orbit_preview_horizon;
 mod orbit_preview_path;
+mod orbit_reference;
 mod orbit_reference_curve;
+mod orbit_soi;
+mod orbit_view_basis;
+mod snapshot;
+mod vehicle_visual;
 
-pub use snapshot::{FlightEvent, FlightEventKind, FlightSnapshot};
-pub use vehicle_visual::VehicleVisualComponent;
-pub use orbit_preview::OrbitPreview;
 pub use forecast_reader::ForecastReader;
 pub use orbit_apsides::OrbitApsis;
-pub use orbit_view_basis::OrbitViewBasis;
 pub use orbit_nodes::{OrbitNode, OrbitNodes};
+pub use orbit_preview::OrbitPreview;
 pub use orbit_reference::{OrbitalReferenceFrame, planet_equatorial_reference};
+pub use orbit_view_basis::OrbitViewBasis;
+pub use snapshot::{FlightEvent, FlightEventKind, FlightSnapshot};
+pub use vehicle_visual::VehicleVisualComponent;
 
 use crate::{RocketError, RocketResult};
 use astronomicon_core::units::Duration;
 use astronomicon_db::SqlitePool;
+use engine_control::MainEngineCapability;
 use rocketcon_app::aeroespacial::advance_vehicle_simulation_in_session;
 use rocketcon_app::aeroespacial::vehicle::resolve_vehicle_snapshot;
 use rocketcon_core::domain::{ComponentDetails, VehicleControlInput};
-use engine_control::MainEngineCapability;
 use rocketcon_db::repositories::operational_state as operational_state_repository;
+use rocketcon_db::repositories::propellant_repository;
 use rocketcon_db::repositories::vehicle_physical_state;
 use rocketcon_db::repositories::vehicle_repository;
-use rocketcon_db::repositories::propellant_repository;
 use rocketcon_db::tick_transaction::TickTransactionSession;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -94,44 +97,64 @@ impl RocketconSession {
         )
         .await?;
         let mut snapshot = FlightSnapshot::from_state(&state);
-        let components = vehicle_repository::list_components_for_vehicle(&pool, &vehicle_id).await?;
-        let vehicle_state = resolve_vehicle_snapshot(
-            &pool, vehicle_id, universe_epoch, state.captured_at_epoch()).await?;
+        let components =
+            vehicle_repository::list_components_for_vehicle(&pool, &vehicle_id).await?;
+        let vehicle_state =
+            resolve_vehicle_snapshot(&pool, vehicle_id, universe_epoch, state.captured_at_epoch())
+                .await?;
         snapshot.battery_stored_j = Some(vehicle_state.total_stored_energy().value());
         snapshot.battery_capacity_j = Some(vehicle_state.total_battery_capacity().value());
         let mut fuel_tanks = Vec::new();
         for (entry, record) in &components {
             if let ComponentDetails::PropellantTank(tank) = record.details() {
-                let name = propellant_repository::get_by_id(&pool, &tank.propellant_id()).await?
-                    .map_or_else(|| tank.propellant_id().to_string(), |fuel| fuel.name().to_owned());
-                let load = operational_state_repository::get_by_vehicle_component_id(
-                    &pool, &entry.id()).await?.map_or(1.0, |state| state.load_fraction());
+                let name = propellant_repository::get_by_id(&pool, &tank.propellant_id())
+                    .await?
+                    .map_or_else(
+                        || tank.propellant_id().to_string(),
+                        |fuel| fuel.name().to_owned(),
+                    );
+                let load =
+                    operational_state_repository::get_by_vehicle_component_id(&pool, &entry.id())
+                        .await?
+                        .map_or(1.0, |state| state.load_fraction());
                 let capacity = tank.max_propellant_mass().value();
                 fuel_tanks.push((entry.id(), name.clone(), capacity));
-                snapshot.fuel_reserves.push((name, capacity * load, capacity));
+                snapshot
+                    .fuel_reserves
+                    .push((name, capacity * load, capacity));
             }
         }
-        let main_engines = components.iter().filter_map(|(entry, record)| match record.details() {
-            ComponentDetails::Engine(spec) => Some(MainEngineCapability {
-                id: entry.id(), ignition_type: spec.ignition_type(),
-                min_throttle_fraction: spec.min_throttle_fraction(),
-            }),
-            _ => None,
-        }).collect();
+        let main_engines = components
+            .iter()
+            .filter_map(|(entry, record)| match record.details() {
+                ComponentDetails::Engine(spec) => Some(MainEngineCapability {
+                    id: entry.id(),
+                    ignition_type: spec.ignition_type(),
+                    min_throttle_fraction: spec.min_throttle_fraction(),
+                }),
+                _ => None,
+            })
+            .collect();
         for (entry, record) in &components {
             if matches!(record.details(), ComponentDetails::Engine(_)) {
-                let load = operational_state_repository::get_by_vehicle_component_id(
-                    &pool, &entry.id()).await?
-                    .map_or(1.0, |state| state.load_fraction());
-                snapshot.main_engine_loads.push((entry.id().to_string(), load));
+                let load =
+                    operational_state_repository::get_by_vehicle_component_id(&pool, &entry.id())
+                        .await?
+                        .map_or(1.0, |state| state.load_fraction());
+                snapshot
+                    .main_engine_loads
+                    .push((entry.id().to_string(), load));
             }
         }
-        let vehicle_components = components.iter()
+        let vehicle_components = components
+            .iter()
             .map(|(entry, record)| VehicleVisualComponent::from_assembly(entry, record))
             .collect();
         let body_position = environment.reference_position().raw();
-        snapshot.reference_body_position_m = Some([body_position.0, body_position.1, body_position.2]);
-        snapshot.reference_body_radius_m = environment.reference_radius().map(|radius| radius.value());
+        snapshot.reference_body_position_m =
+            Some([body_position.0, body_position.1, body_position.2]);
+        snapshot.reference_body_radius_m =
+            environment.reference_radius().map(|radius| radius.value());
         if let Some(radius) = snapshot.reference_body_radius_m {
             snapshot.altitude_m = snapshot::geometric_altitude(
                 snapshot.position_m,
@@ -144,7 +167,8 @@ impl RocketconSession {
             state.reference_body_id(),
             environment.system_id,
             state.captured_total_epoch(),
-        ).await?;
+        )
+        .await?;
         let body_velocity = body_velocity.raw();
         snapshot.reference_speed_m_s = snapshot::relative_speed(
             snapshot.velocity_m_s,
@@ -195,7 +219,9 @@ impl RocketconSession {
         }
         self.advance_engine_ramp(dt_seconds).await?;
         let ramp_load_before_tick = self.throttle_ramp.and_then(|(id, _)| {
-            self.snapshot.main_engine_loads.iter()
+            self.snapshot
+                .main_engine_loads
+                .iter()
                 .find(|(instance_id, _)| instance_id == &id.to_string())
                 .map(|(_, load)| *load)
         });
@@ -208,11 +234,18 @@ impl RocketconSession {
         )
         .await?;
         let mut next = FlightSnapshot::from_report(&report);
-        next.fuel_reserves = self.fuel_tanks.iter().map(|(id, name, capacity)| {
-            let stored = report.tank_stored_kg.iter().find(|(tank_id, _)| tank_id == id)
-                .map_or(*capacity, |(_, mass)| *mass);
-            (name.clone(), stored, *capacity)
-        }).collect();
+        next.fuel_reserves = self
+            .fuel_tanks
+            .iter()
+            .map(|(id, name, capacity)| {
+                let stored = report
+                    .tank_stored_kg
+                    .iter()
+                    .find(|(tank_id, _)| tank_id == id)
+                    .map_or(*capacity, |(_, mass)| *mass);
+                (name.clone(), stored, *capacity)
+            })
+            .collect();
         let mut events = FlightEvent::between(&self.snapshot, &next);
         if !report.soi_transitions.is_empty() {
             events.retain(|event| event.kind != FlightEventKind::SoiExit);
@@ -223,16 +256,21 @@ impl RocketconSession {
                     } else {
                         FlightEventKind::SoiExit
                     },
-                    total_epoch_seconds:
-                        self.snapshot.total_epoch_seconds + transition.elapsed_seconds,
+                    total_epoch_seconds: self.snapshot.total_epoch_seconds
+                        + transition.elapsed_seconds,
                 });
             }
         }
         self.events.extend(events);
         self.snapshot = next.clone();
         if let (Some((id, _)), Some(previous_load)) = (self.throttle_ramp, ramp_load_before_tick) {
-            if previous_load > 0.0 && self.snapshot.main_engine_loads.iter()
-                .any(|(instance_id, load)| instance_id == &id.to_string() && *load == 0.0) {
+            if previous_load > 0.0
+                && self
+                    .snapshot
+                    .main_engine_loads
+                    .iter()
+                    .any(|(instance_id, load)| instance_id == &id.to_string() && *load == 0.0)
+            {
                 self.throttle_ramp = None;
             }
         }

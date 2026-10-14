@@ -1,7 +1,8 @@
 use super::OrbitViewBasis;
 use super::RocketconSession;
 use super::orbit_apsides::{OrbitApsis, next_apoapsis, next_periapsis};
-use super::orbit_forecast::{ForecastArc, ForecastBody, ForecastEvent, sample_patched_forecast};
+use super::orbit_forecast::{ForecastArc, ForecastBody, ForecastEvent, ForecastResult};
+use super::orbit_forecast_hybrid::sample_hybrid_forecast_cancelled;
 use super::orbit_nodes::{orbit_nodes, orbit_nodes_in_frame};
 use super::orbit_preview_horizon::{MAX_BOUND_HORIZON, preview_horizon};
 use super::orbit_preview_path::{PreviewEndReason, sample_preview_path};
@@ -54,8 +55,24 @@ pub struct OrbitPreview {
     pub future_arcs: Vec<ForecastArc>,
     pub forecast_events: Vec<ForecastEvent>,
     pub forecast_bodies: Vec<ForecastBody>,
+    pub forecast_target_seconds: f64,
+    pub forecast_completed_seconds: f64,
+    pub forecast_complete: bool,
 }
 
+fn apply_forecast(preview: &mut OrbitPreview, forecast: &ForecastResult) {
+    preview.future_arcs = forecast.arcs.clone();
+    preview.forecast_events = forecast.events.clone();
+    preview.forecast_bodies = forecast.bodies.clone();
+    preview.forecast_completed_seconds = forecast.elapsed_seconds;
+    preview.forecast_complete = forecast.impact_seconds.is_some()
+        || forecast.elapsed_seconds
+            >= preview.forecast_target_seconds
+                - (preview.forecast_target_seconds * 1e-12).max(1e-6);
+    if let Some(impact) = forecast.impact_seconds {
+        preview.impact_epoch_seconds = Some(preview.source_epoch_seconds + impact);
+    }
+}
 impl RocketconSession {
     pub async fn orbit_preview(&self) -> RocketResult<OrbitPreview> {
         preview_from_pool(
@@ -79,6 +96,30 @@ pub async fn preview_from_pool(
     radius_override: Option<f64>,
     under_thrust: bool,
 ) -> RocketResult<OrbitPreview> {
+    preview_from_pool_cancelled(
+        pool,
+        vehicle_id,
+        universe_epoch,
+        radius_override,
+        under_thrust,
+        &mut || false,
+        &mut |_| {},
+    )
+    .await
+}
+
+pub async fn preview_from_pool_cancelled(
+    pool: &SqlitePool,
+    vehicle_id: Uuid,
+    universe_epoch: Duration,
+    radius_override: Option<f64>,
+    under_thrust: bool,
+    cancelled: &mut impl FnMut() -> bool,
+    progress: &mut impl FnMut(OrbitPreview),
+) -> RocketResult<OrbitPreview> {
+    if cancelled() {
+        return Err(RocketError::Generic("forecast cancelled".into()));
+    }
     let state = vehicle_physical_state::get_by_vehicle_id(pool, &vehicle_id)
         .await?
         .ok_or_else(|| RocketError::Generic("vehicle physical state is unavailable".into()))?;
@@ -151,7 +192,6 @@ pub async fn preview_from_pool(
         horizon_seconds,
         &mut soi,
     );
-    let impact_epoch_seconds = path.impact_seconds.map(|elapsed| epoch.value() + elapsed);
     let visible_horizon = path.elapsed_seconds;
     let relative_points_m = path.points;
     let equatorial = environment
@@ -169,22 +209,7 @@ pub async fn preview_from_pool(
             forecast_horizon = forecast_horizon.max(period);
         }
     }
-    let forecast = sample_patched_forecast(
-        &catalog,
-        epoch,
-        reference_body_id,
-        state.position(),
-        state.velocity(),
-        forecast_horizon,
-    )?;
-    let forecast_impact = forecast
-        .impact_seconds
-        .map(|elapsed| epoch.value() + elapsed);
-    let impact_epoch_seconds = forecast_impact.or(impact_epoch_seconds);
-    let forecast_events = forecast.events;
-    let forecast_bodies = forecast.bodies;
-    let future_arcs = forecast.arcs;
-    Ok(OrbitPreview {
+    let mut preview = OrbitPreview {
         reference_body_id,
         reference_body_name: environment.planet.as_ref().map_or_else(
             || environment.star.name().to_owned(),
@@ -201,7 +226,7 @@ pub async fn preview_from_pool(
         horizon_seconds,
         rendered_horizon_seconds: visible_horizon,
         end_reason: path.end_reason,
-        impact_epoch_seconds,
+        impact_epoch_seconds: path.impact_seconds.map(|elapsed| epoch.value() + elapsed),
         soi,
         under_thrust,
         orbit_view_basis: orbit_view_basis(position, velocity),
@@ -217,9 +242,12 @@ pub async fn preview_from_pool(
         next_periapsis: next_periapsis(&elements, position, velocity, mu, visible_horizon),
         next_apoapsis: next_apoapsis(&elements, position, velocity, mu, visible_horizon),
         relative_points_m,
-        future_arcs,
-        forecast_events,
-        forecast_bodies,
+        future_arcs: Vec::new(),
+        forecast_events: Vec::new(),
+        forecast_bodies: Vec::new(),
+        forecast_target_seconds: forecast_horizon,
+        forecast_completed_seconds: 0.0,
+        forecast_complete: false,
         osculating_closed_points_m: closed_osculating_reference(
             position,
             velocity,
@@ -228,5 +256,18 @@ pub async fn preview_from_pool(
             body_radius.map(Length::new),
         )
         .unwrap_or_default(),
-    })
+    };
+    let forecast = sample_hybrid_forecast_cancelled(
+        &catalog,
+        &state,
+        forecast_horizon,
+        cancelled,
+        &mut |partial| {
+            let mut snapshot = preview.clone();
+            apply_forecast(&mut snapshot, partial);
+            progress(snapshot);
+        },
+    )?;
+    apply_forecast(&mut preview, &forecast);
+    Ok(preview)
 }

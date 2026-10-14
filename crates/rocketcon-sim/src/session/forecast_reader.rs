@@ -1,4 +1,4 @@
-use super::orbit_preview::{OrbitPreview, preview_from_pool};
+use super::orbit_preview::{OrbitPreview, preview_from_pool_cancelled};
 use crate::{RocketError, RocketResult};
 use astronomicon_core::units::Duration;
 use astronomicon_db::SqlitePool;
@@ -30,12 +30,24 @@ impl ForecastReader {
     }
 
     pub async fn preview(&self, under_thrust: bool) -> RocketResult<OrbitPreview> {
-        preview_from_pool(
+        self.preview_cancelled(under_thrust, &mut || false, &mut |_| {})
+            .await
+    }
+
+    pub async fn preview_cancelled(
+        &self,
+        under_thrust: bool,
+        cancelled: &mut impl FnMut() -> bool,
+        progress: &mut impl FnMut(OrbitPreview),
+    ) -> RocketResult<OrbitPreview> {
+        preview_from_pool_cancelled(
             &self.pool,
             self.vehicle_id,
             self.universe_epoch,
             None,
             under_thrust,
+            cancelled,
+            progress,
         )
         .await
     }

@@ -1,4 +1,4 @@
-use rocketcon_sim::{FlightEventKind, RocketconSession};
+use rocketcon_sim::{FlightEventKind, ForecastReader, RocketconSession};
 use std::error::Error;
 use std::path::Path;
 use std::time::Instant;
@@ -15,6 +15,54 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tangent = option.as_deref() == Some("--tangent");
     let path = Path::new(&path);
     let vehicle_id = Uuid::parse_str(VEHICLE_ID)?;
+    if option.as_deref() == Some("--progress-only") {
+        let reader = ForecastReader::open(path, vehicle_id).await?;
+        let mut partials = Vec::new();
+        let completed = reader
+            .preview_cancelled(false, &mut || false, &mut |partial| {
+                partials.push(partial);
+            })
+            .await?;
+        if partials.is_empty() {
+            return Err("forecast did not publish progressive windows".into());
+        }
+        let mut previous = 0.0;
+        for partial in &partials {
+            if partial.forecast_completed_seconds <= previous
+                || partial.forecast_completed_seconds > completed.forecast_completed_seconds
+                || !partial.forecast_completed_seconds.is_finite()
+            {
+                return Err("progressive horizon did not increase".into());
+            }
+            previous = partial.forecast_completed_seconds;
+            for arcs in partial.future_arcs.windows(2) {
+                let first = arcs[0].points_m.last().ok_or("empty progressive arc")?;
+                let next = arcs[1].points_m.first().ok_or("empty progressive arc")?;
+                let delta = first
+                    .iter()
+                    .zip(next)
+                    .map(|(a, b)| (a - b).powi(2))
+                    .sum::<f64>()
+                    .sqrt();
+                if delta > 1.0 {
+                    return Err("progressive SOI geometry discontinuity".into());
+                }
+            }
+            println!(
+                "FORECAST_PROGRESS reached={:.3} target={:.3} arcs={} complete={}",
+                partial.forecast_completed_seconds,
+                partial.forecast_target_seconds,
+                partial.future_arcs.len(),
+                partial.forecast_complete
+            );
+        }
+        if (previous - completed.forecast_completed_seconds).abs() > 1e-6 {
+            return Err("last progressive forecast does not match final horizon".into());
+        }
+        println!("FORECAST_PROGRESS_PASS windows={}", partials.len());
+        reader.close().await;
+        return Ok(());
+    }
     let mut session = RocketconSession::load(path, vehicle_id).await?;
     let initial = session.snapshot().clone();
     let initial_body = initial.reference_body_id;
@@ -51,11 +99,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
             event.kind, event.body_name, event.seconds, event.position_m,
         );
         if event.kind == 2 {
-            let residual = preview.forecast_bodies.iter()
+            let residual = preview
+                .forecast_bodies
+                .iter()
                 .filter(|body| body.name == event.body_name)
                 .map(|body| {
-                    let distance = body.position_m.iter().zip(event.position_m.iter())
-                        .map(|(a, b)| (a - b).powi(2)).sum::<f64>().sqrt();
+                    let distance = body
+                        .position_m
+                        .iter()
+                        .zip(event.position_m.iter())
+                        .map(|(a, b)| (a - b).powi(2))
+                        .sum::<f64>()
+                        .sqrt();
                     (distance - body.radius_m).abs()
                 })
                 .fold(f64::INFINITY, f64::min);

@@ -7,14 +7,14 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum GravityRegime {
+pub enum GravityRegime {
     Kepler,
     Specialized,
     Restricted { sources: Vec<Uuid> },
 }
 
 impl GravityRegime {
-    pub(crate) fn sources(&self) -> Option<&[Uuid]> {
+    pub fn sources(&self) -> Option<&[Uuid]> {
         match self {
             Self::Kepler | Self::Specialized => None,
             Self::Restricted { sources } => Some(sources),
@@ -33,13 +33,20 @@ impl GravityRegime {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct RegimePolicy {
-    pub(crate) position_error_budget_m: f64,
-    pub(crate) orbital_lookahead_fraction: f64,
+pub struct RegimePolicy {
+    pub position_error_budget_m: f64,
+    pub orbital_lookahead_fraction: f64,
 }
 
 impl RegimePolicy {
-    pub(crate) fn flight() -> Self {
+    pub fn flight() -> Self {
+        Self {
+            position_error_budget_m: 10.0,
+            orbital_lookahead_fraction: 0.125,
+        }
+    }
+
+    pub fn forecast() -> Self {
         Self {
             position_error_budget_m: 10.0,
             orbital_lookahead_fraction: 0.125,
@@ -104,14 +111,41 @@ fn source_positions(
     Ok(positions.into_iter().map(|(id, p)| (id, p.raw())).collect())
 }
 
-pub(crate) fn choose_regime(
+pub fn choose_regime(
     catalog: &EphemerisCatalog,
     state: &VehiclePhysicalState,
     dt: Duration,
     powered: bool,
     policy: RegimePolicy,
 ) -> RocketResult<GravityRegime> {
+    choose_regime_at_offset(
+        catalog,
+        state.captured_total_epoch(),
+        0.0,
+        state.reference_body_id(),
+        state.position().raw(),
+        state.velocity().raw(),
+        dt,
+        powered,
+        policy,
+    )
+}
+
+pub fn choose_regime_at_offset(
+    catalog: &EphemerisCatalog,
+    epoch: Duration,
+    offset_seconds: f64,
+    reference_id: Uuid,
+    craft: Vector3,
+    velocity: Vector3,
+    dt: Duration,
+    powered: bool,
+    policy: RegimePolicy,
+) -> RocketResult<GravityRegime> {
     policy.validate()?;
+    if !epoch.value().is_finite() || !offset_seconds.is_finite() || offset_seconds < 0.0 {
+        return Err(RocketError::Generic("invalid hybrid epoch offset".into()));
+    }
     if !dt.value().is_finite() || dt.value() <= 0.0 {
         return Err(RocketError::Generic("invalid hybrid tick duration".into()));
     }
@@ -133,7 +167,6 @@ pub(crate) fn choose_regime(
             "invalid hybrid gravitational sources".into(),
         ));
     }
-    let reference_id = state.reference_body_id();
     let reference = bodies
         .iter()
         .find(|body| body.id == reference_id)
@@ -145,13 +178,10 @@ pub(crate) fn choose_regime(
     if bodies.len() <= 2 && powered {
         return Ok(GravityRegime::Restricted { sources: ids });
     }
-    let epoch = state.captured_total_epoch();
-    let positions_initial = source_positions(catalog, epoch, 0.0, &ids)?;
+    let positions_initial = source_positions(catalog, epoch, offset_seconds, &ids)?;
     let ref_pos = *positions_initial
         .get(&reference_id)
         .ok_or_else(|| RocketError::Generic("reference ephemeris missing".into()))?;
-    let craft = state.position().raw();
-    let velocity = state.velocity().raw();
     let separation = (craft - ref_pos).magnitude();
     if !separation.is_finite()
         || separation <= 0.0
@@ -180,7 +210,7 @@ pub(crate) fn choose_regime(
         let positions = if sample_idx == 0 {
             positions_initial.clone()
         } else {
-            source_positions(catalog, epoch, t, &ids)?
+            source_positions(catalog, epoch, offset_seconds + t, &ids)?
         };
         let reference_at_t = *positions
             .get(&reference_id)

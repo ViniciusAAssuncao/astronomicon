@@ -5,7 +5,7 @@ mod snapshot;
 mod vehicle;
 
 pub use engine::Engine;
-pub use forecast_reader::PreviewEngine;
+pub use forecast_reader::{ForecastControl, PreviewEngine};
 
 #[cxx::bridge(namespace = "rocketcon")]
 pub mod ffi {
@@ -174,16 +174,38 @@ pub mod ffi {
         future_arcs: Vec<FfiForecastArc>,
         forecast_events: Vec<FfiForecastEvent>,
         forecast_bodies: Vec<FfiForecastBody>,
+        forecast_target_seconds: f64,
+        forecast_completed_seconds: f64,
+        forecast_complete: bool,
+    }
+
+    unsafe extern "C++" {
+        include!("rocketcon_forecast_progress.hpp");
+        type ForecastProgress;
+        fn publish(self: Pin<&mut ForecastProgress>, preview: OrbitPreview, generation: u64);
     }
 
     extern "Rust" {
         type Engine;
 
         type PreviewEngine;
+        type ForecastControl;
 
+        fn create_forecast_control() -> Box<ForecastControl>;
+        fn select_generation(self: &ForecastControl, generation: u64);
         fn create_preview_engine() -> Result<Box<PreviewEngine>>;
-        fn load_read_only(self: &mut PreviewEngine, save_path_utf8: &str, vehicle_uuid: &str) -> Result<()>;
-        fn predict(self: &PreviewEngine, under_thrust: bool) -> Result<OrbitPreview>;
+        fn load_read_only(
+            self: &mut PreviewEngine,
+            save_path_utf8: &str,
+            vehicle_uuid: &str,
+        ) -> Result<()>;
+        fn predict(
+            self: &PreviewEngine,
+            under_thrust: bool,
+            control: &ForecastControl,
+            generation: u64,
+            progress: Pin<&mut ForecastProgress>,
+        ) -> Result<OrbitPreview>;
 
         fn create_engine() -> Result<Box<Engine>>;
         fn load_save(self: &mut Engine, save_path_utf8: &str, vehicle_uuid: &str) -> Result<()>;
@@ -204,4 +226,4 @@ pub mod ffi {
 }
 
 pub use engine::create_engine;
-pub use forecast_reader::create_preview_engine;
+pub use forecast_reader::{create_forecast_control, create_preview_engine};
