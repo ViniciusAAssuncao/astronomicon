@@ -2,6 +2,9 @@ use astronomicon_core::units::Duration;
 use astronomicon_db::connection::open_pool_path;
 use rocketcon_app::thermal::network_assembly::assemble_vehicle_thermal_network;
 use rocketcon_core::domain::VehicleControlInput;
+use rocketcon_db::repositories::component_attributes::{
+    fetch_attribute_map, fetch_material_ids_for_vehicle, optional_uuid,
+};
 use rocketcon_db::repositories::vehicle::list_components_for_vehicle;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Connection, SqliteConnection};
@@ -61,6 +64,18 @@ async fn shared_material_override_reaches_every_vehicle_instance() -> Result<(),
         .ok_or("fixture component missing")?;
         assert_eq!(record, &independently_loaded);
     }
+    let grouped_materials = fetch_material_ids_for_vehicle(&pool, &vehicle_id).await?;
+    for component_id in components
+        .iter()
+        .map(|(entry, _)| entry.component_id())
+        .collect::<HashSet<_>>()
+    {
+        let attributes = fetch_attribute_map(&pool, &component_id).await?;
+        let expected = optional_uuid(&attributes, &component_id, "material_id")
+            .ok()
+            .flatten();
+        assert_eq!(grouped_materials.get(&component_id).copied(), expected);
+    }
     let network = assemble_vehicle_thermal_network(
         &pool,
         vehicle_id,
@@ -110,6 +125,39 @@ async fn shared_material_override_reaches_every_vehicle_instance() -> Result<(),
     .fetch_one(&pool)
     .await?;
     assert_eq!(persisted_nodes as usize, network.nodes.len());
+
+    let changed = sqlx::query(
+        "UPDATE component_attributes SET numeric_value = NULL, text_value = 'wrong-type' WHERE component_id = ? AND attribute_key = 'max_thrust_n'",
+    )
+    .bind(super::ENGINE_ID)
+    .execute(&pool)
+    .await?;
+    assert_eq!(changed.rows_affected(), 1);
+    let engine_id = Uuid::parse_str(super::ENGINE_ID)?;
+    let standalone_error =
+        rocketcon_db::repositories::component_repository::get_by_id(&pool, &engine_id)
+            .await
+            .expect_err("wrongly typed engine thrust must fail standalone loading");
+    let grouped_error = list_components_for_vehicle(&pool, &vehicle_id)
+        .await
+        .expect_err("wrongly typed engine thrust must fail grouped loading");
+    assert_eq!(standalone_error.to_string(), grouped_error.to_string());
+
+    sqlx::query(
+        "UPDATE component_attributes SET text_value = 'invalid-material-uuid' WHERE component_id = ? AND attribute_key = 'material_id'",
+    )
+    .bind(super::COMPONENT_ID)
+    .execute(&pool)
+    .await?;
+    let invalid_materials = fetch_material_ids_for_vehicle(&pool, &vehicle_id).await?;
+    assert_eq!(invalid_materials.get(&component_id), None);
+    let invalid_attributes = fetch_attribute_map(&pool, &component_id).await?;
+    assert_eq!(
+        optional_uuid(&invalid_attributes, &component_id, "material_id")
+            .ok()
+            .flatten(),
+        None
+    );
 
     pool.close().await;
     drop(pool);

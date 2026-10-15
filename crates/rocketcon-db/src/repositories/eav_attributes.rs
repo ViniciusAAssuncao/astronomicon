@@ -32,22 +32,35 @@ pub async fn fetch_eav_attribute_map(
         .fetch_all(pool)
         .await?;
 
-    let mut map = HashMap::with_capacity(rows.len());
-    for row in rows {
-        let val = if let Some(n) = row.numeric_value {
+    decode_eav_attribute_rows(
+        rows.into_iter()
+            .map(|row| (row.attribute_key, row.numeric_value, row.text_value)),
+        entity_id,
+        table_name,
+    )
+}
+
+pub(crate) fn decode_eav_attribute_rows(
+    rows: impl IntoIterator<Item = (String, Option<f64>, Option<String>)>,
+    entity_id: &Uuid,
+    table_name: &str,
+) -> RocketDbResult<HashMap<String, AttributeValue>> {
+    let mut map = HashMap::new();
+    for (attribute_key, numeric_value, text_value) in rows {
+        let val = if let Some(n) = numeric_value {
             AttributeValue::Numeric(n)
-        } else if let Some(t) = row.text_value {
+        } else if let Some(t) = text_value {
             AttributeValue::Text(t)
         } else {
             return Err(RocketDbError::Domain(RocketDomainError::InvalidInvariant {
-                field: row.attribute_key,
+                field: attribute_key,
                 reason: format!(
                     "attribute for '{}' in table '{}' had both numeric and text value null",
                     entity_id, table_name
                 ),
             }));
         };
-        map.insert(row.attribute_key, val);
+        map.insert(attribute_key, val);
     }
 
     Ok(map)

@@ -1,6 +1,6 @@
 use crate::error::{RocketDbError, RocketDbResult};
 use crate::models::{VehicleComponentRow, VehicleRow};
-use crate::repositories::component_repository;
+use crate::repositories::{component_attributes, component_repository};
 use rocketcon_core::domain::{ComponentRecord, Vehicle, VehicleComponentEntry};
 use rocketcon_core::error::RocketDomainError;
 use sqlx::SqlitePool;
@@ -39,6 +39,9 @@ pub async fn list_components_for_vehicle(
     .fetch_all(pool)
     .await?;
 
+    let attribute_rows =
+        component_attributes::fetch_attribute_rows_for_vehicle(pool, vehicle_id).await?;
+    let empty_attributes = Vec::new();
     let mut results = Vec::with_capacity(rows.len());
     let mut component_records = HashMap::<Uuid, ComponentRecord>::new();
     for row in rows {
@@ -47,14 +50,21 @@ pub async fn list_components_for_vehicle(
         let component_record = if let Some(record) = component_records.get(&component_id) {
             record.clone()
         } else {
-            let record = component_repository::get_by_id(pool, &component_id)
-                .await?
-                .ok_or_else(|| {
-                    RocketDbError::Domain(RocketDomainError::InvalidInvariant {
-                        field: "component_id".to_string(),
-                        reason: format!("component '{}' not found", component_id),
-                    })
-                })?;
+            let attributes = attribute_rows
+                .get(&component_id.to_string())
+                .unwrap_or(&empty_attributes);
+            let record = component_repository::get_by_id_with_attribute_rows(
+                pool,
+                &component_id,
+                Some(attributes),
+            )
+            .await?
+            .ok_or_else(|| {
+                RocketDbError::Domain(RocketDomainError::InvalidInvariant {
+                    field: "component_id".to_string(),
+                    reason: format!("component '{}' not found", component_id),
+                })
+            })?;
             component_records.insert(component_id, record.clone());
             record
         };

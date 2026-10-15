@@ -6,7 +6,9 @@ use rocketcon_core::domain::{
 };
 use rocketcon_core::math::aerothermodynamics::evaluate_vehicle_aerothermodynamics;
 use rocketcon_core::math::thermal_network::{ThermalNetworkState, build_thermal_network};
-use rocketcon_db::repositories::component_attributes::{fetch_attribute_map, optional_uuid};
+use rocketcon_db::repositories::component_attributes::{
+    fetch_attribute_map, fetch_material_ids_for_vehicle, optional_uuid,
+};
 use rocketcon_db::repositories::material as material_repository;
 use rocketcon_db::repositories::thermal_node_state as thermal_node_state_repository;
 use std::collections::HashMap;
@@ -57,10 +59,13 @@ pub(crate) async fn assemble_vehicle_thermal_network_with_materials(
     }
 
     let mut component_material_overrides = HashMap::new();
+    let grouped_material_ids = fetch_material_ids_for_vehicle(pool, &vehicle_id).await.ok();
     let mut material_ids_by_component = HashMap::<Uuid, Option<Uuid>>::new();
     for (entry, record) in components {
         let component_id = entry.component_id();
-        let material_id = if let Some(&cached) = material_ids_by_component.get(&component_id) {
+        let material_id = if let Some(grouped) = &grouped_material_ids {
+            grouped.get(&component_id).copied()
+        } else if let Some(&cached) = material_ids_by_component.get(&component_id) {
             cached
         } else {
             match fetch_attribute_map(pool, &component_id).await {
