@@ -5,7 +5,7 @@ use rocketcon_core::domain::{
     ComponentDetails, ComponentRecord, MaterialRecord, VehicleComponentEntry,
 };
 use rocketcon_core::math::aerothermodynamics::evaluate_vehicle_aerothermodynamics;
-use rocketcon_core::math::thermal_network::{build_thermal_network, ThermalNetworkState};
+use rocketcon_core::math::thermal_network::{ThermalNetworkState, build_thermal_network};
 use rocketcon_db::repositories::component_attributes::{fetch_attribute_map, optional_uuid};
 use rocketcon_db::repositories::material as material_repository;
 use rocketcon_db::repositories::thermal_node_state as thermal_node_state_repository;
@@ -23,19 +23,60 @@ pub async fn assemble_vehicle_thermal_network(
     mach_number: Option<f64>,
     default_temperature: Option<Temperature>,
 ) -> RocketResult<ThermalNetworkState> {
+    let (network, _) = assemble_vehicle_thermal_network_with_materials(
+        pool,
+        vehicle_id,
+        components,
+        active_stages,
+        component_waste_heats,
+        air_density,
+        relative_airspeed,
+        mach_number,
+        default_temperature,
+    )
+    .await?;
+    Ok(network)
+}
+
+pub(crate) async fn assemble_vehicle_thermal_network_with_materials(
+    pool: &SqlitePool,
+    vehicle_id: Uuid,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    active_stages: &[u32],
+    component_waste_heats: &HashMap<Uuid, Luminosity>,
+    air_density: Option<Density>,
+    relative_airspeed: Option<Speed>,
+    mach_number: Option<f64>,
+    default_temperature: Option<Temperature>,
+) -> RocketResult<(ThermalNetworkState, HashMap<Uuid, MaterialRecord>)> {
     let all_materials = material_repository::list_all(pool).await?;
-    let mut materials_map: HashMap<Uuid, MaterialRecord> = HashMap::with_capacity(all_materials.len());
+    let mut materials_map: HashMap<Uuid, MaterialRecord> =
+        HashMap::with_capacity(all_materials.len());
     for mat in all_materials {
         materials_map.insert(mat.material().id(), mat);
     }
 
     let mut component_material_overrides = HashMap::new();
+    let mut material_ids_by_component = HashMap::<Uuid, Option<Uuid>>::new();
     for (entry, record) in components {
-        if let Ok(attr_map) = fetch_attribute_map(pool, &entry.component_id()).await {
-            if let Ok(Some(mat_id)) = optional_uuid(&attr_map, &entry.component_id(), "material_id") {
-                component_material_overrides.insert(entry.id(), mat_id);
-                component_material_overrides.insert(entry.component_id(), mat_id);
+        let component_id = entry.component_id();
+        let material_id = if let Some(&cached) = material_ids_by_component.get(&component_id) {
+            cached
+        } else {
+            match fetch_attribute_map(pool, &component_id).await {
+                Ok(attributes) => {
+                    let resolved = optional_uuid(&attributes, &component_id, "material_id")
+                        .ok()
+                        .flatten();
+                    material_ids_by_component.insert(component_id, resolved);
+                    resolved
+                }
+                Err(_) => None,
             }
+        };
+        if let Some(mat_id) = material_id {
+            component_material_overrides.insert(entry.id(), mat_id);
+            component_material_overrides.insert(component_id, mat_id);
         }
         if let ComponentDetails::Hull(hull) = record.details() {
             component_material_overrides.insert(entry.id(), hull.material_id());
@@ -45,7 +86,8 @@ pub async fn assemble_vehicle_thermal_network(
         }
     }
 
-    let existing_states = thermal_node_state_repository::list_for_vehicle(pool, &vehicle_id).await?;
+    let existing_states =
+        thermal_node_state_repository::list_for_vehicle(pool, &vehicle_id).await?;
     let mut initial_temperatures = HashMap::with_capacity(existing_states.len());
     for st in existing_states {
         initial_temperatures.insert(st.vehicle_component_id(), st.current_temperature());
@@ -67,13 +109,8 @@ pub async fn assemble_vehicle_thermal_network(
     }
 
     if let (Some(rho), Some(v_rel), Some(mach)) = (air_density, relative_airspeed, mach_number) {
-        let aero_res = evaluate_vehicle_aerothermodynamics(
-            components,
-            active_stages,
-            rho,
-            v_rel,
-            mach,
-        );
+        let aero_res =
+            evaluate_vehicle_aerothermodynamics(components, active_stages, rho, v_rel, mach);
 
         let mut foremost_idx: Option<usize> = None;
         let mut foremost_z = f64::NEG_INFINITY;
@@ -86,7 +123,8 @@ pub async fn assemble_vehicle_thermal_network(
             }
         }
 
-        let stag_power = Luminosity::new(aero_res.stagnation_heat_flux.value() * aero_res.nose_area_m2);
+        let stag_power =
+            Luminosity::new(aero_res.stagnation_heat_flux.value() * aero_res.nose_area_m2);
         if let Some(nose_idx) = foremost_idx {
             network.nodes[nose_idx].external_aerodynamic_heat =
                 network.nodes[nose_idx].external_aerodynamic_heat + stag_power;
@@ -97,11 +135,12 @@ pub async fn assemble_vehicle_thermal_network(
             for node in &mut network.nodes {
                 if node.exposed_area_m2 > 0.0 {
                     let node_skin_power = Luminosity::new(skin_flux * node.exposed_area_m2);
-                    node.external_aerodynamic_heat = node.external_aerodynamic_heat + node_skin_power;
+                    node.external_aerodynamic_heat =
+                        node.external_aerodynamic_heat + node_skin_power;
                 }
             }
         }
     }
 
-    Ok(network)
+    Ok((network, materials_map))
 }

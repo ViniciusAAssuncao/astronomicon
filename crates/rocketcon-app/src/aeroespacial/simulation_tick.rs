@@ -14,7 +14,7 @@ use crate::power::budget::resolve_vehicle_power_budget_with_components;
 use crate::power::consumption::resolve_component_consumption;
 use crate::power::generation::resolve_component_generation;
 use crate::thermal::heat_shield_response::resolve_heat_shield_response;
-use crate::thermal::network_assembly::assemble_vehicle_thermal_network;
+use crate::thermal::network_assembly::assemble_vehicle_thermal_network_with_materials;
 use crate::thermal::network_tick::advance_vehicle_thermal_network_in_existing_transaction;
 use astronomicon_app::climate::temperature::ClimateBodyInputs;
 use astronomicon_app::ephemeris::EphemerisCatalog;
@@ -354,7 +354,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
         ),
         None => (None, None, None),
     };
-    let mut thermal_network = assemble_vehicle_thermal_network(
+    let (mut thermal_network, materials) = assemble_vehicle_thermal_network_with_materials(
         pool,
         vehicle_id,
         &components,
@@ -380,6 +380,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
         dt,
         universe_epoch,
         current_at_epoch,
+        &materials,
     )
     .await?;
     mark(&mut profile, "thermal_network");
