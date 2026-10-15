@@ -1,5 +1,5 @@
 use astronomicon_app::climate::atmosphere::resolve_atmospheric_profile_with_body;
-use astronomicon_app::climate::circulation::resolve_wind_profile_at_latitude_with_context;
+use astronomicon_app::climate::circulation::resolve_wind_profile_at_latitude_with_context_and_body;
 use astronomicon_app::climate::temperature::{AdvectiveTemperatureContext, ClimateBodyInputs};
 use astronomicon_app::ephemeris::resolve_planet_orientation;
 use astronomicon_app::error::AppResult;
@@ -267,11 +267,13 @@ async fn resolve_vehicle_aerodynamics_inner(
         return Ok(None);
     }
 
-    let wind_diag = resolve_wind_profile_at_latitude_with_context(
+    let wind_diag = resolve_wind_profile_at_latitude_with_context_and_body(
         pool,
         &climate,
         latitude,
         surface_temperature,
+        planet,
+        atmosphere,
     )
     .await?;
     mark(&mut profile, "wind_profile");
