@@ -36,6 +36,7 @@ pub(crate) struct InitialAerodynamics<'a> {
     environment: &'a EnvironmentSnapshot,
     components: &'a [(VehicleComponentEntry, ComponentRecord)],
     snapshot: &'a VehicleSnapshot,
+    operational_states: &'a HashMap<Uuid, Option<ComponentOperationalState>>,
     diagnostic: Option<AerodynamicDiagnostic>,
 }
 
@@ -45,6 +46,7 @@ impl<'a> InitialAerodynamics<'a> {
         environment: &'a EnvironmentSnapshot,
         components: &'a [(VehicleComponentEntry, ComponentRecord)],
         snapshot: &'a VehicleSnapshot,
+        operational_states: &'a HashMap<Uuid, Option<ComponentOperationalState>>,
         diagnostic: Option<AerodynamicDiagnostic>,
     ) -> Self {
         Self {
@@ -52,6 +54,7 @@ impl<'a> InitialAerodynamics<'a> {
             environment,
             components,
             snapshot,
+            operational_states,
             diagnostic,
         }
     }
@@ -162,9 +165,15 @@ async fn advance_vehicle_physical_state_inner(
 
     let mut operational_states = HashMap::new();
     for (entry, _) in components {
-        if let Some(op) =
-            operational_state_repository::get_by_vehicle_component_id(pool, &entry.id()).await?
+        let op = if let Some(&cached) = initial_aerodynamics
+            .as_ref()
+            .and_then(|initial| initial.operational_states.get(&entry.id()))
         {
+            cached
+        } else {
+            operational_state_repository::get_by_vehicle_component_id(pool, &entry.id()).await?
+        };
+        if let Some(op) = op {
             operational_states.insert(entry.id(), op);
         }
     }

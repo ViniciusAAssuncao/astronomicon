@@ -18,8 +18,7 @@ use crate::thermal::network_assembly::assemble_vehicle_thermal_network_with_mate
 use crate::thermal::network_tick::advance_vehicle_thermal_network_in_existing_transaction;
 use astronomicon_app::climate::temperature::ClimateBodyInputs;
 use astronomicon_app::ephemeris::EphemerisCatalog;
-use astronomicon_core::units::constants::STANDARD_GRAVITY;
-use astronomicon_core::units::{Duration, Luminosity, Vector3};
+use astronomicon_core::units::{Duration, Luminosity};
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::VehicleControlInput;
 use rocketcon_core::math::orbital::n_body::dop853::Dop853DenseSegment;
@@ -29,6 +28,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 mod activation;
+mod flight_loads;
 mod gravity_telemetry;
 mod profile;
 mod reference_contact;
@@ -39,6 +39,7 @@ mod soi_transition;
 mod transaction;
 
 use activation::is_propulsion_or_control_active;
+use flight_loads::resolve_flight_loads;
 use profile::mark;
 pub use profile::{TickProfile, TickStageTiming};
 use reference_contact::contact_for_reference;
@@ -118,15 +119,20 @@ pub(super) async fn advance_vehicle_simulation_inner(
     )
     .await?;
     mark(&mut profile, "power_and_battery");
-    let propellant_tick = PropellantTick::prepare(pool, &components, &vehicle_snapshot, dt).await?;
-
+    let propellant_tick = PropellantTick::prepare(
+        pool,
+        &components,
+        &vehicle_snapshot,
+        &operational_states,
+        dt,
+    )
+    .await?;
     let mut component_waste_heats: HashMap<Uuid, Luminosity> =
         HashMap::with_capacity(components.len());
     for (entry, record) in &components {
         if !vehicle_snapshot.is_stage_active(entry.stage_index()) {
             continue;
         }
-
         let op_state = operational_states.get(&entry.id()).copied().flatten();
         let gen_contribution = resolve_component_generation(
             pool,
@@ -140,13 +146,11 @@ pub(super) async fn advance_vehicle_simulation_inner(
             current_at_epoch,
         )
         .await?;
-
         let con_contribution = resolve_component_consumption(entry, record, op_state);
         let total_waste = gen_contribution.waste_heat + con_contribution.waste_heat;
         component_waste_heats.insert(entry.id(), total_waste);
     }
     mark(&mut profile, "component_heat_inputs");
-
     let is_propelling =
         is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input)
             || propellant_tick
@@ -215,6 +219,7 @@ pub(super) async fn advance_vehicle_simulation_inner(
             &environment,
             &components,
             &vehicle_snapshot,
+            &operational_states,
             aero_diag_current,
         );
         let state = advance_vehicle_physical_state_with_initial_aerodynamics(
@@ -346,14 +351,14 @@ pub(super) async fn advance_vehicle_simulation_inner(
     }
     mark(&mut profile, "final_ephemeris_aero_shield");
 
-    let (air_density, relative_airspeed, mach_number) = match aero_diag {
-        Some(ref d) => (
-            Some(d.air_density),
-            Some(d.relative_airspeed),
-            Some(d.mach_number),
-        ),
-        None => (None, None, None),
-    };
+    let (air_density, relative_airspeed, mach_number) =
+        aero_diag.as_ref().map_or((None, None, None), |d| {
+            (
+                Some(d.air_density),
+                Some(d.relative_airspeed),
+                Some(d.mach_number),
+            )
+        });
     let (mut thermal_network, materials) = assemble_vehicle_thermal_network_with_materials(
         pool,
         vehicle_id,
@@ -420,34 +425,14 @@ pub(super) async fn advance_vehicle_simulation_inner(
         vehicle_physical_state_repository::upsert(pool, &new_physical_state).await?;
     }
 
-    let dt_val = dt.value();
-    let net_linear_acc = if dt_val > 0.0 && dt_val.is_finite() {
-        (new_physical_state.velocity().raw() - current_physical_state.velocity().raw()) / dt_val
-    } else {
-        Vector3::zero()
-    };
-    let proper_acc_world = if !uses_force_integration && !surface_contact.has_contact() {
-        Vector3::zero()
-    } else if surface_contact.has_contact() {
-        let n = surface_contact.surface_normal_world();
-        let g_proj = grav_acc.raw().dot(&n);
-        if g_proj < 0.0 {
-            -n * g_proj
-        } else {
-            -grav_acc.raw()
-        }
-    } else {
-        net_linear_acc - grav_acc.raw()
-    };
-    let proper_acc_body = new_physical_state
-        .orientation()
-        .inverse()
-        .rotate_vector(proper_acc_world);
-    let axial_g_load = proper_acc_body.2 / STANDARD_GRAVITY;
-    let lateral_g_load =
-        (proper_acc_body.0 * proper_acc_body.0 + proper_acc_body.1 * proper_acc_body.1).sqrt()
-            / STANDARD_GRAVITY;
-    let total_g_load = proper_acc_body.magnitude() / STANDARD_GRAVITY;
+    let flight_loads = resolve_flight_loads(
+        &current_physical_state,
+        &new_physical_state,
+        grav_acc,
+        &surface_contact,
+        dt,
+        uses_force_integration,
+    );
     let mut final_thermal_budget = thermal_tick_report.budget;
     if let Some(ref d) = aero_diag {
         final_thermal_budget.stagnation_heat_flux = d.stagnation_heat_flux;
@@ -465,9 +450,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
         surface_contact,
         power_budget,
         final_thermal_budget,
-        axial_g_load,
-        lateral_g_load,
-        total_g_load,
+        flight_loads.axial_g,
+        flight_loads.lateral_g,
+        flight_loads.total_g,
         [
             body_position_new.raw().0,
             body_position_new.raw().1,
