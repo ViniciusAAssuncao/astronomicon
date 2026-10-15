@@ -52,6 +52,15 @@ async fn shared_material_override_reaches_every_vehicle_instance() -> Result<(),
     .await?;
 
     let components = list_components_for_vehicle(&pool, &vehicle_id).await?;
+    for (entry, record) in &components {
+        let independently_loaded = rocketcon_db::repositories::component_repository::get_by_id(
+            &pool,
+            &entry.component_id(),
+        )
+        .await?
+        .ok_or("fixture component missing")?;
+        assert_eq!(record, &independently_loaded);
+    }
     let network = assemble_vehicle_thermal_network(
         &pool,
         vehicle_id,

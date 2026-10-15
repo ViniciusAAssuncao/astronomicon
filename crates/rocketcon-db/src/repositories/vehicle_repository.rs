@@ -4,6 +4,7 @@ use crate::repositories::component_repository;
 use rocketcon_core::domain::{ComponentRecord, Vehicle, VehicleComponentEntry};
 use rocketcon_core::error::RocketDomainError;
 use sqlx::SqlitePool;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 const BASE_QUERY: &str = "SELECT id, name, vehicle_kind, manufacturer, manufactured_at_unix_seconds, lore_notes FROM vehicles";
@@ -39,16 +40,24 @@ pub async fn list_components_for_vehicle(
     .await?;
 
     let mut results = Vec::with_capacity(rows.len());
+    let mut component_records = HashMap::<Uuid, ComponentRecord>::new();
     for row in rows {
         let entry = VehicleComponentEntry::try_from(row)?;
-        let component_record = component_repository::get_by_id(pool, &entry.component_id())
-            .await?
-            .ok_or_else(|| {
-                RocketDbError::Domain(RocketDomainError::InvalidInvariant {
-                    field: "component_id".to_string(),
-                    reason: format!("component '{}' not found", entry.component_id()),
-                })
-            })?;
+        let component_id = entry.component_id();
+        let component_record = if let Some(record) = component_records.get(&component_id) {
+            record.clone()
+        } else {
+            let record = component_repository::get_by_id(pool, &component_id)
+                .await?
+                .ok_or_else(|| {
+                    RocketDbError::Domain(RocketDomainError::InvalidInvariant {
+                        field: "component_id".to_string(),
+                        reason: format!("component '{}' not found", component_id),
+                    })
+                })?;
+            component_records.insert(component_id, record.clone());
+            record
+        };
         results.push((entry, component_record));
     }
 

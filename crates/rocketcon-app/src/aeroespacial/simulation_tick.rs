@@ -1,4 +1,3 @@
-use crate::aeroespacial::aerodynamics::resolve_vehicle_aerodynamics_in_existing_transaction;
 use crate::aeroespacial::max_dynamic_pressure::resolve_max_q;
 use crate::aeroespacial::propagation::{
     InitialAerodynamics, advance_vehicle_physical_state_with_initial_aerodynamics,
@@ -13,9 +12,6 @@ use crate::orbital::nbody_coasting::propagate_nbody_coasting_vehicle;
 use crate::power::battery::apply_power_delta_with_components;
 use crate::power::budget::resolve_vehicle_power_budget_with_components;
 use crate::thermal::component_heat_inputs::resolve_vehicle_component_waste_heats;
-use crate::thermal::heat_shield_response::resolve_heat_shield_response;
-use crate::thermal::network_assembly::assemble_vehicle_thermal_network_with_materials;
-use crate::thermal::network_tick::advance_vehicle_thermal_network_in_existing_transaction;
 use astronomicon_app::climate::temperature::ClimateBodyInputs;
 use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::units::Duration;
@@ -27,6 +23,7 @@ use rocketcon_db::repositories::vehicle_physical_state as vehicle_physical_state
 use uuid::Uuid;
 
 mod activation;
+mod aerodynamic_sample;
 mod flight_loads;
 mod gravity_telemetry;
 mod profile;
@@ -35,17 +32,21 @@ mod regime_selection;
 mod report;
 mod soi_crossing;
 mod soi_transition;
+mod thermal_phase;
 mod transaction;
 
 use activation::is_propulsion_or_control_active;
+use aerodynamic_sample::AerodynamicSampler;
 use flight_loads::resolve_flight_loads;
 use profile::mark;
 pub use profile::{TickProfile, TickStageTiming};
 use reference_contact::contact_for_reference;
 use regime_selection::select_tick_gravity;
+use report::{ReferenceBodyTelemetry, reconcile_thermal_budget};
 pub use report::{SoiTransitionReport, VehicleTickReport};
 pub use soi_crossing::{SoiCrossing, first_crossing};
 use soi_transition::apply_confirmed_soi_transition;
+use thermal_phase::ThermalPhase;
 pub use transaction::{
     advance_vehicle_simulation, advance_vehicle_simulation_in_session,
     advance_vehicle_simulation_profiled, advance_vehicle_simulation_profiled_in_session,
@@ -146,22 +147,21 @@ pub(super) async fn advance_vehicle_simulation_inner(
                 .values()
                 .any(|load| *load > 1e-4);
 
-    let aero_diag_current = if environment.planet.is_some() {
-        resolve_vehicle_aerodynamics_in_existing_transaction(
-            pool,
-            &current_physical_state,
-            reference_body_id,
-            environment.reference_position().raw(),
-            &components,
-            vehicle_snapshot.active_stages(),
-            universe_epoch,
-            current_at_epoch,
-            climate_body.as_ref(),
-        )
-        .await?
-    } else {
-        None
+    let aerodynamic_sampler = AerodynamicSampler {
+        pool,
+        components: &components,
+        active_stages: vehicle_snapshot.active_stages(),
+        universe_epoch,
+        climate_body: climate_body.as_ref(),
     };
+    let aero_diag_current = aerodynamic_sampler
+        .sample(
+            &environment,
+            &current_physical_state,
+            environment.reference_position(),
+            current_at_epoch,
+        )
+        .await?;
     let has_drag = aero_diag_current
         .as_ref()
         .map_or(false, |a| a.drag_force.magnitude().value() > 1e-4);
@@ -287,12 +287,12 @@ pub(super) async fn advance_vehicle_simulation_inner(
     } else {
         environment
     };
-    let body_position_new = states_new
-        .get(&environment.reference_id())
-        .map(|state| state.position)
-        .ok_or_else(|| {
-            RocketError::Generic("reference body position unavailable after propagation".into())
-        })?;
+    let reference_telemetry = ReferenceBodyTelemetry::resolve(
+        &states_new,
+        environment.reference_id(),
+        environment.reference_radius(),
+    )?;
+    let body_position_new = reference_telemetry.position;
     let surface_contact = contact_for_reference(
         pool,
         &environment,
@@ -303,78 +303,31 @@ pub(super) async fn advance_vehicle_simulation_inner(
         new_physical_state.velocity(),
     )
     .await?;
-    let aero_diag = if environment.planet.is_some() {
-        resolve_vehicle_aerodynamics_in_existing_transaction(
-            pool,
+    let aero_diag = aerodynamic_sampler
+        .sample(
+            &environment,
             &new_physical_state,
-            new_physical_state.reference_body_id(),
-            body_position_new.raw(),
-            &components,
-            vehicle_snapshot.active_stages(),
-            universe_epoch,
+            body_position_new,
             new_at_epoch,
-            climate_body.as_ref(),
-        )
-        .await?
-    } else {
-        None
-    };
-    let raw_stag_flux = aero_diag
-        .as_ref()
-        .map(|a| a.stagnation_heat_flux)
-        .unwrap_or_else(|| astronomicon_core::units::HeatFlux::new(0.0));
-
-    if raw_stag_flux.value() > 0.0 {
-        let _shield_response = resolve_heat_shield_response(
-            pool,
-            &components,
-            vehicle_snapshot.active_stages(),
-            raw_stag_flux,
-            dt,
-            universe_epoch,
-            current_at_epoch,
         )
         .await?;
-    }
-    mark(&mut profile, "final_ephemeris_aero_shield");
-
-    let (air_density, relative_airspeed, mach_number) =
-        aero_diag.as_ref().map_or((None, None, None), |d| {
-            (
-                Some(d.air_density),
-                Some(d.relative_airspeed),
-                Some(d.mach_number),
-            )
-        });
-    let (mut thermal_network, materials) = assemble_vehicle_thermal_network_with_materials(
+    let thermal_phase = ThermalPhase {
         pool,
         vehicle_id,
-        &components,
-        vehicle_snapshot.active_stages(),
-        &component_waste_heats,
-        air_density,
-        relative_airspeed,
-        mach_number,
-        None,
-    )
-    .await?;
-
-    let thermal_tick_report = advance_vehicle_thermal_network_in_existing_transaction(
-        pool,
-        vehicle_id,
-        &mut thermal_network,
-        &components,
-        vehicle_snapshot.active_stages(),
-        &environment,
-        new_physical_state.position(),
-        new_physical_state.orientation(),
-        None,
+        components: &components,
+        active_stages: vehicle_snapshot.active_stages(),
+        component_waste_heats: &component_waste_heats,
+        environment: &environment,
+        physical_state: &new_physical_state,
+        aerodynamics: aero_diag.as_ref(),
         dt,
         universe_epoch,
-        current_at_epoch,
-        &materials,
-    )
-    .await?;
+        at_epoch: current_at_epoch,
+    };
+    thermal_phase.apply_heat_shield().await?;
+    mark(&mut profile, "final_ephemeris_aero_shield");
+
+    let thermal_tick_report = thermal_phase.advance_network().await?;
     mark(&mut profile, "thermal_network");
 
     let grav_acc = gravity_telemetry::resolve_tick_gravity(
@@ -407,16 +360,11 @@ pub(super) async fn advance_vehicle_simulation_inner(
         dt,
         uses_force_integration,
     );
-    let mut final_thermal_budget = thermal_tick_report.budget;
-    if let Some(ref d) = aero_diag {
-        final_thermal_budget.stagnation_heat_flux = d.stagnation_heat_flux;
-    }
+    let final_thermal_budget = reconcile_thermal_budget(
+        thermal_tick_report.budget,
+        aero_diag.as_ref().map(|diag| diag.stagnation_heat_flux),
+    );
     mark(&mut profile, "gravity_maxq_and_report");
-    let reference_body_velocity = states_new
-        .get(&environment.reference_id())
-        .ok_or_else(|| RocketError::Generic("reference body has no final ephemeris state".into()))?
-        .velocity
-        .raw();
     Ok(VehicleTickReport::new(
         new_physical_state,
         aero_diag,
@@ -427,19 +375,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
         flight_loads.axial_g,
         flight_loads.lateral_g,
         flight_loads.total_g,
-        [
-            body_position_new.raw().0,
-            body_position_new.raw().1,
-            body_position_new.raw().2,
-        ],
-        [
-            reference_body_velocity.0,
-            reference_body_velocity.1,
-            reference_body_velocity.2,
-        ],
-        environment
-            .reference_radius()
-            .map_or(0.0, |radius| radius.value()),
+        reference_telemetry.position_m(),
+        reference_telemetry.velocity_m_s(),
+        reference_telemetry.radius_m(),
         propellant_tick.main_engine_loads(),
         propellant_tick.tank_stored_kg(),
         soi_crossings
