@@ -119,7 +119,15 @@ pub async fn resolve_atmospheric_profile_at_altitude(
             reason: format!("planet '{}' not found", planet_id),
         })?;
     let planet = Planet::try_from(planet_row)?;
+    resolve_atmospheric_profile_with_body(&atmosphere, &planet, surface_temperature, altitude)
+}
 
+pub fn resolve_atmospheric_profile_with_body(
+    atmosphere: &Atmosphere,
+    planet: &Planet,
+    surface_temperature: Temperature,
+    altitude: Length,
+) -> AppResult<(Pressure, Temperature, Density)> {
     let eq_radius = planet
         .equatorial_radius()
         .ok_or_else(|| DomainError::InvalidInvariant {
@@ -198,14 +206,9 @@ pub async fn resolve_atmospheric_stratification_at_latitude(
         })?;
     let planet = Planet::try_from(planet_row)?;
 
-    let surf_temp = resolve_advective_surface_temperature(
-        pool,
-        planet_id,
-        latitude,
-        universe_epoch,
-        at_epoch,
-    )
-    .await?;
+    let surf_temp =
+        resolve_advective_surface_temperature(pool, planet_id, latitude, universe_epoch, at_epoch)
+            .await?;
     let (solvent_props, solvent_molar_mass, humidity) =
         resolve_condensable_species(pool, planet_id).await?;
 

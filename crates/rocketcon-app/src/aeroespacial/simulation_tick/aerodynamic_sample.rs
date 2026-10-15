@@ -37,6 +37,7 @@ impl AerodynamicSampler<'_> {
             self.universe_epoch,
             at_epoch,
             self.climate_body,
+            Some(environment),
         )
         .await?)
     }

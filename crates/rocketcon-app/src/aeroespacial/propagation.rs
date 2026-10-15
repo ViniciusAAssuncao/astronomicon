@@ -309,6 +309,7 @@ async fn advance_vehicle_physical_state_inner(
                 universe_epoch,
                 current_at_epoch,
                 None,
+                None,
             )
             .await?
         }

@@ -1,4 +1,4 @@
-use astronomicon_app::climate::atmosphere::resolve_atmospheric_profile_at_altitude;
+use astronomicon_app::climate::atmosphere::resolve_atmospheric_profile_with_body;
 use astronomicon_app::climate::circulation::resolve_wind_profile_at_latitude_with_context;
 use astronomicon_app::climate::temperature::{AdvectiveTemperatureContext, ClimateBodyInputs};
 use astronomicon_app::ephemeris::resolve_planet_orientation;
@@ -17,6 +17,7 @@ use astronomicon_core::units::{
 use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{atmosphere_repository, planet_repository};
 use rocketcon_core::domain::{ComponentRecord, VehicleComponentEntry, VehiclePhysicalState};
+use rocketcon_core::environment::EnvironmentSnapshot;
 use rocketcon_core::math::aerodynamics::{
     center_of_pressure, compute_aerodynamic_angles, compute_aerodynamic_forces_and_torque,
     drag_coefficient_estimate, dynamic_pressure, local_atmospheric_relative_velocity, mach_number,
@@ -71,6 +72,7 @@ pub async fn resolve_vehicle_aerodynamics(
         universe_epoch,
         at_epoch,
         None,
+        None,
         false,
         None,
     )
@@ -87,6 +89,7 @@ pub(crate) async fn resolve_vehicle_aerodynamics_in_existing_transaction(
     universe_epoch: Duration,
     at_epoch: Duration,
     body: Option<&ClimateBodyInputs>,
+    environment: Option<&EnvironmentSnapshot>,
 ) -> AppResult<Option<AerodynamicDiagnostic>> {
     resolve_vehicle_aerodynamics_inner(
         pool,
@@ -98,6 +101,7 @@ pub(crate) async fn resolve_vehicle_aerodynamics_in_existing_transaction(
         universe_epoch,
         at_epoch,
         body,
+        environment,
         true,
         None,
     )
@@ -125,6 +129,7 @@ pub async fn resolve_vehicle_aerodynamics_profiled(
         universe_epoch,
         at_epoch,
         None,
+        None,
         false,
         Some(&mut profile),
     )
@@ -148,23 +153,62 @@ async fn resolve_vehicle_aerodynamics_inner(
     universe_epoch: Duration,
     at_epoch: Duration,
     body: Option<&ClimateBodyInputs>,
+    environment: Option<&EnvironmentSnapshot>,
     existing_transaction: bool,
     mut profile: Option<&mut AerodynamicsProfile>,
 ) -> AppResult<Option<AerodynamicDiagnostic>> {
-    let atmosphere = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
-        Some(atm) => atm,
-        None => {
-            return Ok(None);
+    if environment.is_some_and(|snapshot| snapshot.reference_id() != planet_id) {
+        return Err(DomainError::InvalidInvariant {
+            field: "planet_id".to_string(),
+            reason: format!(
+                "aerodynamic environment does not match planet '{}'",
+                planet_id
+            ),
         }
+        .into());
+    }
+    let loaded_atmosphere = if environment.is_none() {
+        atmosphere_repository::get_by_planet_id(pool, &planet_id).await?
+    } else {
+        None
+    };
+    let atmosphere = match environment {
+        Some(snapshot) => snapshot.atmosphere.as_ref(),
+        None => loaded_atmosphere.as_ref(),
+    };
+    let atmosphere = match atmosphere {
+        Some(atmosphere) => atmosphere,
+        None => return Ok(None),
     };
 
-    let planet_row = planet_repository::get_by_id(pool, &planet_id)
-        .await?
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "planet_id".to_string(),
-            reason: format!("planet '{}' not found", planet_id),
-        })?;
-    let planet = Planet::try_from(planet_row)?;
+    let loaded_planet = if environment.is_none() {
+        let planet_row = planet_repository::get_by_id(pool, &planet_id)
+            .await?
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "planet_id".to_string(),
+                reason: format!("planet '{}' not found", planet_id),
+            })?;
+        Some(Planet::try_from(planet_row)?)
+    } else {
+        None
+    };
+    let planet = match environment {
+        Some(snapshot) => {
+            snapshot
+                .planet
+                .as_ref()
+                .ok_or_else(|| DomainError::InvalidInvariant {
+                    field: "planet_id".to_string(),
+                    reason: format!("planet '{}' not found", planet_id),
+                })?
+        }
+        None => loaded_planet
+            .as_ref()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "planet_id".to_string(),
+                reason: format!("planet '{}' not found", planet_id),
+            })?,
+    };
 
     let eq_radius = planet
         .equatorial_radius()
@@ -216,8 +260,7 @@ async fn resolve_vehicle_aerodynamics_inner(
     mark(&mut profile, "surface_temperature");
 
     let (p_alt, t_alt, rho_alt) =
-        resolve_atmospheric_profile_at_altitude(pool, planet_id, surface_temperature, altitude)
-            .await?;
+        resolve_atmospheric_profile_with_body(atmosphere, planet, surface_temperature, altitude)?;
     mark(&mut profile, "atmosphere_at_altitude");
 
     if rho_alt.value() <= 0.0 {

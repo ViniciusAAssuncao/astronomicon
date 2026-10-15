@@ -1,4 +1,7 @@
 use super::{INITIAL_AT_EPOCH, percentile, sql_trace};
+use astronomicon_app::climate::atmosphere::{
+    resolve_atmospheric_profile_at_altitude, resolve_atmospheric_profile_with_body,
+};
 use astronomicon_app::climate::circulation::{
     resolve_wind_profile_at_latitude, resolve_wind_profile_at_latitude_with_context,
     resolve_wind_profile_at_latitude_with_temperature,
@@ -7,7 +10,7 @@ use astronomicon_app::climate::temperature::{
     AdvectiveTemperatureContext, ClimateBodyInputs, resolve_advective_surface_temperature,
 };
 use astronomicon_app::ephemeris::resolve_planet_orientation;
-use astronomicon_core::units::{Angle, Duration};
+use astronomicon_core::units::{Angle, Duration, Length};
 use rocketcon_app::aeroespacial::{
     resolve_vehicle_aerodynamics, resolve_vehicle_aerodynamics_profiled, resolve_vehicle_snapshot,
 };
@@ -263,8 +266,38 @@ pub async fn run(
         at_epoch,
     )
     .await?;
-    if expected.is_none() {
-        return Err("atmospheric fixture did not produce aerodynamics".into());
+    let diagnostic = expected
+        .as_ref()
+        .ok_or("atmospheric fixture did not produce aerodynamics")?;
+    let body_atmosphere = environment
+        .atmosphere
+        .as_ref()
+        .ok_or("atmospheric fixture has no atmosphere")?;
+    let body_planet = environment
+        .planet
+        .as_ref()
+        .ok_or("atmospheric fixture has no planet")?;
+    for sample_altitude in [
+        Length::new(0.0),
+        diagnostic.altitude,
+        Length::new(100_000.0),
+    ] {
+        let independently_loaded = resolve_atmospheric_profile_at_altitude(
+            pool,
+            planet_id,
+            local_temperature,
+            sample_altitude,
+        )
+        .await?;
+        let reused = resolve_atmospheric_profile_with_body(
+            body_atmosphere,
+            body_planet,
+            local_temperature,
+            sample_altitude,
+        )?;
+        if independently_loaded != reused {
+            return Err("atmospheric profile differs when using loaded body".into());
+        }
     }
 
     if trace_sql {
