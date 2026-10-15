@@ -78,7 +78,20 @@ async fn session_drives_vehicle_and_reloads_saved_state() -> Result<(), Box<dyn 
             .collect::<Vec<_>>();
         let prepared = catalog.prepared_positions()?;
         let mut workspace = prepared.workspace(source_ids.len());
+        let (primary, secondary): (String, String) = sqlx::query_as(
+            "SELECT primary_star_id, secondary_star_id FROM barycenters WHERE star_system_id = ? LIMIT 1",
+        )
+        .bind(environment.system_id.to_string())
+        .fetch_one(&pool)
+        .await?;
+        let barycenter_members = [Uuid::parse_str(&primary)?, Uuid::parse_str(&secondary)?];
         for offset in [0.0, 0.01, 1.0, 128.0] {
+            let full = catalog.positions_at_offset(epoch + at_epoch, offset)?;
+            let members =
+                prepared.selected_at_offset(epoch + at_epoch, offset, &barycenter_members)?;
+            for id in barycenter_members {
+                assert_eq!(members.get(&id), full.get(&id));
+            }
             let direct =
                 catalog.positions_for_ids_at_offset(epoch + at_epoch, offset, &source_ids)?;
             let reused = prepared.selected_at_offset(epoch + at_epoch, offset, &source_ids)?;

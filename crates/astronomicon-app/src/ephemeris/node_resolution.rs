@@ -74,16 +74,18 @@ pub fn resolve_node_at_offset(
             time_since_epoch,
         )?;
 
-        split_barycenter_positions(
-            parent_bary_id,
-            bary_pos,
-            barycenter_map,
-            star_map,
-            planet_map,
-            minor_planet_map,
-            memo,
-            time_since_epoch,
-        )?;
+        if !memo.contains_key(&id) {
+            split_barycenter_positions(
+                parent_bary_id,
+                bary_pos,
+                barycenter_map,
+                star_map,
+                planet_map,
+                minor_planet_map,
+                memo,
+                time_since_epoch,
+            )?;
+        }
 
         visiting.remove(&id);
 

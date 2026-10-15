@@ -132,11 +132,6 @@ impl<'a> CatalogGravityField<'a> {
                 })?
                 .raw();
             let relative = world - self.origin;
-            let delta = relative - local_position;
-            let distance_squared = delta.dot(&delta);
-            if !distance_squared.is_finite() || distance_squared <= 0.0 {
-                return Err(Dop853Error::GravitationalSingularity);
-            }
             source.position_m = [relative.0, relative.1, relative.2];
         }
         let y = [
