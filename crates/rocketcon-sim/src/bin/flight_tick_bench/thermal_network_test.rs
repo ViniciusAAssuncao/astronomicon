@@ -126,6 +126,29 @@ async fn shared_material_override_reaches_every_vehicle_instance() -> Result<(),
     .await?;
     assert_eq!(persisted_nodes as usize, network.nodes.len());
 
+    let changed_kind =
+        sqlx::query("UPDATE components SET component_kind = 'UnknownKind' WHERE id = ?")
+            .bind(super::ENGINE_ID)
+            .execute(&pool)
+            .await?;
+    assert_eq!(changed_kind.rows_affected(), 1);
+    let engine_id = Uuid::parse_str(super::ENGINE_ID)?;
+    let standalone_kind_error =
+        rocketcon_db::repositories::component_repository::get_by_id(&pool, &engine_id)
+            .await
+            .expect_err("unknown component kind must fail standalone loading");
+    let grouped_kind_error = list_components_for_vehicle(&pool, &vehicle_id)
+        .await
+        .expect_err("unknown component kind must fail grouped loading");
+    assert_eq!(
+        standalone_kind_error.to_string(),
+        grouped_kind_error.to_string()
+    );
+    sqlx::query("UPDATE components SET component_kind = 'Engine' WHERE id = ?")
+        .bind(super::ENGINE_ID)
+        .execute(&pool)
+        .await?;
+
     let changed = sqlx::query(
         "UPDATE component_attributes SET numeric_value = NULL, text_value = 'wrong-type' WHERE component_id = ? AND attribute_key = 'max_thrust_n'",
     )
@@ -133,7 +156,6 @@ async fn shared_material_override_reaches_every_vehicle_instance() -> Result<(),
     .execute(&pool)
     .await?;
     assert_eq!(changed.rows_affected(), 1);
-    let engine_id = Uuid::parse_str(super::ENGINE_ID)?;
     let standalone_error =
         rocketcon_db::repositories::component_repository::get_by_id(&pool, &engine_id)
             .await

@@ -41,6 +41,7 @@ pub async fn list_components_for_vehicle(
 
     let attribute_rows =
         component_attributes::fetch_attribute_rows_for_vehicle(pool, vehicle_id).await?;
+    let mut component_rows = component_repository::fetch_rows_for_vehicle(pool, vehicle_id).await?;
     let empty_attributes = Vec::new();
     let mut results = Vec::with_capacity(rows.len());
     let mut component_records = HashMap::<Uuid, ComponentRecord>::new();
@@ -53,18 +54,18 @@ pub async fn list_components_for_vehicle(
             let attributes = attribute_rows
                 .get(&component_id.to_string())
                 .unwrap_or(&empty_attributes);
-            let record = component_repository::get_by_id_with_attribute_rows(
-                pool,
-                &component_id,
-                Some(attributes),
-            )
-            .await?
-            .ok_or_else(|| {
-                RocketDbError::Domain(RocketDomainError::InvalidInvariant {
-                    field: "component_id".to_string(),
-                    reason: format!("component '{}' not found", component_id),
-                })
-            })?;
+            let component_row = component_rows
+                .remove(&component_id.to_string())
+                .ok_or_else(|| {
+                    RocketDbError::Domain(RocketDomainError::InvalidInvariant {
+                        field: "component_id".to_string(),
+                        reason: format!("component '{}' not found", component_id),
+                    })
+                })?;
+            let record = component_repository::record_from_row_with_attribute_rows(
+                component_row,
+                attributes,
+            )?;
             component_records.insert(component_id, record.clone());
             record
         };

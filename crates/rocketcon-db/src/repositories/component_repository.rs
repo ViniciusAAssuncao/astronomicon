@@ -337,14 +337,6 @@ fn component_details_from_attributes(
 }
 
 pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> RocketDbResult<Option<ComponentRecord>> {
-    get_by_id_with_attribute_rows(pool, id, None).await
-}
-
-pub(crate) async fn get_by_id_with_attribute_rows(
-    pool: &SqlitePool,
-    id: &Uuid,
-    attribute_rows: Option<&RawComponentAttributeRows>,
-) -> RocketDbResult<Option<ComponentRecord>> {
     let query = format!("{BASE_QUERY} WHERE id = ?");
     let row = sqlx::query_as::<_, ComponentRow>(&query)
         .bind(id.to_string())
@@ -352,27 +344,44 @@ pub(crate) async fn get_by_id_with_attribute_rows(
         .await?;
 
     let component_row = match row {
-        Some(r) => r,
-        None => {
-            return Ok(None);
-        }
+        Some(row) => row,
+        None => return Ok(None),
     };
+    let component = Component::try_from(component_row)?;
+    let details = fetch_component_details(pool, &component).await?;
+    Ok(Some(ComponentRecord::new(component, details)))
+}
 
+pub(crate) async fn fetch_rows_for_vehicle(
+    pool: &SqlitePool,
+    vehicle_id: &Uuid,
+) -> RocketDbResult<HashMap<String, ComponentRow>> {
+    let query = format!(
+        "{BASE_QUERY} WHERE id IN (SELECT component_id FROM vehicle_components WHERE vehicle_id = ?)"
+    );
+    let rows = sqlx::query_as::<_, ComponentRow>(&query)
+        .bind(vehicle_id.to_string())
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|row| (row.id.clone(), row)).collect())
+}
+
+pub(crate) fn record_from_row_with_attribute_rows(
+    component_row: ComponentRow,
+    attribute_rows: &RawComponentAttributeRows,
+) -> RocketDbResult<ComponentRecord> {
     let component = Component::try_from(component_row)?;
     let details = if component.kind() == ComponentKind::Cpu {
         ComponentDetails::Cpu
-    } else if let Some(rows) = attribute_rows {
+    } else {
         let attributes = decode_eav_attribute_rows(
-            rows.iter().cloned(),
+            attribute_rows.iter().cloned(),
             &component.id(),
             "component_attributes",
         )?;
         component_details_from_attributes(&component, &attributes)?
-    } else {
-        fetch_component_details(pool, &component).await?
     };
-
-    Ok(Some(ComponentRecord::new(component, details)))
+    Ok(ComponentRecord::new(component, details))
 }
 
 pub async fn list_all(pool: &SqlitePool) -> RocketDbResult<Vec<ComponentRecord>> {
