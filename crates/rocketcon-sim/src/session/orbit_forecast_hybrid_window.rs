@@ -64,7 +64,9 @@ fn append_curve(
         position_at(segment, end)?,
         MAX_FORECAST_GEOMETRY_POINTS.saturating_sub(used),
         |time| position_at(segment, time),
-    )?;
+    ).map_err(|error| RocketError::Generic(format!(
+        "forecast geometry at segment [{start:.3}, {end:.3}], offset {offset:.3}, previously used {used} points: {error}"
+    )))?;
     for (time, world) in sampled {
         push_point(result, point(world, initial_center), offset + time);
     }
