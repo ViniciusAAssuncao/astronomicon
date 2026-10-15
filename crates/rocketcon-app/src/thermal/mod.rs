@@ -1,3 +1,4 @@
+pub mod component_heat_inputs;
 pub mod heat_shield_response;
 pub mod network_assembly;
 pub mod network_tick;

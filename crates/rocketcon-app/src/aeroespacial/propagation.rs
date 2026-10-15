@@ -4,6 +4,7 @@ use crate::aeroespacial::aerodynamics::{
 };
 use crate::aeroespacial::dynamics_step::evaluate_rigid_body_derivative_with_ambient_pressure;
 use crate::aeroespacial::gravity::GravityField;
+use crate::aeroespacial::max_dynamic_pressure::resolve_max_q;
 use crate::aeroespacial::vehicle::resolve_vehicle_snapshot;
 use crate::environment::load_environment_snapshot;
 use crate::error::{RocketError, RocketResult};
@@ -389,24 +390,11 @@ async fn advance_vehicle_physical_state_inner(
         })
     };
 
-    let (max_q, max_q_epoch) = match (physical_state.max_dynamic_pressure(), aero_diag) {
-        (Some(prev_q), Some(diag)) => {
-            if diag.dynamic_pressure.value() > prev_q.value() {
-                (
-                    Some(diag.dynamic_pressure),
-                    Some(universe_epoch + current_at_epoch),
-                )
-            } else {
-                (Some(prev_q), physical_state.max_dynamic_pressure_epoch())
-            }
-        }
-        (None, Some(diag)) => (
-            Some(diag.dynamic_pressure),
-            Some(universe_epoch + current_at_epoch),
-        ),
-        (Some(prev_q), None) => (Some(prev_q), physical_state.max_dynamic_pressure_epoch()),
-        (None, None) => (None, None),
-    };
+    let (max_q, max_q_epoch) = resolve_max_q(
+        &physical_state,
+        aero_diag.map(|diag| diag.dynamic_pressure),
+        universe_epoch + current_at_epoch,
+    );
 
     let new_physical_state = VehiclePhysicalState::new_with_max_q(
         vehicle_id,

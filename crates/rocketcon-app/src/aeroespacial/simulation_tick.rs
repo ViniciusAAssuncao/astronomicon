@@ -1,4 +1,5 @@
 use crate::aeroespacial::aerodynamics::resolve_vehicle_aerodynamics_in_existing_transaction;
+use crate::aeroespacial::max_dynamic_pressure::resolve_max_q;
 use crate::aeroespacial::propagation::{
     InitialAerodynamics, advance_vehicle_physical_state_with_initial_aerodynamics,
 };
@@ -11,20 +12,18 @@ use crate::orbital::invalidate_vehicle_trajectory_patches;
 use crate::orbital::nbody_coasting::propagate_nbody_coasting_vehicle;
 use crate::power::battery::apply_power_delta_with_components;
 use crate::power::budget::resolve_vehicle_power_budget_with_components;
-use crate::power::consumption::resolve_component_consumption;
-use crate::power::generation::resolve_component_generation;
+use crate::thermal::component_heat_inputs::resolve_vehicle_component_waste_heats;
 use crate::thermal::heat_shield_response::resolve_heat_shield_response;
 use crate::thermal::network_assembly::assemble_vehicle_thermal_network_with_materials;
 use crate::thermal::network_tick::advance_vehicle_thermal_network_in_existing_transaction;
 use astronomicon_app::climate::temperature::ClimateBodyInputs;
 use astronomicon_app::ephemeris::EphemerisCatalog;
-use astronomicon_core::units::{Duration, Luminosity};
+use astronomicon_core::units::Duration;
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::VehicleControlInput;
 use rocketcon_core::math::orbital::n_body::dop853::Dop853DenseSegment;
 use rocketcon_db::repositories::vehicle as vehicle_repository;
 use rocketcon_db::repositories::vehicle_physical_state as vehicle_physical_state_repository;
-use std::collections::HashMap;
 use uuid::Uuid;
 
 mod activation;
@@ -127,29 +126,17 @@ pub(super) async fn advance_vehicle_simulation_inner(
         dt,
     )
     .await?;
-    let mut component_waste_heats: HashMap<Uuid, Luminosity> =
-        HashMap::with_capacity(components.len());
-    for (entry, record) in &components {
-        if !vehicle_snapshot.is_stage_active(entry.stage_index()) {
-            continue;
-        }
-        let op_state = operational_states.get(&entry.id()).copied().flatten();
-        let gen_contribution = resolve_component_generation(
-            pool,
-            entry,
-            record,
-            op_state,
-            &environment,
-            current_physical_state.position(),
-            current_physical_state.orientation(),
-            universe_epoch,
-            current_at_epoch,
-        )
-        .await?;
-        let con_contribution = resolve_component_consumption(entry, record, op_state);
-        let total_waste = gen_contribution.waste_heat + con_contribution.waste_heat;
-        component_waste_heats.insert(entry.id(), total_waste);
-    }
+    let component_waste_heats = resolve_vehicle_component_waste_heats(
+        pool,
+        &components,
+        &vehicle_snapshot,
+        &operational_states,
+        &environment,
+        &current_physical_state,
+        universe_epoch,
+        current_at_epoch,
+    )
+    .await?;
     mark(&mut profile, "component_heat_inputs");
     let is_propelling =
         is_propulsion_or_control_active(&vehicle_snapshot, &components, control_input)
@@ -401,24 +388,11 @@ pub(super) async fn advance_vehicle_simulation_inner(
     )
     .await?;
 
-    let (max_q, max_q_epoch) = match (new_physical_state.max_dynamic_pressure(), aero_diag) {
-        (Some(prev_q), Some(diag)) => {
-            if diag.dynamic_pressure.value() > prev_q.value() {
-                (Some(diag.dynamic_pressure), Some(total_epoch_new))
-            } else {
-                (
-                    Some(prev_q),
-                    new_physical_state.max_dynamic_pressure_epoch(),
-                )
-            }
-        }
-        (None, Some(diag)) => (Some(diag.dynamic_pressure), Some(total_epoch_new)),
-        (Some(prev_q), None) => (
-            Some(prev_q),
-            new_physical_state.max_dynamic_pressure_epoch(),
-        ),
-        (None, None) => (None, None),
-    };
+    let (max_q, max_q_epoch) = resolve_max_q(
+        &new_physical_state,
+        aero_diag.as_ref().map(|diag| diag.dynamic_pressure),
+        total_epoch_new,
+    );
 
     if max_q != new_physical_state.max_dynamic_pressure() {
         new_physical_state = new_physical_state.with_max_dynamic_pressure(max_q, max_q_epoch);

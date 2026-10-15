@@ -2,6 +2,7 @@ pub mod aerodynamics;
 pub mod deployment;
 pub mod dynamics_step;
 pub mod gravity;
+mod max_dynamic_pressure;
 pub mod propagation;
 mod propellant_tick;
 pub mod simulation_tick;
