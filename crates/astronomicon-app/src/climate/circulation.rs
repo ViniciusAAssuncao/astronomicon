@@ -367,8 +367,17 @@ async fn resolve_wind_profile_at_latitude_inner(
     let friction_factor = ((10.0 / z0_val).ln() / (pbl_height / z0_val).ln()).clamp(0.1, 0.9);
     let cross_angle = Angle::new((15.0 + 15.0 * (1.0 - friction_factor)) * PI / 180.0);
 
-    let parent_star = find_parent_star(pool, planet.orbital_parent()).await.ok();
-    let top_irradiance = if let Some(star) = parent_star.as_ref() {
+    let loaded_star = if body.is_some() && context.is_some() {
+        None
+    } else {
+        find_parent_star(pool, planet.orbital_parent()).await.ok()
+    };
+    let parent_star = if body.is_some() {
+        context.map(AdvectiveTemperatureContext::parent_star)
+    } else {
+        loaded_star.as_ref()
+    };
+    let top_irradiance = if let Some(star) = parent_star {
         resolve_top_of_atmosphere_irradiance(pool, planet, star, universe_epoch, at_epoch)
             .await
             .unwrap_or(Irradiance::new(0.0))
@@ -377,7 +386,7 @@ async fn resolve_wind_profile_at_latitude_inner(
     };
 
     let insolation_factor =
-        if let (Some(elements), Some(star)) = (planet.orbital_elements(), parent_star.as_ref()) {
+        if let (Some(elements), Some(star)) = (planet.orbital_elements(), parent_star) {
             let total_epoch = universe_epoch + at_epoch;
             let mu_star = combined_gravitational_parameter(planet.mass(), star.mass());
             if let Ok(true_anomaly) = true_anomaly_at_epoch(&elements, mu_star, total_epoch) {
