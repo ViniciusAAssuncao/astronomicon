@@ -1,5 +1,5 @@
 use crate::error::{RocketError, RocketResult};
-use astronomicon_app::ephemeris::EphemerisCatalog;
+use astronomicon_app::ephemeris::{EphemerisCatalog, PositionWorkspace, PreparedPositionLookup};
 use astronomicon_core::units::constants::GRAVITATIONAL_CONSTANT;
 use astronomicon_core::units::{AccelerationVector, Duration, Vector3};
 use rocketcon_core::math::orbital::n_body::dop853::{
@@ -9,7 +9,8 @@ use rocketcon_core::math::orbital::n_body::impact::ImpactCandidate;
 use uuid::Uuid;
 
 pub(crate) struct CatalogGravityField<'a> {
-    catalog: &'a EphemerisCatalog,
+    positions: PreparedPositionLookup<'a>,
+    workspace: PositionWorkspace,
     epoch: Duration,
     origin: Vector3,
     ids: Vec<Uuid>,
@@ -90,9 +91,14 @@ impl<'a> CatalogGravityField<'a> {
             }
             sources.retain(|source| sorted.binary_search(&source.body_id).is_ok());
         }
-        let ids = sources.iter().map(|source| source.body_id).collect();
+        let ids: Vec<Uuid> = sources.iter().map(|source| source.body_id).collect();
+        let positions = catalog
+            .prepared_positions()
+            .map_err(astronomicon_app::error::AppError::from)?;
+        let workspace = positions.workspace(ids.len());
         Ok(Self {
-            catalog,
+            positions,
+            workspace,
             epoch,
             origin,
             ids,
@@ -110,13 +116,14 @@ impl<'a> CatalogGravityField<'a> {
         elapsed_seconds: f64,
         local_position: Vector3,
     ) -> Result<AccelerationVector, Dop853Error> {
-        let positions = self
-            .catalog
-            .positions_for_ids_at_offset(self.epoch, elapsed_seconds, &self.ids)
+        self.positions
+            .selected_at_offset_into(self.epoch, elapsed_seconds, &self.ids, &mut self.workspace)
             .map_err(|error| Dop853Error::Derivative(error.to_string()))?;
-        for source in &mut self.sources {
-            let world = positions
-                .get(&source.body_id)
+        for (index, source) in self.sources.iter_mut().enumerate() {
+            let world = self
+                .workspace
+                .positions()
+                .get(index)
                 .ok_or_else(|| {
                     Dop853Error::Derivative(format!(
                         "N-body body {} has no ephemeris",

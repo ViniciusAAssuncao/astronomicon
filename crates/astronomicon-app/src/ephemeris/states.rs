@@ -1,4 +1,5 @@
 use crate::ephemeris::positions::compute_system_positions;
+use crate::ephemeris::prepared_positions::PreparedPositionLookup;
 use crate::error::AppResult;
 use astronomicon_core::domain::{
     Barycenter, MinorPlanet, OrbitalElements, OrbitalParent, Planet, Star,
@@ -109,6 +110,15 @@ impl EphemerisCatalog {
                     .find(|body| body.id() == id)
                     .map(|body| body.mass())
             })
+    }
+
+    pub fn prepared_positions(&self) -> DomainResult<PreparedPositionLookup<'_>> {
+        PreparedPositionLookup::new(
+            &self.stars,
+            &self.planets,
+            &self.barycenters,
+            &self.minor_planets,
+        )
     }
 
     pub fn positions(&self, epoch: Duration) -> DomainResult<HashMap<Uuid, Position>> {

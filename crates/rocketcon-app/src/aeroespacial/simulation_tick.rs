@@ -4,7 +4,7 @@ use crate::aeroespacial::propagation::{
 };
 use crate::aeroespacial::propellant_tick::PropellantTick;
 use crate::aeroespacial::vehicle::resolve_vehicle_snapshot_with_components;
-use crate::environment::load_environment_snapshot;
+use crate::environment::{load_environment_snapshot, load_environment_snapshot_with_catalog};
 use crate::error::{RocketError, RocketResult};
 use crate::orbital::coasting::propagate_coasting_vehicle;
 use crate::orbital::invalidate_vehicle_trajectory_patches;
@@ -13,7 +13,6 @@ use crate::power::battery::apply_power_delta_with_components;
 use crate::power::budget::resolve_vehicle_power_budget_with_components;
 use crate::thermal::component_heat_inputs::resolve_vehicle_component_waste_heats;
 use astronomicon_app::climate::temperature::ClimateBodyInputs;
-use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::units::Duration;
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::VehicleControlInput;
@@ -76,9 +75,13 @@ pub(super) async fn advance_vehicle_simulation_inner(
     let reference_body_id = current_physical_state.reference_body_id();
     let new_at_epoch = current_at_epoch + dt;
 
-    let environment =
-        load_environment_snapshot(pool, reference_body_id, universe_epoch, current_at_epoch)
-            .await?;
+    let (environment, ephemeris) = load_environment_snapshot_with_catalog(
+        pool,
+        reference_body_id,
+        universe_epoch,
+        current_at_epoch,
+    )
+    .await?;
     let climate_body = if environment.atmosphere.is_some() {
         Some(ClimateBodyInputs::load_in_existing_transaction(pool, reference_body_id).await?)
     } else {
@@ -181,7 +184,6 @@ pub(super) async fn advance_vehicle_simulation_inner(
     mark(&mut profile, "initial_aero_and_contact");
 
     let total_epoch_new = universe_epoch + new_at_epoch;
-    let ephemeris = EphemerisCatalog::load(pool, environment.system_id).await?;
     let selection = select_tick_gravity(
         &ephemeris,
         &current_physical_state,

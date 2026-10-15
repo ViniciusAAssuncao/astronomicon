@@ -1,5 +1,4 @@
-use crate::ephemeris::node_resolution::resolve_node_at_offset;
-use crate::ephemeris::time_offset::OrbitalTime;
+use crate::ephemeris::prepared_positions::PreparedPositionLookup;
 use crate::error::AppResult;
 use astronomicon_core::domain::{Barycenter, MinorPlanet, Planet, Star};
 use astronomicon_core::error::{DomainError, DomainResult};
@@ -8,7 +7,7 @@ use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
     barycenter_repository, minor_planet_repository, planet_repository, star_repository,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 pub fn compute_system_positions(
@@ -93,114 +92,11 @@ fn compute_positions(
             reason: "non-finite epoch or offset".into(),
         });
     }
-    let time_since_epoch = OrbitalTime::at(base, offset_seconds);
-    let star_map: HashMap<Uuid, &Star> = stars.iter().map(|s| (s.id(), s)).collect();
-    let planet_map: HashMap<Uuid, &Planet> = planets.iter().map(|p| (p.id(), p)).collect();
-    let barycenter_map: HashMap<Uuid, &Barycenter> =
-        barycenters.iter().map(|b| (b.id(), b)).collect();
-    let minor_planet_map: HashMap<Uuid, &MinorPlanet> =
-        minor_planets.iter().map(|mp| (mp.id(), mp)).collect();
-
-    let mut member_of: HashMap<Uuid, Uuid> = HashMap::with_capacity(barycenters.len() * 2);
-    for b in barycenters {
-        let pri_id = b.member_primary().id();
-        let sec_id = b.member_secondary().id();
-
-        if member_of.insert(pri_id, b.id()).is_some() {
-            return Err(DomainError::InvalidInvariant {
-                field: "barycenters".to_string(),
-                reason: format!("entity '{}' is a member of multiple barycenters", pri_id),
-            });
-        }
-        if member_of.insert(sec_id, b.id()).is_some() {
-            return Err(DomainError::InvalidInvariant {
-                field: "barycenters".to_string(),
-                reason: format!("entity '{}' is a member of multiple barycenters", sec_id),
-            });
-        }
-    }
-
-    let mut memo: HashMap<Uuid, Position> = HashMap::with_capacity(
-        stars.len() + planets.len() + barycenters.len() + minor_planets.len(),
-    );
-    let mut visiting: HashSet<Uuid> = HashSet::new();
-
-    if let Some(requested) = selected {
-        let mut filtered = HashMap::with_capacity(requested.len());
-        for id in requested {
-            let position = resolve_node_at_offset(
-                *id,
-                &member_of,
-                &star_map,
-                &planet_map,
-                &barycenter_map,
-                &minor_planet_map,
-                &mut memo,
-                &mut visiting,
-                time_since_epoch,
-            )?;
-            filtered.insert(*id, position);
-        }
-        return Ok(filtered);
-    }
-
-    for barycenter in barycenters {
-        resolve_node_at_offset(
-            barycenter.id(),
-            &member_of,
-            &star_map,
-            &planet_map,
-            &barycenter_map,
-            &minor_planet_map,
-            &mut memo,
-            &mut visiting,
-            time_since_epoch,
-        )?;
-    }
-
-    for star in stars {
-        resolve_node_at_offset(
-            star.id(),
-            &member_of,
-            &star_map,
-            &planet_map,
-            &barycenter_map,
-            &minor_planet_map,
-            &mut memo,
-            &mut visiting,
-            time_since_epoch,
-        )?;
-    }
-
-    for planet in planets {
-        resolve_node_at_offset(
-            planet.id(),
-            &member_of,
-            &star_map,
-            &planet_map,
-            &barycenter_map,
-            &minor_planet_map,
-            &mut memo,
-            &mut visiting,
-            time_since_epoch,
-        )?;
-    }
-
-    for minor_planet in minor_planets {
-        resolve_node_at_offset(
-            minor_planet.id(),
-            &member_of,
-            &star_map,
-            &planet_map,
-            &barycenter_map,
-            &minor_planet_map,
-            &mut memo,
-            &mut visiting,
-            time_since_epoch,
-        )?;
-    }
-
-    Ok(memo)
+    PreparedPositionLookup::new(stars, planets, barycenters, minor_planets)?.compute(
+        base,
+        offset_seconds,
+        selected,
+    )
 }
 
 pub async fn resolve_system_positions(

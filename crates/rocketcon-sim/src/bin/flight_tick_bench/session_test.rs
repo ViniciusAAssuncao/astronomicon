@@ -24,7 +24,105 @@ async fn session_drives_vehicle_and_reloads_saved_state() -> Result<(), Box<dyn 
     source.close().await?;
     let pool = open_pool_path(&path).await?;
     rocketcon_db::save::migrations::run_rocketcon_migrations(&pool).await?;
-    let (vehicle_id, _) = super::create_fixture(&pool, super::Scenario::Atmosphere).await?;
+    let (vehicle_id, epoch) = super::create_fixture(&pool, super::Scenario::Atmosphere).await?;
+    let reference_id = Uuid::parse_str(super::HADAB_ID)?;
+    for at_epoch in [
+        Duration::new(super::INITIAL_AT_EPOCH),
+        Duration::new(super::INITIAL_AT_EPOCH + super::DT),
+    ] {
+        let environment = rocketcon_app::environment::load_environment_snapshot(
+            &pool,
+            reference_id,
+            epoch,
+            at_epoch,
+        )
+        .await?;
+        let direct_positions = astronomicon_app::ephemeris::resolve_system_positions(
+            &pool,
+            environment.system_id,
+            epoch + at_epoch,
+        )
+        .await?;
+        assert_eq!(
+            environment.reference_position(),
+            *direct_positions
+                .get(&reference_id)
+                .ok_or("reference position missing")?
+        );
+        assert_eq!(
+            environment.star_position,
+            *direct_positions
+                .get(&environment.star.id())
+                .ok_or("parent star position missing")?
+        );
+        let star_environment = rocketcon_app::environment::load_environment_snapshot(
+            &pool,
+            environment.star.id(),
+            epoch,
+            at_epoch,
+        )
+        .await?;
+        assert_eq!(
+            star_environment.reference_position(),
+            environment.star_position
+        );
+        assert!(star_environment.planet.is_none());
+
+        let catalog =
+            astronomicon_app::ephemeris::EphemerisCatalog::load(&pool, environment.system_id)
+                .await?;
+        let source_ids = catalog
+            .gravitating_bodies()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>();
+        let prepared = catalog.prepared_positions()?;
+        let mut workspace = prepared.workspace(source_ids.len());
+        for offset in [0.0, 0.01, 1.0, 128.0] {
+            let direct =
+                catalog.positions_for_ids_at_offset(epoch + at_epoch, offset, &source_ids)?;
+            let reused = prepared.selected_at_offset(epoch + at_epoch, offset, &source_ids)?;
+            prepared.selected_at_offset_into(
+                epoch + at_epoch,
+                offset,
+                &source_ids,
+                &mut workspace,
+            )?;
+            assert_eq!(direct, reused);
+            assert_eq!(workspace.positions().len(), source_ids.len());
+            for (id, position) in source_ids.iter().zip(workspace.positions()) {
+                assert_eq!(direct.get(id), Some(position));
+            }
+        }
+        let repeated = [source_ids[0], source_ids[0]];
+        assert!(
+            prepared
+                .selected_at_offset_into(epoch + at_epoch, 0.0, &repeated, &mut workspace)
+                .is_err()
+        );
+        assert!(workspace.positions().is_empty());
+        assert!(
+            prepared
+                .selected_at_offset_into(epoch + at_epoch, f64::NAN, &source_ids, &mut workspace)
+                .is_err()
+        );
+        assert!(workspace.positions().is_empty());
+        let mut missing_source = source_ids.clone();
+        missing_source.push(Uuid::nil());
+        assert!(
+            prepared
+                .selected_at_offset_into(epoch + at_epoch, 0.0, &missing_source, &mut workspace)
+                .is_err()
+        );
+        assert!(workspace.positions().is_empty());
+        prepared.selected_at_offset_into(epoch + at_epoch, 0.0, &source_ids, &mut workspace)?;
+        assert_eq!(workspace.positions().len(), source_ids.len());
+        assert!(
+            prepared
+                .selected_at_offset(epoch + at_epoch, 0.0, &[])
+                .is_err()
+        );
+    }
     pool.close().await;
 
     let mut session = RocketconSession::load(&path, vehicle_id).await?;
