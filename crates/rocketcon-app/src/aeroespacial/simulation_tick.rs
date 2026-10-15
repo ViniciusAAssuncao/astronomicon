@@ -208,10 +208,6 @@ pub(super) async fn advance_vehicle_simulation_inner(
         regime.label(ephemeris.gravitating_bodies().len()),
     );
     let states_new = ephemeris.states(total_epoch_new)?;
-    let positions_new: HashMap<_, _> = states_new
-        .iter()
-        .map(|(id, state)| (*id, state.position))
-        .collect();
     let mut nbody_dense = Vec::<Dop853DenseSegment<3>>::new();
     let mut new_physical_state = if uses_force_integration {
         let initial_aerodynamics = InitialAerodynamics::new(
@@ -299,9 +295,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
     } else {
         environment
     };
-    let body_position_new = positions_new
+    let body_position_new = states_new
         .get(&environment.reference_id())
-        .copied()
+        .map(|state| state.position)
         .ok_or_else(|| {
             RocketError::Generic("reference body position unavailable after propagation".into())
         })?;
