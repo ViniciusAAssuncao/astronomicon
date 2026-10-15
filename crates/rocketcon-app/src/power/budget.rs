@@ -3,14 +3,16 @@ use crate::power::consumption::resolve_component_consumption;
 use crate::power::generation::resolve_component_generation;
 use astronomicon_core::units::{Duration, Luminosity, Position, Quaternion};
 use astronomicon_db::SqlitePool;
-use rocketcon_core::domain::{ComponentDetails, VehicleComponentEntry, VehicleSnapshot};
+use rocketcon_core::domain::{
+    ComponentDetails, ComponentOperationalState, ComponentRecord, VehicleComponentEntry,
+    VehicleSnapshot,
+};
 use rocketcon_core::environment::EnvironmentSnapshot;
 use rocketcon_core::math::power_budget::{
-    aggregate_power_budget, ComponentPowerContribution, VehiclePowerBudget,
+    ComponentPowerContribution, VehiclePowerBudget, aggregate_power_budget,
 };
-use rocketcon_db::repositories::{
-    operational_state_repository, vehicle as vehicle_repository,
-};
+use rocketcon_db::repositories::{operational_state_repository, vehicle as vehicle_repository};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 pub async fn resolve_vehicle_power_budget(
@@ -24,7 +26,32 @@ pub async fn resolve_vehicle_power_budget(
     let components =
         vehicle_repository::list_components_for_vehicle(pool, &vehicle_snapshot.vehicle_id())
             .await?;
+    let (budget, _) = resolve_vehicle_power_budget_with_components(
+        pool,
+        &components,
+        vehicle_snapshot,
+        environment,
+        vehicle_position,
+        universe_epoch,
+        at_epoch,
+    )
+    .await?;
+    Ok(budget)
+}
 
+pub(crate) async fn resolve_vehicle_power_budget_with_components(
+    pool: &SqlitePool,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    vehicle_snapshot: &VehicleSnapshot,
+    environment: &EnvironmentSnapshot,
+    vehicle_position: Position,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> RocketResult<(
+    VehiclePowerBudget,
+    HashMap<Uuid, Option<ComponentOperationalState>>,
+)> {
+    let mut operational_states = HashMap::with_capacity(components.len());
     let vehicle_orientation = vehicle_snapshot
         .physical_state()
         .map(|s| s.orientation())
@@ -35,14 +62,24 @@ pub async fn resolve_vehicle_power_budget(
     let mut total_generation = 0.0;
     let mut total_consumption = 0.0;
 
-    for (entry, record) in &components {
+    for (entry, record) in components {
         let is_active = vehicle_snapshot.is_stage_active(entry.stage_index());
+
+        let op_state = if is_active {
+            operational_state_repository::get_by_vehicle_component_id(pool, &entry.id()).await?
+        } else {
+            None
+        };
+        if is_active {
+            operational_states.insert(entry.id(), op_state);
+        }
 
         let gen_contribution = if is_active {
             resolve_component_generation(
                 pool,
                 entry,
                 record,
+                op_state,
                 environment,
                 vehicle_position,
                 vehicle_orientation,
@@ -58,11 +95,6 @@ pub async fn resolve_vehicle_power_budget(
             )
         };
 
-        let op_state = if is_active {
-            operational_state_repository::get_by_vehicle_component_id(pool, &entry.id()).await?
-        } else {
-            None
-        };
         let con_contribution = resolve_component_consumption(entry, record, op_state);
 
         if is_active {
@@ -90,7 +122,7 @@ pub async fn resolve_vehicle_power_budget(
             Luminosity::new(net_power_val)
         } else {
             let mut total_max_charge = 0.0;
-            for (entry, record) in &components {
+            for (entry, record) in components {
                 if !vehicle_snapshot.is_stage_active(entry.stage_index()) {
                     continue;
                 }
@@ -121,7 +153,7 @@ pub async fn resolve_vehicle_power_budget(
         dumped_power,
     );
 
-    Ok(budget)
+    Ok((budget, operational_states))
 }
 
 pub async fn resolve_vehicle_power_budget_for_vehicle(

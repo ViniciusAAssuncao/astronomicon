@@ -1,8 +1,10 @@
 use crate::error::RocketResult;
 use astronomicon_core::units::{Duration, Energy, Luminosity};
 use astronomicon_db::SqlitePool;
-use rocketcon_core::domain::{ComponentDetails, EnergyReservoirState};
-use rocketcon_core::math::battery_dynamics::{distribute_power_across_batteries, BatteryState};
+use rocketcon_core::domain::{
+    ComponentDetails, ComponentRecord, EnergyReservoirState, VehicleComponentEntry,
+};
+use rocketcon_core::math::battery_dynamics::{BatteryState, distribute_power_across_batteries};
 use rocketcon_db::repositories::{energy_reservoir_repository, vehicle as vehicle_repository};
 use uuid::Uuid;
 
@@ -43,7 +45,25 @@ pub async fn apply_power_delta(
     at_epoch: Duration,
 ) -> RocketResult<Luminosity> {
     let components = vehicle_repository::list_components_for_vehicle(pool, &vehicle_id).await?;
+    apply_power_delta_with_components(
+        pool,
+        &components,
+        net_power,
+        duration,
+        universe_epoch,
+        at_epoch,
+    )
+    .await
+}
 
+pub(crate) async fn apply_power_delta_with_components(
+    pool: &SqlitePool,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    net_power: Luminosity,
+    duration: Duration,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> RocketResult<Luminosity> {
     let mut battery_entries = Vec::new();
     let mut battery_states = Vec::new();
 

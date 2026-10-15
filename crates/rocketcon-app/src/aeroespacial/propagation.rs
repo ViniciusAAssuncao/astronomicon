@@ -170,11 +170,14 @@ async fn advance_vehicle_physical_state_inner(
     }
 
     let mut reaction_wheel_states = HashMap::new();
-    for (entry, _) in components {
-        if let Some(rw) =
-            reaction_wheel_state_repository::get_by_vehicle_component_id(pool, &entry.id()).await?
-        {
-            reaction_wheel_states.insert(entry.id(), rw);
+    for (entry, record) in components {
+        if matches!(record.details(), ComponentDetails::ReactionWheel(_)) {
+            if let Some(rw) =
+                reaction_wheel_state_repository::get_by_vehicle_component_id(pool, &entry.id())
+                    .await?
+            {
+                reaction_wheel_states.insert(entry.id(), rw);
+            }
         }
     }
 

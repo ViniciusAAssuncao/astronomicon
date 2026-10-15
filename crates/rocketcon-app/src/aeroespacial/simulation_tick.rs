@@ -9,8 +9,8 @@ use crate::error::{RocketError, RocketResult};
 use crate::orbital::coasting::propagate_coasting_vehicle;
 use crate::orbital::invalidate_vehicle_trajectory_patches;
 use crate::orbital::nbody_coasting::propagate_nbody_coasting_vehicle;
-use crate::power::battery::apply_power_delta;
-use crate::power::budget::resolve_vehicle_power_budget;
+use crate::power::battery::apply_power_delta_with_components;
+use crate::power::budget::resolve_vehicle_power_budget_with_components;
 use crate::power::consumption::resolve_component_consumption;
 use crate::power::generation::resolve_component_generation;
 use crate::thermal::heat_shield_response::resolve_heat_shield_response;
@@ -23,7 +23,6 @@ use astronomicon_core::units::{Duration, Luminosity, Vector3};
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::VehicleControlInput;
 use rocketcon_core::math::orbital::n_body::dop853::Dop853DenseSegment;
-use rocketcon_db::repositories::operational_state_repository;
 use rocketcon_db::repositories::vehicle as vehicle_repository;
 use rocketcon_db::repositories::vehicle_physical_state as vehicle_physical_state_repository;
 use std::collections::HashMap;
@@ -98,8 +97,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
     .await?;
     mark(&mut profile, "load_state_environment_snapshot");
 
-    let power_budget = resolve_vehicle_power_budget(
+    let (power_budget, operational_states) = resolve_vehicle_power_budget_with_components(
         pool,
+        &components,
         &vehicle_snapshot,
         &environment,
         current_physical_state.position(),
@@ -108,9 +108,9 @@ pub(super) async fn advance_vehicle_simulation_inner(
     )
     .await?;
 
-    let _dumped_power = apply_power_delta(
+    let _dumped_power = apply_power_delta_with_components(
         pool,
-        vehicle_id,
+        &components,
         power_budget.net_power,
         dt,
         universe_epoch,
@@ -127,10 +127,12 @@ pub(super) async fn advance_vehicle_simulation_inner(
             continue;
         }
 
+        let op_state = operational_states.get(&entry.id()).copied().flatten();
         let gen_contribution = resolve_component_generation(
             pool,
             entry,
             record,
+            op_state,
             &environment,
             current_physical_state.position(),
             current_physical_state.orientation(),
@@ -139,8 +141,6 @@ pub(super) async fn advance_vehicle_simulation_inner(
         )
         .await?;
 
-        let op_state =
-            operational_state_repository::get_by_vehicle_component_id(pool, &entry.id()).await?;
         let con_contribution = resolve_component_consumption(entry, record, op_state);
         let total_waste = gen_contribution.waste_heat + con_contribution.waste_heat;
         component_waste_heats.insert(entry.id(), total_waste);
