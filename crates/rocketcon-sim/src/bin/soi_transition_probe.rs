@@ -59,7 +59,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if (previous - completed.forecast_completed_seconds).abs() > 1e-6 {
             return Err("last progressive forecast does not match final horizon".into());
         }
-        println!("FORECAST_PROGRESS_PASS windows={}", partials.len());
+        if !completed.continuation_points_m.is_empty() {
+            let end = completed.future_arcs.last()
+                .and_then(|arc| arc.points_m.last())
+                .ok_or("no forecast endpoint for continuation")?;
+            let beginning = completed.continuation_points_m.first().unwrap();
+            let gap = end.iter().zip(beginning)
+                .map(|(a, b)| (a - b).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            if !gap.is_finite() || gap > 1.0 {
+                return Err(format!("forecast continuation gap {gap} m").into());
+            }
+        }
+        println!(
+            "FORECAST_PROGRESS_PASS windows={} continuation_vertices={}",
+            partials.len(), completed.continuation_points_m.len()
+        );
         reader.close().await;
         return Ok(());
     }

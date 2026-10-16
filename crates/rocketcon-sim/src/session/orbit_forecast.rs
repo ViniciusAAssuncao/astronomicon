@@ -1,3 +1,4 @@
+use super::orbit_forecast_continuation::terminal_continuation;
 use super::orbit_forecast_events::first_surface_intersection;
 use crate::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::EphemerisCatalog;
@@ -43,6 +44,7 @@ pub struct ForecastResult {
     pub bodies: Vec<ForecastBody>,
     pub elapsed_seconds: f64,
     pub impact_seconds: Option<f64>,
+    pub continuation_points_m: Vec<[f64; 3]>,
 }
 
 pub(super) fn body_name(catalog: &EphemerisCatalog, id: Uuid) -> String {
@@ -95,14 +97,14 @@ pub fn sample_patched_forecast(
         bodies,
         elapsed_seconds: 0.0,
         impact_seconds: None,
+        continuation_points_m: Vec::new(),
     };
     if !horizon.is_finite() || horizon <= 0.0 {
         return Ok(result);
     }
     let mut reference = first_reference;
     let mut center_position = origin;
-    let mut display_center = Vector3::new(0.0, 0.0, 0.0);
-    let mut relative_position = Position::from_raw(position.raw() - origin);
+     let mut relative_position = Position::from_raw(position.raw() - origin);
     let mut relative_velocity = VelocityVector::from_raw(velocity.raw() - first.velocity.raw());
     let mut elapsed = 0.0;
     let mut goal = horizon;
@@ -129,7 +131,7 @@ pub fn sample_patched_forecast(
                 kind: 2,
                 body_name: body_name(catalog, reference),
                 seconds: elapsed,
-                position_m: as_array(display_center + relative_position.raw()),
+                position_m: *result.arcs.last().unwrap().points_m.last().unwrap(),
             });
             break;
         }
@@ -251,7 +253,13 @@ pub fn sample_patched_forecast(
                 .raw()
         };
         let world = center_position + propagated.0.raw();
-        let point = as_array(display_center + propagated.0.raw());
+        let frame_center = catalog
+            .positions_for_ids_at_offset(epoch, now, &[first_reference])
+            .map_err(|error| RocketError::Generic(error.to_string()))?
+            .get(&first_reference)
+            .ok_or_else(|| RocketError::Generic("forecast display center unavailable".into()))?
+            .raw();
+        let point = as_array(world - frame_center);
         let arc = result.arcs.last_mut().expect("forecast has an initial arc");
         arc.points_m.push(point);
         arc.end_seconds = now;
@@ -295,12 +303,11 @@ pub fn sample_patched_forecast(
             });
             reference = crossing.new_reference_id;
             relative_position = Position::from_raw(world - new_body.position.raw());
-            display_center = Vector3::new(point[0], point[1], point[2]) - relative_position.raw();
             if let Some(radius_m) = catalog.radius_of_body(reference) {
                 result.bodies.push(ForecastBody {
                     name: body_name(catalog, reference),
                     radius_m,
-                    position_m: as_array(display_center),
+                    position_m: as_array(new_body.position.raw() - frame_center),
                 });
             }
             relative_velocity = VelocityVector::from_raw(
@@ -328,6 +335,23 @@ pub fn sample_patched_forecast(
                 end_seconds: now,
                 points_m: vec![point],
             });
+        }
+    }
+    if result.elapsed_seconds > 0.0 && result.impact_seconds.is_none() {
+        let states = catalog.states(epoch + Duration::new(result.elapsed_seconds))?;
+        let body = states
+            .get(&reference)
+            .ok_or_else(|| RocketError::Generic("forecast terminal body unavailable".into()))?;
+        result.continuation_points_m = terminal_continuation(
+            catalog, epoch, first_reference, reference, result.elapsed_seconds,
+            Position::from_raw(center_position + relative_position.raw()),
+            VelocityVector::from_raw(body.velocity.raw() + relative_velocity.raw()),
+        ).unwrap_or_default();
+        if let (Some(first), Some(last)) = (
+            result.continuation_points_m.first_mut(),
+            result.arcs.last().and_then(|arc| arc.points_m.last()),
+        ) {
+            *first = *last;
         }
     }
     Ok(result)

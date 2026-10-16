@@ -171,6 +171,7 @@ pub mod ffi {
         next_apoapsis_position_m: FfiVec3,
         relative_points_m: Vec<FfiVec3>,
         osculating_closed_points_m: Vec<FfiVec3>,
+        continuation_points_m: Vec<FfiVec3>,
         future_arcs: Vec<FfiForecastArc>,
         forecast_events: Vec<FfiForecastEvent>,
         forecast_bodies: Vec<FfiForecastBody>,

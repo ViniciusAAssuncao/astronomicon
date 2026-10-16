@@ -55,6 +55,7 @@ pub struct OrbitPreview {
     pub future_arcs: Vec<ForecastArc>,
     pub forecast_events: Vec<ForecastEvent>,
     pub forecast_bodies: Vec<ForecastBody>,
+    pub continuation_points_m: Vec<[f64; 3]>,
     pub forecast_target_seconds: f64,
     pub forecast_completed_seconds: f64,
     pub forecast_complete: bool,
@@ -64,6 +65,7 @@ fn apply_forecast(preview: &mut OrbitPreview, forecast: &ForecastResult) {
     preview.future_arcs = forecast.arcs.clone();
     preview.forecast_events = forecast.events.clone();
     preview.forecast_bodies = forecast.bodies.clone();
+    preview.continuation_points_m = forecast.continuation_points_m.clone();
     preview.forecast_completed_seconds = forecast.elapsed_seconds;
     preview.forecast_complete = forecast.impact_seconds.is_some()
         || forecast.elapsed_seconds
@@ -245,6 +247,7 @@ pub async fn preview_from_pool_cancelled(
         future_arcs: Vec::new(),
         forecast_events: Vec::new(),
         forecast_bodies: Vec::new(),
+        continuation_points_m: Vec::new(),
         forecast_target_seconds: forecast_horizon,
         forecast_completed_seconds: 0.0,
         forecast_complete: false,

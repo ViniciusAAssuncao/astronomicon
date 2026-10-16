@@ -206,6 +206,11 @@ impl From<SessionPreview> for OrbitPreview {
                 .into_iter()
                 .map(FfiVec3::from)
                 .collect(),
+            continuation_points_m: source
+                .continuation_points_m
+                .into_iter()
+                .map(FfiVec3::from)
+                .collect(),
         }
     }
 }

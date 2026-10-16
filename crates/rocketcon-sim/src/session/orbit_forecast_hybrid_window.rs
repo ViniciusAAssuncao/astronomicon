@@ -1,6 +1,7 @@
 use super::orbit_forecast::{
     ForecastArc, ForecastBody, ForecastEvent, ForecastResult, MAX_ARCS, body_name,
 };
+use super::orbit_forecast_continuation::terminal_continuation;
 use super::orbit_forecast_geometry::sample_smooth_curve;
 use super::orbit_preview_horizon::MAX_BOUND_HORIZON;
 use crate::catalog_nbody::{CatalogTrajectory, integrate_catalog_trajectory_from_offset};
@@ -26,9 +27,23 @@ fn position_at(segment: &Dop853DenseSegment<6>, time: f64) -> RocketResult<Posit
     )))
 }
 
-fn point(world: Position, initial_center: Vector3) -> [f64; 3] {
-    let relative = world.raw() - initial_center;
+fn point(world: Position, center: Vector3) -> [f64; 3] {
+    let relative = world.raw() - center;
     [relative.0, relative.1, relative.2]
+}
+
+fn reference_center(
+    catalog: &EphemerisCatalog,
+    epoch: Duration,
+    first_reference: Uuid,
+    elapsed_seconds: f64,
+) -> RocketResult<Vector3> {
+    catalog
+        .positions_for_ids_at_offset(epoch, elapsed_seconds, &[first_reference])
+        .map_err(|error| RocketError::Generic(error.to_string()))?
+        .get(&first_reference)
+        .map(|position| position.raw())
+        .ok_or_else(|| RocketError::Generic("forecast display center unavailable".into()))
 }
 
 fn push_point(result: &mut ForecastResult, position: [f64; 3], seconds: f64) {
@@ -47,7 +62,9 @@ fn append_curve(
     start: f64,
     end: f64,
     offset: f64,
-    initial_center: Vector3,
+    first_reference: Uuid,
+    catalog: &EphemerisCatalog,
+    epoch: Duration,
 ) -> RocketResult<()> {
     if end <= start {
         return Ok(());
@@ -57,18 +74,24 @@ fn append_curve(
         .iter()
         .map(|arc| arc.points_m.len())
         .sum::<usize>();
+    let relative_at = |time| -> RocketResult<Position> {
+        let world = position_at(segment, time)?;
+        let center = reference_center(catalog, epoch, first_reference, offset + time)?;
+        Ok(Position::from_raw(world.raw() - center))
+    };
     let sampled = sample_smooth_curve(
         start,
         end,
-        position_at(segment, start)?,
-        position_at(segment, end)?,
+        relative_at(start)?,
+        relative_at(end)?,
         MAX_FORECAST_GEOMETRY_POINTS.saturating_sub(used),
-        |time| position_at(segment, time),
+        relative_at,
     ).map_err(|error| RocketError::Generic(format!(
         "forecast geometry at segment [{start:.3}, {end:.3}], offset {offset:.3}, previously used {used} points: {error}"
     )))?;
-    for (time, world) in sampled {
-        push_point(result, point(world, initial_center), offset + time);
+    for (time, relative) in sampled {
+        let position = relative.raw();
+        push_point(result, [position.0, position.1, position.2], offset + time);
     }
     Ok(())
 }
@@ -135,7 +158,7 @@ fn append_window(
     catalog: &EphemerisCatalog,
     epoch: Duration,
     window_offset: f64,
-    initial_center: Vector3,
+    first_reference: Uuid,
     reference: &mut Uuid,
     trajectory: &CatalogTrajectory,
 ) -> RocketResult<()> {
@@ -164,10 +187,15 @@ fn append_window(
                 start,
                 crossing_local,
                 window_offset,
-                initial_center,
+                first_reference,
+                catalog,
+                epoch,
             )?;
             continued_from = crossing_local;
-            let display_point = point(position_at(segment, crossing_local)?, initial_center);
+            let display_center = reference_center(
+                catalog, epoch, first_reference, crossing_absolute,
+            )?;
+            let display_point = point(position_at(segment, crossing_local)?, display_center);
             result.events.push(ForecastEvent {
                 kind: if crossing.entering { 0 } else { 1 },
                 body_name: body_name(
@@ -197,7 +225,7 @@ fn append_window(
                 result.bodies.push(ForecastBody {
                     name: body_name(catalog, *reference),
                     radius_m,
-                    position_m: point(*center, initial_center),
+                    position_m: point(*center, display_center),
                 });
             }
             result.arcs.push(ForecastArc {
@@ -213,19 +241,22 @@ fn append_window(
             continued_from,
             end,
             window_offset,
-            initial_center,
+            first_reference,
+            catalog,
+            epoch,
         )?;
     }
     if let Some(impact) = trajectory.impact {
         let y = trajectory.integrated.final_state;
         let world = Position::from_raw(Vector3::new(y[0], y[1], y[2]));
         let when = window_offset + impact.elapsed_seconds;
+        let center = reference_center(catalog, epoch, first_reference, when)?;
         result.impact_seconds = Some(when);
         result.events.push(ForecastEvent {
             kind: 2,
             body_name: body_name(catalog, impact.body_id),
             seconds: when,
-            position_m: point(world, initial_center),
+            position_m: point(world, center),
         });
     }
     Ok(())
@@ -259,6 +290,7 @@ pub(super) fn sample_restricted_forecast(
         bodies: Vec::new(),
         elapsed_seconds: 0.0,
         impact_seconds: None,
+        continuation_points_m: Vec::new(),
     };
     if let Some(radius_m) = catalog.radius_of_body(first_reference) {
         result.bodies.push(ForecastBody {
@@ -323,7 +355,7 @@ pub(super) fn sample_restricted_forecast(
             catalog,
             epoch,
             offset,
-            initial_center,
+            first_reference,
             &mut reference,
             &trajectory,
         )?;
@@ -336,7 +368,7 @@ pub(super) fn sample_restricted_forecast(
         let y = trajectory.integrated.final_state;
         let expected = point(
             Position::from_raw(Vector3::new(y[0], y[1], y[2])),
-            initial_center,
+            reference_center(catalog, epoch, first_reference, offset + trajectory.integrated.reached_seconds)?,
         );
         let actual = result
             .arcs
@@ -367,6 +399,18 @@ pub(super) fn sample_restricted_forecast(
             return Err(RocketError::Generic("forecast cancelled".into()));
         }
         progress(&result);
+    }
+    if offset > 0.0 && result.impact_seconds.is_none() {
+        result.continuation_points_m = terminal_continuation(
+            catalog, epoch, first_reference, reference, offset,
+            current_position, current_velocity,
+        ).unwrap_or_default();
+        if let (Some(first), Some(last)) = (
+            result.continuation_points_m.first_mut(),
+            result.arcs.last().and_then(|arc| arc.points_m.last()),
+        ) {
+            *first = *last;
+        }
     }
     Ok(result)
 }

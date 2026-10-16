@@ -2,6 +2,7 @@ mod engine_control;
 mod forecast_reader;
 mod orbit_apsides;
 mod orbit_forecast;
+mod orbit_forecast_continuation;
 mod orbit_forecast_events;
 mod orbit_forecast_geometry;
 mod orbit_forecast_hybrid;
