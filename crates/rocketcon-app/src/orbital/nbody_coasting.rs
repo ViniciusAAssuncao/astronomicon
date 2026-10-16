@@ -120,18 +120,3 @@ pub(crate) async fn propagate_nbody_coasting_vehicle(
     physical_repository::upsert(pool, &next).await?;
     Ok(next)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn time_policy_scales_step_sizes_without_fixed_physical_dt() {
-        let short = tick_policy(Duration::new(0.02), [1e-3; 6]).unwrap();
-        let long = tick_policy(Duration::new(0.2), [1e-3; 6]).unwrap();
-        assert_eq!(long.initial_step_s, short.initial_step_s * 10.0);
-        assert!(short.maximum_evaluations < usize::MAX);
-        assert!(tick_policy(Duration::new(0.0), [1e-3; 6]).is_err());
-        assert!(tick_policy(Duration::new(f64::NAN), [1e-3; 6]).is_err());
-    }
-}

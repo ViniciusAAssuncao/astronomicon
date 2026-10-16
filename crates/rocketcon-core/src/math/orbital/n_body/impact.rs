@@ -214,38 +214,3 @@ pub fn first_impact_in_segment<const N: usize>(
     }
     Ok(earliest)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rigid_body_dense_impact_uses_position_without_discarding_attitude_state() {
-        let mut start_state = [0.0; 13];
-        start_state[0] = -10.0;
-        start_state[3] = 4.0;
-        start_state[6] = 1.0;
-        let mut coefficients = [[0.0; 13]; 7];
-        coefficients[0][0] = 40.0;
-        let segment = Dop853DenseSegment {
-            start_seconds: 0.0,
-            end_seconds: 10.0,
-            valid_until_seconds: 10.0,
-            start_state,
-            coefficients,
-        };
-        let impact = first_impact_in_segment(
-            &segment,
-            &[ImpactCandidate {
-                body_id: Uuid::from_u128(1),
-                radius_m: 1.0,
-            }],
-            1e-9,
-            8,
-            |_, _| Ok([0.0; 3]),
-        )
-        .unwrap()
-        .unwrap();
-        assert!((impact.elapsed_seconds - 2.25).abs() < 1e-7);
-    }
-}

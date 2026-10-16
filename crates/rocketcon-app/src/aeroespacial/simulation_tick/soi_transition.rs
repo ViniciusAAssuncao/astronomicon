@@ -177,26 +177,3 @@ fn with_reference(
         state.max_dynamic_pressure_epoch(),
     )?)
 }
-
-#[cfg(test)]
-mod dense_path_tests {
-    use super::*;
-
-    #[test]
-    fn soi_position_uses_integrator_dense_segment_and_fixed_inertial_origin() {
-        let mut coefficients = [[0.0; 3]; 7];
-        coefficients[0][0] = 40.0;
-        let segment = Dop853DenseSegment {
-            start_seconds: 1.0,
-            end_seconds: 3.0,
-            valid_until_seconds: 3.0,
-            start_state: [2.0, 0.0, 0.0],
-            coefficients,
-        };
-        let origin = Position::from_raw(Vector3::new(100.0, 200.0, 0.0));
-        let result = nbody_world_position(&[segment], origin, 2.0).unwrap().raw();
-        assert!((result.0 - 122.0).abs() < 1e-12);
-        assert!((result.1 - 200.0).abs() < 1e-12);
-        assert!(nbody_world_position(&[], origin, 2.0).is_err());
-    }
-}

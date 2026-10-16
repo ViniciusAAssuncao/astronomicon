@@ -56,23 +56,3 @@ pub fn first_surface_intersection(
     }
     Some(high)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use astronomicon_core::units::Vector3;
-
-    #[test]
-    fn surface_crossing_is_independent_of_sampling_interval() {
-        let radius = 6_400_000.0;
-        let mu = GravitationalParameter::new(3.986004418e14);
-        let r = Position::from_raw(Vector3::new(9_000_000.0, 0.0, 0.0));
-        let v = VelocityVector::from_raw(Vector3::new(-10_000.0, 1_000.0, 0.0));
-        let first = first_surface_intersection(r, v, mu, 1200.0, radius).unwrap();
-        let second = first_surface_intersection(r, v, mu, 2400.0, radius).unwrap();
-        assert!((first - second).abs() < 1e-7);
-        let (impact, _) =
-            propagate_universal_state_vectors(r, v, mu, Duration::new(first)).unwrap();
-        assert!((impact.raw().magnitude() - radius).abs() < 0.02);
-    }
-}

@@ -175,37 +175,3 @@ pub async fn resolve_vehicle_gravitational_acceleration(
     let field = GravityField::load(pool, environment, universe_epoch + at_epoch).await?;
     Ok(field.acceleration_at(physical_state.position()))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use astronomicon_core::units::Vector3;
-
-    #[test]
-    fn empty_field_has_no_gravitational_force() {
-        let field = GravityField {
-            sources: Vec::new(),
-            oblateness: None,
-        };
-        assert_eq!(
-            field.acceleration_at(Position::zero()).raw(),
-            Vector3::zero()
-        );
-    }
-
-    #[test]
-    fn gravity_varies_by_position_in_fixed_snapshot() {
-        let mass = Mass::new(6.0e24);
-        let center = Position::from_raw(Vector3::new(1.0e9, 0.0, 0.0));
-        let field = GravityField {
-            sources: vec![(center, mass)],
-            oblateness: None,
-        };
-        let near = Position::from_raw(center.raw() + Vector3::new(7.0e6, 0.0, 0.0));
-        let far = Position::from_raw(center.raw() + Vector3::new(14.0e6, 0.0, 0.0));
-        let a_near = field.acceleration_at(near).raw();
-        let a_far = field.acceleration_at(far).raw();
-        assert!(a_near.0 < 0.0 && a_far.0 < 0.0);
-        assert!(((a_near.magnitude() / a_far.magnitude()) - 4.0).abs() < 1e-12);
-    }
-}

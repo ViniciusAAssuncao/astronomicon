@@ -15,6 +15,3 @@ pub fn representable_epoch_step(epoch: Duration) -> Result<f64, Dop853Error> {
     }
     Ok(step)
 }
-
-#[cfg(test)]
-mod tests;

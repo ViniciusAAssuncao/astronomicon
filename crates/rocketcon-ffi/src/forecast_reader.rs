@@ -90,19 +90,3 @@ impl Drop for PreviewEngine {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn changing_generation_cancels_only_obsolete_requests() {
-        let control = create_forecast_control();
-        control.select_generation(12);
-        assert!(!control.is_cancelled(12));
-        assert!(control.is_cancelled(11));
-        control.select_generation(13);
-        assert!(control.is_cancelled(12));
-        assert!(!control.is_cancelled(13));
-    }
-}

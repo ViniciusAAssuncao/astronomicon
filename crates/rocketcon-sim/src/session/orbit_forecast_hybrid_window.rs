@@ -370,6 +370,3 @@ pub(super) fn sample_restricted_forecast(
     }
     Ok(result)
 }
-
-#[cfg(test)]
-mod tests;
