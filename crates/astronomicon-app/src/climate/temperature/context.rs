@@ -168,6 +168,10 @@ impl AdvectiveTemperatureContext {
         &self.parent_star
     }
 
+    pub fn top_of_atmosphere_irradiance(&self) -> Irradiance {
+        self.surface.top_irradiance
+    }
+
     pub fn universe_epoch(&self) -> Duration {
         self.universe_epoch
     }

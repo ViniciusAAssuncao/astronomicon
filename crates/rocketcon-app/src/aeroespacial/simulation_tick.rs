@@ -10,7 +10,7 @@ use crate::orbital::coasting::propagate_coasting_vehicle;
 use crate::orbital::invalidate_vehicle_trajectory_patches;
 use crate::orbital::nbody_coasting::propagate_nbody_coasting_vehicle;
 use crate::power::battery::apply_power_delta_with_components;
-use crate::power::budget::resolve_vehicle_power_budget_with_components;
+use crate::power::budget::resolve_vehicle_power_budget_with_reusable_heat;
 use crate::thermal::component_heat_inputs::resolve_vehicle_component_waste_heats;
 use astronomicon_app::climate::temperature::ClimateBodyInputs;
 use astronomicon_core::units::Duration;
@@ -101,16 +101,17 @@ pub(super) async fn advance_vehicle_simulation_inner(
     .await?;
     mark(&mut profile, "load_state_environment_snapshot");
 
-    let (power_budget, operational_states) = resolve_vehicle_power_budget_with_components(
-        pool,
-        &components,
-        &vehicle_snapshot,
-        &environment,
-        current_physical_state.position(),
-        universe_epoch,
-        current_at_epoch,
-    )
-    .await?;
+    let (power_budget, operational_states, reusable_generation_heat) =
+        resolve_vehicle_power_budget_with_reusable_heat(
+            pool,
+            &components,
+            &vehicle_snapshot,
+            &environment,
+            current_physical_state.position(),
+            universe_epoch,
+            current_at_epoch,
+        )
+        .await?;
 
     let _dumped_power = apply_power_delta_with_components(
         pool,
@@ -130,11 +131,16 @@ pub(super) async fn advance_vehicle_simulation_inner(
         dt,
     )
     .await?;
+    let pose_unchanged = vehicle_snapshot.physical_state().is_some_and(|state| {
+        state.position() == current_physical_state.position()
+            && state.orientation() == current_physical_state.orientation()
+    });
     let component_waste_heats = resolve_vehicle_component_waste_heats(
         pool,
         &components,
         &vehicle_snapshot,
         &operational_states,
+        pose_unchanged.then_some(&reusable_generation_heat),
         &environment,
         &current_physical_state,
         universe_epoch,

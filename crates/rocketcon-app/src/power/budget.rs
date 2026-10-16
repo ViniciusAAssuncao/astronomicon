@@ -51,6 +51,33 @@ pub(crate) async fn resolve_vehicle_power_budget_with_components(
     VehiclePowerBudget,
     HashMap<Uuid, Option<ComponentOperationalState>>,
 )> {
+    let (budget, states, _) = resolve_vehicle_power_budget_with_reusable_heat(
+        pool,
+        components,
+        vehicle_snapshot,
+        environment,
+        vehicle_position,
+        universe_epoch,
+        at_epoch,
+    )
+    .await?;
+    Ok((budget, states))
+}
+
+pub(crate) async fn resolve_vehicle_power_budget_with_reusable_heat(
+    pool: &SqlitePool,
+    components: &[(VehicleComponentEntry, ComponentRecord)],
+    vehicle_snapshot: &VehicleSnapshot,
+    environment: &EnvironmentSnapshot,
+    vehicle_position: Position,
+    universe_epoch: Duration,
+    at_epoch: Duration,
+) -> RocketResult<(
+    VehiclePowerBudget,
+    HashMap<Uuid, Option<ComponentOperationalState>>,
+    HashMap<Uuid, Luminosity>,
+)> {
+    let mut reusable_heat = HashMap::new();
     let mut operational_states = HashMap::with_capacity(components.len());
     let vehicle_orientation = vehicle_snapshot
         .physical_state()
@@ -96,6 +123,14 @@ pub(crate) async fn resolve_vehicle_power_budget_with_components(
         };
 
         let con_contribution = resolve_component_consumption(entry, record, op_state);
+        if is_active
+            && matches!(
+                record.details(),
+                ComponentDetails::Rtg(_) | ComponentDetails::SolarPanel(_)
+            )
+        {
+            reusable_heat.insert(entry.id(), gen_contribution.waste_heat);
+        }
 
         if is_active {
             total_generation += gen_contribution.electrical_generation.value();
@@ -153,7 +188,7 @@ pub(crate) async fn resolve_vehicle_power_budget_with_components(
         dumped_power,
     );
 
-    Ok((budget, operational_states))
+    Ok((budget, operational_states, reusable_heat))
 }
 
 pub async fn resolve_vehicle_power_budget_for_vehicle(
