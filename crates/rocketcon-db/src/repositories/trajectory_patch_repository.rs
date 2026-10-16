@@ -1,11 +1,11 @@
 use crate::error::RocketDbResult;
-use crate::models::trajectory_patch_row::{format_float_list, TrajectoryPatchRow};
+use crate::models::trajectory_patch_row::{TrajectoryPatchRow, format_float_list};
 use astronomicon_core::units::Duration;
 use rocketcon_core::domain::{TrajectoryPatch, TrajectoryPatchKind};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-const BASE_QUERY: &str = "SELECT id, vehicle_id, reference_body_id, start_universe_epoch_s, end_universe_epoch_s, gravitational_parameter_m3_s2, patch_type, semi_major_axis_m, eccentricity, inclination_rad, longitude_of_ascending_node_rad, argument_of_periapsis_rad, true_anomaly_at_epoch_rad, initial_mass_kg, final_mass_kg, thrust_n, specific_impulse_s, total_delta_v_m_s, chebyshev_x_json, chebyshev_y_json, chebyshev_z_json, chebyshev_vx_json, chebyshev_vy_json, chebyshev_vz_json, chebyshev_mass_json FROM vehicle_trajectory_patches";
+const BASE_QUERY: &str = "SELECT id, vehicle_id, reference_body_id, start_universe_epoch_s, start_at_epoch_s, end_universe_epoch_s, gravitational_parameter_m3_s2, patch_type, semi_major_axis_m, eccentricity, inclination_rad, longitude_of_ascending_node_rad, argument_of_periapsis_rad, true_anomaly_at_epoch_rad, initial_mass_kg, final_mass_kg, thrust_n, specific_impulse_s, total_delta_v_m_s, chebyshev_x_json, chebyshev_y_json, chebyshev_z_json, chebyshev_vx_json, chebyshev_vy_json, chebyshev_vz_json, chebyshev_mass_json FROM vehicle_trajectory_patches";
 
 pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> RocketDbResult<Option<TrajectoryPatch>> {
     let query = format!("{BASE_QUERY} WHERE id = ?");
@@ -28,6 +28,37 @@ pub async fn list_for_vehicle(
         .await?;
 
     rows.into_iter().map(TrajectoryPatch::try_from).collect()
+}
+
+pub async fn list_for_vehicle_with_local_epoch(
+    pool: &SqlitePool,
+    vehicle_id: &Uuid,
+) -> RocketDbResult<Vec<(TrajectoryPatch, Option<Duration>)>> {
+    let query = format!("{BASE_QUERY} WHERE vehicle_id = ? ORDER BY start_universe_epoch_s ASC");
+    let rows = sqlx::query_as::<_, TrajectoryPatchRow>(&query)
+        .bind(vehicle_id.to_string())
+        .fetch_all(pool)
+        .await?;
+    rows.into_iter()
+        .map(|row| {
+            let local_epoch = row.start_at_epoch_s.map(Duration::new);
+            let patch = TrajectoryPatch::try_from(row)?;
+            Ok((patch, local_epoch))
+        })
+        .collect()
+}
+
+pub async fn store_patch_local_epoch(
+    pool: &SqlitePool,
+    patch_id: Uuid,
+    local_epoch: Duration,
+) -> RocketDbResult<()> {
+    sqlx::query("UPDATE vehicle_trajectory_patches SET start_at_epoch_s = ? WHERE id = ?")
+        .bind(local_epoch.value())
+        .bind(patch_id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 pub async fn find_patch_at_epoch(

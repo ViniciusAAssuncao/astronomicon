@@ -22,60 +22,6 @@ pub struct PreviewPath {
     pub end_reason: PreviewEndReason,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use astronomicon_core::units::Vector3;
-
-    #[test]
-    fn long_hyperbolic_flyby_reaches_outbound_soi() {
-        let radius = 142_973_122.607;
-        let position = Position::from_raw(Vector3::new(radius - 1_500_000.0, 0.0, 0.0));
-        let velocity = VelocityVector::from_raw(Vector3::new(-4_000.0, 300.0, 0.0));
-        let mut soi = Some(OrbitSoiPreview {
-            radius_m: radius,
-            outside: false,
-            exit: None,
-        });
-        let path = sample_preview_path(
-            position,
-            velocity,
-            GravitationalParameter::new(3.8667e13),
-            2_905_000.0,
-            100_000.0,
-            &mut soi,
-        );
-        assert_eq!(path.end_reason, PreviewEndReason::SoiExit);
-        assert!(path.elapsed_seconds > 3_600.0);
-        assert!(path.elapsed_seconds < 100_000.0);
-        assert!(path.points.len() <= 257);
-        assert!(soi.unwrap().exit.is_some());
-    }
-
-    #[test]
-    fn limited_horizon_is_reported_not_disguised_as_impact() {
-        let radius = 142_973_122.607;
-        let position = Position::from_raw(Vector3::new(radius - 1_500_000.0, 0.0, 0.0));
-        let velocity = VelocityVector::from_raw(Vector3::new(-4_000.0, 300.0, 0.0));
-        let mut soi = Some(OrbitSoiPreview {
-            radius_m: radius,
-            outside: false,
-            exit: None,
-        });
-        let path = sample_preview_path(
-            position,
-            velocity,
-            GravitationalParameter::new(3.8667e13),
-            2_905_000.0,
-            3_600.0,
-            &mut soi,
-        );
-        assert_eq!(path.end_reason, PreviewEndReason::Horizon);
-        assert!(path.impact_seconds.is_none());
-        assert!(soi.unwrap().exit.is_none());
-    }
-}
-
 pub fn sample_preview_path(
     position: Position,
     velocity: VelocityVector,

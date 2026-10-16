@@ -112,3 +112,55 @@ async fn climate_body_reads_one_committed_snapshot() -> Result<(), Box<dyn Error
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn atmospheric_irradiance_reuses_exact_epoch_positions() -> Result<(), Box<dyn Error>> {
+    use astronomicon_app::climate::temperature::{
+        AdvectiveTemperatureContext, resolve_irradiance_at_position,
+        resolve_top_of_atmosphere_irradiance,
+    };
+    use astronomicon_app::ephemeris::resolve_system_positions;
+    use astronomicon_core::domain::Planet;
+    use astronomicon_core::units::Duration;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let database = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../database/astronomicon.db");
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .filename(database)
+                .read_only(true),
+        )
+        .await?;
+    let planet_id = Uuid::parse_str(super::HADAB_ID)?;
+    let row = planet_repository::get_by_id(&pool, &planet_id)
+        .await?
+        .ok_or("irradiance test planet missing")?;
+    let planet = Planet::try_from(row)?;
+    let star = find_parent_star(&pool, planet.orbital_parent()).await?;
+    let system_id = star.star_system_id().ok_or("parent star lacks system")?;
+    let universe_epoch = Duration::new(0.0);
+
+    for at_epoch in [Duration::new(1.0), Duration::new(601.0)] {
+        let positions =
+            resolve_system_positions(&pool, system_id, universe_epoch + at_epoch).await?;
+        let planet_position = positions
+            .get(&planet_id)
+            .copied()
+            .ok_or("irradiance test planet position missing")?;
+        let direct =
+            resolve_irradiance_at_position(&pool, &star, universe_epoch, at_epoch, planet_position)
+                .await?;
+        let reused =
+            resolve_top_of_atmosphere_irradiance(&pool, &planet, &star, universe_epoch, at_epoch)
+                .await?;
+        assert_eq!(direct, reused);
+        let prepared =
+            AdvectiveTemperatureContext::load(&pool, planet_id, universe_epoch, at_epoch).await?;
+        assert_eq!(prepared.top_of_atmosphere_irradiance(), reused);
+    }
+
+    pool.close().await;
+    Ok(())
+}

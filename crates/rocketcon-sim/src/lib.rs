@@ -1,4 +1,7 @@
 pub mod bridge;
+pub mod catalog_nbody;
+pub mod catalog_nbody_events;
+pub mod catalog_nbody_screen;
 pub mod clock;
 pub mod session;
 

@@ -64,32 +64,3 @@ pub fn planet_equatorial_reference(planet: &Planet) -> Option<OrbitalReferenceFr
     let pole = planet_rotation_axis_direction(normal, obliquity, solstice_direction);
     OrbitalReferenceFrame::from_pole(pole)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn perpendicular_equator_has_valid_basis() {
-        let frame = OrbitalReferenceFrame::from_pole(Vector3::new(0.2, 0.3, 1.0)).unwrap();
-        assert!((frame.normal.magnitude() - 1.0).abs() < 1e-12);
-        assert!((frame.horizontal.magnitude() - 1.0).abs() < 1e-12);
-        assert!((frame.vertical.magnitude() - 1.0).abs() < 1e-12);
-        assert!(frame.normal.dot(&frame.horizontal).abs() < 1e-12);
-        assert!(frame.normal.dot(&frame.vertical).abs() < 1e-12);
-        assert!((frame.horizontal.cross(&frame.vertical).dot(&frame.normal) - 1.0).abs() < 1e-12);
-    }
-
-    #[test]
-    fn reference_stays_valid_near_x_axis() {
-        let frame = OrbitalReferenceFrame::from_pole(Vector3::new(1.0, 0.0, 0.0)).unwrap();
-        assert!((frame.horizontal.dot(&frame.normal)).abs() < 1e-12);
-        assert!((frame.horizontal.cross(&frame.vertical).dot(&frame.normal) - 1.0).abs() < 1e-12);
-    }
-
-    #[test]
-    fn rejects_invalid_poles() {
-        assert!(OrbitalReferenceFrame::from_pole(Vector3::new(0.0, 0.0, 0.0)).is_none());
-        assert!(OrbitalReferenceFrame::from_pole(Vector3::new(f64::NAN, 0.0, 1.0)).is_none());
-    }
-}

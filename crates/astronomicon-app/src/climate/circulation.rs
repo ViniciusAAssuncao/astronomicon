@@ -1,54 +1,37 @@
 use crate::climate::temperature::{
-    resolve_advective_surface_temperature, resolve_global_mean_temperature,
-    resolve_advective_surface_temperature_with_circulation,
-    resolve_latitudinal_surface_temperature, resolve_top_of_atmosphere_irradiance,
-    AdvectiveTemperatureContext,
+    AdvectiveTemperatureContext, resolve_advective_surface_temperature,
+    resolve_advective_surface_temperature_with_circulation, resolve_top_of_atmosphere_irradiance,
 };
 use crate::error::AppResult;
 use crate::hierarchy::find_parent_star;
-use astronomicon_core::domain::Planet;
+use astronomicon_core::domain::{Atmosphere, Planet};
 use astronomicon_core::error::DomainError;
-use astronomicon_core::math::circulation::{
-    circulation_cells_per_hemisphere, equatorial_rossby_deformation_radius, rhines_scale,
-};
 use astronomicon_core::math::climate::{
-    atmospheric_column_heat_capacity, combined_column_heat_capacity,
-    combined_thermal_redistribution_efficiency, day_length_half_angle,
-    diurnal_temperature_range_simple, mean_daily_insolation_factor, solar_declination,
-    thermal_redistribution_efficiency,
+    atmospheric_column_heat_capacity, day_length_half_angle, diurnal_temperature_range_simple,
+    mean_daily_insolation_factor, solar_declination,
 };
 use astronomicon_core::math::gravity::{
     combined_gravitational_parameter, gravitational_parameter, surface_gravity,
 };
 use astronomicon_core::math::kepler::true_anomaly_at_epoch;
 use astronomicon_core::math::rotation::{
-    angular_velocity_from_rotation_period, coriolis_parameter, rossby_beta_parameter,
+    angular_velocity_from_rotation_period, coriolis_parameter,
 };
 use astronomicon_core::math::wind::{
-    combined_surface_wind_components, diurnal_thermal_wind_speed,
-    latitudinal_temperature_gradient, total_surface_wind_velocity, zonal_jet_stream_speed,
+    combined_surface_wind_components, diurnal_thermal_wind_speed, latitudinal_temperature_gradient,
+    total_surface_wind_velocity, zonal_jet_stream_speed,
 };
 use astronomicon_core::units::{
     Angle, AngularVelocity, Duration, Irradiance, Length, Speed, Temperature, TemperatureGradient,
 };
 use astronomicon_db::SqlitePool;
-use astronomicon_db::repositories::{
-    atmosphere_repository, hydrosphere_repository, planet_repository,
-};
+use astronomicon_db::repositories::{atmosphere_repository, planet_repository};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct PlanetaryCirculationDiagnostic {
-    pub angular_velocity: AngularVelocity,
-    pub equatorial_beta: f64,
-    pub rossby_deformation_radius: Length,
-    pub rhines_scale: Length,
-    pub circulation_cells: u32,
-    pub column_heat_capacity: f64,
-    pub thermal_redistribution_efficiency: f64,
-}
+mod planetary;
+pub use planetary::{PlanetaryCirculationDiagnostic, resolve_planetary_circulation};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct WindProfileDiagnostic {
@@ -61,104 +44,6 @@ pub struct WindProfileDiagnostic {
     pub surface_wind_v: Speed,
 }
 
-pub async fn resolve_planetary_circulation(
-    pool: &SqlitePool,
-    planet_id: Uuid,
-    universe_epoch: Duration,
-    at_epoch: Duration,
-) -> AppResult<PlanetaryCirculationDiagnostic> {
-    let planet_row = planet_repository::get_by_id(pool, &planet_id)
-        .await?
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "planet_id".to_string(),
-            reason: format!("planet '{}' not found", planet_id),
-        })?;
-    let planet = Planet::try_from(planet_row)?;
-
-    let radius = planet
-        .equatorial_radius()
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "equatorial_radius".to_string(),
-            reason: "planet does not have equatorial radius".to_string(),
-        })?;
-
-    let rot_period = planet
-        .rotation_period()
-        .unwrap_or_else(|| Duration::new(86400.0));
-    let omega = angular_velocity_from_rotation_period(rot_period);
-    let beta_eq = rossby_beta_parameter(omega, Angle::new(0.0), radius);
-
-    let mu = gravitational_parameter(planet.mass());
-    let g = surface_gravity(mu, radius);
-
-    let global_mean =
-        resolve_global_mean_temperature(pool, planet_id, universe_epoch, at_epoch).await?;
-
-    let (scale_h, atm_col_heat_cap) = if let Some(atmosphere) =
-        atmosphere_repository::get_by_planet_id(pool, &planet_id).await?
-    {
-        let h = atmosphere.scale_height(g, global_mean)?;
-        let cp_gas = atmosphere.mean_specific_heat_capacity()?;
-        let c_p = atmospheric_column_heat_capacity(atmosphere.surface_pressure(), g, cp_gas);
-        (h, c_p)
-    } else {
-        (Length::new(8500.0), 0.0)
-    };
-
-    let lr = equatorial_rossby_deformation_radius(g, scale_h, beta_eq);
-
-    let temp_eq = resolve_latitudinal_surface_temperature(
-        pool,
-        planet_id,
-        Angle::new(0.0),
-        universe_epoch,
-        at_epoch,
-    )
-    .await?;
-    let temp_pole = resolve_latitudinal_surface_temperature(
-        pool,
-        planet_id,
-        Angle::new(PI / 2.0),
-        universe_epoch,
-        at_epoch,
-    )
-    .await?;
-
-    let delta_t = (temp_eq.value() - temp_pole.value()).abs().max(1.0);
-    let char_u = Speed::new((g.value() * scale_h.value() * (delta_t / global_mean.value())).sqrt());
-    let l_beta = rhines_scale(char_u, beta_eq);
-
-    let cells = circulation_cells_per_hemisphere(radius, l_beta);
-
-    let (efficiency, col_heat_cap) = if let Some(hydrosphere) =
-        hydrosphere_repository::get_by_planet_id(pool, &planet_id).await?
-    {
-        let oce_col_heat_cap = hydrosphere.oceanic_column_heat_capacity()?;
-        let cov = hydrosphere.surface_coverage_fraction();
-        let eff = combined_thermal_redistribution_efficiency(
-            atm_col_heat_cap,
-            oce_col_heat_cap,
-            cov,
-            cells,
-        );
-        let comb_cap = combined_column_heat_capacity(atm_col_heat_cap, oce_col_heat_cap, cov);
-        (eff, comb_cap)
-    } else {
-        let eff = thermal_redistribution_efficiency(atm_col_heat_cap, cells);
-        (eff, atm_col_heat_cap)
-    };
-
-    Ok(PlanetaryCirculationDiagnostic {
-        angular_velocity: omega,
-        equatorial_beta: beta_eq,
-        rossby_deformation_radius: lr,
-        rhines_scale: l_beta,
-        circulation_cells: cells,
-        column_heat_capacity: col_heat_cap,
-        thermal_redistribution_efficiency: efficiency,
-    })
-}
-
 pub async fn resolve_wind_profile_at_latitude(
     pool: &SqlitePool,
     planet_id: Uuid,
@@ -167,8 +52,16 @@ pub async fn resolve_wind_profile_at_latitude(
     at_epoch: Duration,
 ) -> AppResult<WindProfileDiagnostic> {
     resolve_wind_profile_at_latitude_inner(
-        pool, planet_id, latitude, universe_epoch, at_epoch, None, None,
-    ).await
+        pool,
+        planet_id,
+        latitude,
+        universe_epoch,
+        at_epoch,
+        None,
+        None,
+        None,
+    )
+    .await
 }
 
 pub async fn resolve_wind_profile_at_latitude_with_temperature(
@@ -180,8 +73,16 @@ pub async fn resolve_wind_profile_at_latitude_with_temperature(
     local_temperature: Temperature,
 ) -> AppResult<WindProfileDiagnostic> {
     resolve_wind_profile_at_latitude_inner(
-        pool, planet_id, latitude, universe_epoch, at_epoch, Some(local_temperature), None,
-    ).await
+        pool,
+        planet_id,
+        latitude,
+        universe_epoch,
+        at_epoch,
+        Some(local_temperature),
+        None,
+        None,
+    )
+    .await
 }
 
 pub async fn resolve_wind_profile_at_latitude_with_context(
@@ -198,7 +99,37 @@ pub async fn resolve_wind_profile_at_latitude_with_context(
         context.at_epoch(),
         Some(local_temperature),
         Some(context),
-    ).await
+        None,
+    )
+    .await
+}
+
+pub async fn resolve_wind_profile_at_latitude_with_context_and_body(
+    pool: &SqlitePool,
+    context: &AdvectiveTemperatureContext,
+    latitude: Angle,
+    local_temperature: Temperature,
+    planet: &Planet,
+    atmosphere: &Atmosphere,
+) -> AppResult<WindProfileDiagnostic> {
+    if planet.id() != context.planet_id() || atmosphere.planet_id() != context.planet_id() {
+        return Err(DomainError::InvalidInvariant {
+            field: "planet_id".to_string(),
+            reason: "wind profile body does not match climate context".to_string(),
+        }
+        .into());
+    }
+    resolve_wind_profile_at_latitude_inner(
+        pool,
+        context.planet_id(),
+        latitude,
+        context.universe_epoch(),
+        context.at_epoch(),
+        Some(local_temperature),
+        Some(context),
+        Some((planet, atmosphere)),
+    )
+    .await
 }
 
 async fn resolve_wind_profile_at_latitude_inner(
@@ -209,14 +140,28 @@ async fn resolve_wind_profile_at_latitude_inner(
     at_epoch: Duration,
     local_temperature: Option<Temperature>,
     context: Option<&AdvectiveTemperatureContext>,
+    body: Option<(&Planet, &Atmosphere)>,
 ) -> AppResult<WindProfileDiagnostic> {
-    let planet_row = planet_repository::get_by_id(pool, &planet_id)
-        .await?
-        .ok_or_else(|| DomainError::InvalidInvariant {
-            field: "planet_id".to_string(),
-            reason: format!("planet '{}' not found", planet_id),
-        })?;
-    let planet = Planet::try_from(planet_row)?;
+    let loaded_planet = if body.is_none() {
+        let row = planet_repository::get_by_id(pool, &planet_id)
+            .await?
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "planet_id".to_string(),
+                reason: format!("planet '{}' not found", planet_id),
+            })?;
+        Some(Planet::try_from(row)?)
+    } else {
+        None
+    };
+    let planet = match body {
+        Some((planet, _)) => planet,
+        None => loaded_planet
+            .as_ref()
+            .ok_or_else(|| DomainError::InvalidInvariant {
+                field: "planet_id".to_string(),
+                reason: format!("planet '{}' not found", planet_id),
+            })?,
+    };
 
     let radius = planet
         .equatorial_radius()
@@ -244,23 +189,51 @@ async fn resolve_wind_profile_at_latitude_inner(
         None
     };
     let t_n = resolve_wind_neighbor_temperature(
-        pool, planet_id, lat_n, universe_epoch, at_epoch,
-        context, shared_circulation.as_ref(),
-    ).await?;
+        pool,
+        planet_id,
+        lat_n,
+        universe_epoch,
+        at_epoch,
+        context,
+        shared_circulation.as_ref(),
+    )
+    .await?;
     let t_s = resolve_wind_neighbor_temperature(
-        pool, planet_id, lat_s, universe_epoch, at_epoch,
-        context, shared_circulation.as_ref(),
-    ).await?;
+        pool,
+        planet_id,
+        lat_s,
+        universe_epoch,
+        at_epoch,
+        context,
+        shared_circulation.as_ref(),
+    )
+    .await?;
     let t_local = match local_temperature {
         Some(value) => value,
-        None => resolve_advective_surface_temperature(
-            pool, planet_id, latitude, universe_epoch, at_epoch,
-        ).await?,
+        None => {
+            resolve_advective_surface_temperature(
+                pool,
+                planet_id,
+                latitude,
+                universe_epoch,
+                at_epoch,
+            )
+            .await?
+        }
     };
 
     let t_grad = latitudinal_temperature_gradient(t_n, t_s, lat_n, lat_s, radius);
 
-    let (scale_h, col_heat_cap) = match atmosphere_repository::get_by_planet_id(pool, &planet_id).await? {
+    let loaded_atmosphere = if body.is_none() {
+        atmosphere_repository::get_by_planet_id(pool, &planet_id).await?
+    } else {
+        None
+    };
+    let atmosphere = match body {
+        Some((_, atmosphere)) => Some(atmosphere),
+        None => loaded_atmosphere.as_ref(),
+    };
+    let (scale_h, col_heat_cap) = match atmosphere {
         Some(atm) => {
             let h = atm.scale_height(g, t_local)?;
             let cp = atm.mean_specific_heat_capacity()?;
@@ -280,39 +253,49 @@ async fn resolve_wind_profile_at_latitude_inner(
     let friction_factor = ((10.0 / z0_val).ln() / (pbl_height / z0_val).ln()).clamp(0.1, 0.9);
     let cross_angle = Angle::new((15.0 + 15.0 * (1.0 - friction_factor)) * PI / 180.0);
 
-    let top_irradiance = if let Ok(star) = find_parent_star(pool, planet.orbital_parent()).await {
-        resolve_top_of_atmosphere_irradiance(pool, &planet, &star, universe_epoch, at_epoch)
+    let loaded_star = if body.is_some() && context.is_some() {
+        None
+    } else {
+        find_parent_star(pool, planet.orbital_parent()).await.ok()
+    };
+    let parent_star = if body.is_some() {
+        context.map(AdvectiveTemperatureContext::parent_star)
+    } else {
+        loaded_star.as_ref()
+    };
+    let top_irradiance = if let (Some(context), Some(_)) = (context, body) {
+        context.top_of_atmosphere_irradiance()
+    } else if let Some(star) = parent_star {
+        resolve_top_of_atmosphere_irradiance(pool, planet, star, universe_epoch, at_epoch)
             .await
             .unwrap_or(Irradiance::new(0.0))
     } else {
         Irradiance::new(0.0)
     };
 
-    let insolation_factor = if let (Some(elements), Ok(star)) = (
-        planet.orbital_elements(),
-        find_parent_star(pool, planet.orbital_parent()).await,
-    ) {
-        let total_epoch = universe_epoch + at_epoch;
-        let mu_star = combined_gravitational_parameter(planet.mass(), star.mass());
-        if let Ok(true_anomaly) = true_anomaly_at_epoch(&elements, mu_star, total_epoch) {
-            let obliquity = planet.obliquity().unwrap_or_else(|| Angle::new(0.0));
-            let solstice_ta = planet
-                .solstice_true_anomaly()
-                .unwrap_or_else(|| Angle::new(0.0));
-            let declination = solar_declination(
-                obliquity,
-                elements.argument_of_periapsis(),
-                solstice_ta,
-                true_anomaly,
-            );
-            let half_angle = day_length_half_angle(latitude, declination);
-            mean_daily_insolation_factor(latitude, declination, half_angle)
+    let insolation_factor =
+        if let (Some(elements), Some(star)) = (planet.orbital_elements(), parent_star) {
+            let total_epoch = universe_epoch + at_epoch;
+            let mu_star = combined_gravitational_parameter(planet.mass(), star.mass());
+            if let Ok(true_anomaly) = true_anomaly_at_epoch(&elements, mu_star, total_epoch) {
+                let obliquity = planet.obliquity().unwrap_or_else(|| Angle::new(0.0));
+                let solstice_ta = planet
+                    .solstice_true_anomaly()
+                    .unwrap_or_else(|| Angle::new(0.0));
+                let declination = solar_declination(
+                    obliquity,
+                    elements.argument_of_periapsis(),
+                    solstice_ta,
+                    true_anomaly,
+                );
+                let half_angle = day_length_half_angle(latitude, declination);
+                mean_daily_insolation_factor(latitude, declination, half_angle)
+            } else {
+                latitude.value().cos().max(0.0) / PI
+            }
         } else {
             latitude.value().cos().max(0.0) / PI
-        }
-    } else {
-        latitude.value().cos().max(0.0) / PI
-    };
+        };
 
     let local_insolation = top_irradiance * insolation_factor;
     let bond_albedo = planet.bond_albedo().unwrap_or(0.3);
@@ -378,11 +361,16 @@ async fn resolve_wind_neighbor_temperature(
         context.temperature_at_latitude(pool, latitude).await
     } else if let Some(circulation) = circulation {
         resolve_advective_surface_temperature_with_circulation(
-            pool, planet_id, latitude, universe_epoch, at_epoch, circulation,
-        ).await
+            pool,
+            planet_id,
+            latitude,
+            universe_epoch,
+            at_epoch,
+            circulation,
+        )
+        .await
     } else {
-        resolve_advective_surface_temperature(
-            pool, planet_id, latitude, universe_epoch, at_epoch,
-        ).await
+        resolve_advective_surface_temperature(pool, planet_id, latitude, universe_epoch, at_epoch)
+            .await
     }
 }

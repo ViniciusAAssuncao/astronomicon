@@ -1,4 +1,10 @@
+pub mod coasting;
+pub mod hybrid_regime;
 pub mod maneuvers;
+pub(crate) mod nbody_coasting;
+pub(crate) mod nbody_field;
+pub(crate) mod nbody_impact;
+pub(crate) mod nbody_powered;
 pub mod orbit;
 pub mod patches;
 pub mod secular;

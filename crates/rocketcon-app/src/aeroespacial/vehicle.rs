@@ -277,22 +277,28 @@ pub async fn resolve_vehicle_snapshot_with_components(
     let mut reservoir_states = HashMap::new();
     let mut operational_states = HashMap::new();
 
-    for (entry, _) in components {
-        if
-            let Some(res) = energy_reservoir_repository::get_by_vehicle_component_id(
-                pool,
-                &entry.id()
-            ).await?
-        {
-            reservoir_states.insert(entry.id(), res);
+    for (entry, record) in components {
+        if !resolved_stages.contains(&entry.stage_index()) {
+            continue;
         }
-        if
-            let Some(op) = operational_state_repository::get_by_vehicle_component_id(
+        if matches!(record.details(), ComponentDetails::Battery(_)) {
+            if let Some(res) = energy_reservoir_repository::get_by_vehicle_component_id(
                 pool,
-                &entry.id()
-            ).await?
-        {
-            operational_states.insert(entry.id(), op);
+                &entry.id(),
+            ).await? {
+                reservoir_states.insert(entry.id(), res);
+            }
+        }
+        if matches!(
+            record.details(),
+            ComponentDetails::Engine(_) | ComponentDetails::PropellantTank(_)
+        ) {
+            if let Some(op) = operational_state_repository::get_by_vehicle_component_id(
+                pool,
+                &entry.id(),
+            ).await? {
+                operational_states.insert(entry.id(), op);
+            }
         }
     }
 

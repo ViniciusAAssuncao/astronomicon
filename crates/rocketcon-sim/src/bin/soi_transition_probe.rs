@@ -1,4 +1,4 @@
-use rocketcon_sim::{FlightEventKind, RocketconSession};
+use rocketcon_sim::{FlightEventKind, ForecastReader, RocketconSession};
 use std::error::Error;
 use std::path::Path;
 use std::time::Instant;
@@ -15,10 +15,156 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tangent = option.as_deref() == Some("--tangent");
     let path = Path::new(&path);
     let vehicle_id = Uuid::parse_str(VEHICLE_ID)?;
+    if option.as_deref() == Some("--progress-only") {
+        let reader = ForecastReader::open(path, vehicle_id).await?;
+        let mut partials = Vec::new();
+        let completed = reader
+            .preview_cancelled(false, &mut || false, &mut |partial| {
+                partials.push(partial);
+            })
+            .await?;
+        if partials.is_empty() {
+            return Err("forecast did not publish progressive windows".into());
+        }
+        let mut previous = 0.0;
+        for partial in &partials {
+            if partial.forecast_completed_seconds <= previous
+                || partial.forecast_completed_seconds > completed.forecast_completed_seconds
+                || !partial.forecast_completed_seconds.is_finite()
+            {
+                return Err("progressive horizon did not increase".into());
+            }
+            previous = partial.forecast_completed_seconds;
+            for arcs in partial.future_arcs.windows(2) {
+                let first = arcs[0].points_m.last().ok_or("empty progressive arc")?;
+                let next = arcs[1].points_m.first().ok_or("empty progressive arc")?;
+                let delta = first
+                    .iter()
+                    .zip(next)
+                    .map(|(a, b)| (a - b).powi(2))
+                    .sum::<f64>()
+                    .sqrt();
+                if delta > 1.0 {
+                    return Err("progressive SOI geometry discontinuity".into());
+                }
+            }
+            println!(
+                "FORECAST_PROGRESS reached={:.3} target={:.3} arcs={} complete={}",
+                partial.forecast_completed_seconds,
+                partial.forecast_target_seconds,
+                partial.future_arcs.len(),
+                partial.forecast_complete
+            );
+        }
+        if (previous - completed.forecast_completed_seconds).abs() > 1e-6 {
+            return Err("last progressive forecast does not match final horizon".into());
+        }
+        if !completed.continuation_points_m.is_empty() {
+            let end = completed.future_arcs.last()
+                .and_then(|arc| arc.points_m.last())
+                .ok_or("no forecast endpoint for continuation")?;
+            let beginning = completed.continuation_points_m.first().unwrap();
+            let gap = end.iter().zip(beginning)
+                .map(|(a, b)| (a - b).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            if !gap.is_finite() || gap > 1.0 {
+                return Err(format!("forecast continuation gap {gap} m").into());
+            }
+        }
+        println!(
+            "FORECAST_PROGRESS_PASS windows={} continuation_vertices={}",
+            partials.len(), completed.continuation_points_m.len()
+        );
+        reader.close().await;
+        return Ok(());
+    }
     let mut session = RocketconSession::load(path, vehicle_id).await?;
     let initial = session.snapshot().clone();
     let initial_body = initial.reference_body_id;
-    let entering = session.orbit_preview().await?.soi.is_none();
+    let forecast_started = Instant::now();
+    let preview = session.orbit_preview().await?;
+    println!(
+        "FORECAST arcs={} milliseconds={:.3} rendered_seconds={:.3}",
+        preview.future_arcs.len(),
+        forecast_started.elapsed().as_secs_f64() * 1000.0,
+        preview.rendered_horizon_seconds,
+    );
+    for arc in &preview.future_arcs {
+        let distance = match (arc.points_m.first(), arc.points_m.last()) {
+            (Some(start), Some(end)) => start
+                .iter()
+                .zip(end.iter())
+                .map(|(a, b)| (a - b).powi(2))
+                .sum::<f64>()
+                .sqrt(),
+            _ => 0.0,
+        };
+        println!(
+            "FORECAST_ARC ref={} vertices={} from_s={:.3} to_s={:.3} displacement_m={:.3}",
+            arc.reference_body_id,
+            arc.points_m.len(),
+            arc.start_seconds,
+            arc.end_seconds,
+            distance,
+        );
+    }
+    for event in &preview.forecast_events {
+        println!(
+            "FORECAST_EVENT kind={} body={} seconds={:.3} position={:?}",
+            event.kind, event.body_name, event.seconds, event.position_m,
+        );
+        if event.kind == 2 {
+            let residual = preview
+                .forecast_bodies
+                .iter()
+                .filter(|body| body.name == event.body_name)
+                .map(|body| {
+                    let distance = body
+                        .position_m
+                        .iter()
+                        .zip(event.position_m.iter())
+                        .map(|(a, b)| (a - b).powi(2))
+                        .sum::<f64>()
+                        .sqrt();
+                    (distance - body.radius_m).abs()
+                })
+                .fold(f64::INFINITY, f64::min);
+            println!("IMPACT_SURFACE_RESIDUAL_M={residual:.6}");
+            if residual > 1.0 {
+                return Err("impact marker does not meet the displayed body surface".into());
+            }
+        }
+    }
+    if option.as_deref() == Some("--preview-only") {
+        session.close().await;
+        return Ok(());
+    }
+    for pair in preview.future_arcs.windows(2) {
+        let before = pair[0].points_m.last().ok_or("empty forecast arc")?;
+        let after = pair[1].points_m.first().ok_or("empty forecast arc")?;
+        let separation = before
+            .iter()
+            .zip(after.iter())
+            .map(|(a, b)| (a - b).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        println!(
+            "FORECAST_BOUNDARY ref={} -> {} at={:.3} delta_m={:.6}",
+            pair[0].reference_body_id, pair[1].reference_body_id, pair[0].end_seconds, separation,
+        );
+        if separation > 1.0 {
+            return Err("forecast arc discontinuity".into());
+        }
+    }
+    if option.as_deref() == Some("--forecast-only") {
+        if preview.future_arcs.len() < 2 {
+            return Err("expected two or more future orbit arcs".into());
+        }
+        session.close().await;
+        return Ok(());
+    }
+    let entering = preview.soi.is_none();
     if powered {
         let id = initial
             .main_engine_loads
@@ -50,6 +196,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
         crossings += 1;
+        let crossing_event = session
+            .events()
+            .iter()
+            .rev()
+            .find(|event| {
+                matches!(
+                    event.kind,
+                    FlightEventKind::SoiEntry | FlightEventKind::SoiExit,
+                )
+            })
+            .ok_or("SOI transition has no flight event")?;
+        if crossing_event.total_epoch_seconds < old.total_epoch_seconds
+            || crossing_event.total_epoch_seconds > current.total_epoch_seconds
+        {
+            return Err("SOI event epoch is outside the integration step".into());
+        }
+        println!(
+            "EVENT_IN_STEP offset_s={:.6} step_s={:.6}",
+            crossing_event.total_epoch_seconds - old.total_epoch_seconds,
+            current.total_epoch_seconds - old.total_epoch_seconds,
+        );
         let position_delta = old
             .position_m
             .iter()
