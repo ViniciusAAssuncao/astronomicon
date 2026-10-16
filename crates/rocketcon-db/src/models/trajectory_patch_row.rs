@@ -15,6 +15,7 @@ pub struct TrajectoryPatchRow {
     pub vehicle_id: String,
     pub reference_body_id: String,
     pub start_universe_epoch_s: f64,
+    pub start_at_epoch_s: Option<f64>,
     pub end_universe_epoch_s: Option<f64>,
     pub gravitational_parameter_m3_s2: f64,
     pub patch_type: String,
@@ -91,19 +92,22 @@ impl TryFrom<TrajectoryPatchRow> for TrajectoryPatch {
                 let raan = row.longitude_of_ascending_node_rad.ok_or_else(|| {
                     RocketDbError::Domain(RocketDomainError::InvalidInvariant {
                         field: "longitude_of_ascending_node_rad".to_string(),
-                        reason: "missing required conic field longitude_of_ascending_node_rad".to_string(),
+                        reason: "missing required conic field longitude_of_ascending_node_rad"
+                            .to_string(),
                     })
                 })?;
                 let arg_p = row.argument_of_periapsis_rad.ok_or_else(|| {
                     RocketDbError::Domain(RocketDomainError::InvalidInvariant {
                         field: "argument_of_periapsis_rad".to_string(),
-                        reason: "missing required conic field argument_of_periapsis_rad".to_string(),
+                        reason: "missing required conic field argument_of_periapsis_rad"
+                            .to_string(),
                     })
                 })?;
                 let nu = row.true_anomaly_at_epoch_rad.ok_or_else(|| {
                     RocketDbError::Domain(RocketDomainError::InvalidInvariant {
                         field: "true_anomaly_at_epoch_rad".to_string(),
-                        reason: "missing required conic field true_anomaly_at_epoch_rad".to_string(),
+                        reason: "missing required conic field true_anomaly_at_epoch_rad"
+                            .to_string(),
                     })
                 })?;
 
@@ -154,13 +158,41 @@ impl TryFrom<TrajectoryPatchRow> for TrajectoryPatch {
                 })?;
                 let dv = row.total_delta_v_m_s.unwrap_or(0.0);
 
-                let cx = row.chebyshev_x_json.as_deref().map(parse_float_list).unwrap_or_default();
-                let cy = row.chebyshev_y_json.as_deref().map(parse_float_list).unwrap_or_default();
-                let cz = row.chebyshev_z_json.as_deref().map(parse_float_list).unwrap_or_default();
-                let cvx = row.chebyshev_vx_json.as_deref().map(parse_float_list).unwrap_or_default();
-                let cvy = row.chebyshev_vy_json.as_deref().map(parse_float_list).unwrap_or_default();
-                let cvz = row.chebyshev_vz_json.as_deref().map(parse_float_list).unwrap_or_default();
-                let cmass = row.chebyshev_mass_json.as_deref().map(parse_float_list).unwrap_or_default();
+                let cx = row
+                    .chebyshev_x_json
+                    .as_deref()
+                    .map(parse_float_list)
+                    .unwrap_or_default();
+                let cy = row
+                    .chebyshev_y_json
+                    .as_deref()
+                    .map(parse_float_list)
+                    .unwrap_or_default();
+                let cz = row
+                    .chebyshev_z_json
+                    .as_deref()
+                    .map(parse_float_list)
+                    .unwrap_or_default();
+                let cvx = row
+                    .chebyshev_vx_json
+                    .as_deref()
+                    .map(parse_float_list)
+                    .unwrap_or_default();
+                let cvy = row
+                    .chebyshev_vy_json
+                    .as_deref()
+                    .map(parse_float_list)
+                    .unwrap_or_default();
+                let cvz = row
+                    .chebyshev_vz_json
+                    .as_deref()
+                    .map(parse_float_list)
+                    .unwrap_or_default();
+                let cmass = row
+                    .chebyshev_mass_json
+                    .as_deref()
+                    .map(parse_float_list)
+                    .unwrap_or_default();
 
                 let lt = LowThrustPatchData::new(
                     Mass::new(m0),

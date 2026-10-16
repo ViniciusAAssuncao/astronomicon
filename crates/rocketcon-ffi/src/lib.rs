@@ -1,9 +1,11 @@
 mod engine;
+mod forecast_reader;
+mod orbit_preview;
 mod snapshot;
 mod vehicle;
-mod orbit_preview;
 
 pub use engine::Engine;
+pub use forecast_reader::{ForecastControl, PreviewEngine};
 
 #[cxx::bridge(namespace = "rocketcon")]
 pub mod ffi {
@@ -85,8 +87,33 @@ pub mod ffi {
     }
 
     #[derive(Debug, PartialEq)]
+    struct FfiForecastArc {
+        reference_body_id: String,
+        start_seconds: f64,
+        end_seconds: f64,
+        points_m: Vec<FfiVec3>,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FfiForecastEvent {
+        kind: u8,
+        body_name: String,
+        seconds: f64,
+        position_m: FfiVec3,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FfiForecastBody {
+        name: String,
+        radius_m: f64,
+        position_m: FfiVec3,
+    }
+
+    #[derive(Debug, PartialEq)]
     struct OrbitPreview {
         reference_body_id: String,
+        reference_body_name: String,
+        orbit_classification: u8,
         stellar_reference: bool,
         source_epoch_seconds: f64,
         horizon_seconds: f64,
@@ -143,15 +170,52 @@ pub mod ffi {
         next_apoapsis_seconds: f64,
         next_apoapsis_position_m: FfiVec3,
         relative_points_m: Vec<FfiVec3>,
+        osculating_closed_points_m: Vec<FfiVec3>,
+        continuation_points_m: Vec<FfiVec3>,
+        future_arcs: Vec<FfiForecastArc>,
+        forecast_events: Vec<FfiForecastEvent>,
+        forecast_bodies: Vec<FfiForecastBody>,
+        forecast_target_seconds: f64,
+        forecast_completed_seconds: f64,
+        forecast_complete: bool,
+    }
+
+    unsafe extern "C++" {
+        include!("rocketcon_forecast_progress.hpp");
+        type ForecastProgress;
+        fn publish(self: Pin<&mut ForecastProgress>, preview: OrbitPreview, generation: u64);
     }
 
     extern "Rust" {
         type Engine;
 
+        type PreviewEngine;
+        type ForecastControl;
+
+        fn create_forecast_control() -> Box<ForecastControl>;
+        fn select_generation(self: &ForecastControl, generation: u64);
+        fn create_preview_engine() -> Result<Box<PreviewEngine>>;
+        fn load_read_only(
+            self: &mut PreviewEngine,
+            save_path_utf8: &str,
+            vehicle_uuid: &str,
+        ) -> Result<()>;
+        fn predict(
+            self: &PreviewEngine,
+            under_thrust: bool,
+            control: &ForecastControl,
+            generation: u64,
+            progress: Pin<&mut ForecastProgress>,
+        ) -> Result<OrbitPreview>;
+
         fn create_engine() -> Result<Box<Engine>>;
         fn load_save(self: &mut Engine, save_path_utf8: &str, vehicle_uuid: &str) -> Result<()>;
         fn set_control(self: &mut Engine, pitch: f64, yaw: f64, roll: f64) -> Result<()>;
-        fn set_main_engine_load(self: &mut Engine, instance_id: &str, load_fraction: f64) -> Result<()>;
+        fn set_main_engine_load(
+            self: &mut Engine,
+            instance_id: &str,
+            load_fraction: f64,
+        ) -> Result<()>;
         fn set_main_engine_ramp(self: &mut Engine, instance_id: &str, direction: i8) -> Result<()>;
         fn step(self: &mut Engine, dt_seconds: f64) -> Result<()>;
         fn snapshot(self: &Engine) -> Result<FlightSnapshot>;
@@ -163,3 +227,4 @@ pub mod ffi {
 }
 
 pub use engine::create_engine;
+pub use forecast_reader::{create_forecast_control, create_preview_engine};

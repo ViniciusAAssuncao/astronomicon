@@ -1,19 +1,21 @@
-use crate::error::RocketResult;
+use crate::error::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::resolve_system_positions;
-use astronomicon_app::gravity::resolve_net_gravitational_acceleration;
+use astronomicon_app::gravity::hierarchy_view::SystemHierarchy;
 use astronomicon_core::domain::{Planet, Star};
-use astronomicon_core::math::gravity::{gravitational_parameter, j2_gravitational_acceleration};
+use astronomicon_core::math::gravity::{
+    gravitational_acceleration_at, gravitational_parameter, j2_gravitational_acceleration,
+};
 use astronomicon_core::math::lagrange::orbital_plane_normal;
 use astronomicon_core::math::reference_frames::inertial_to_body_fixed_position;
 use astronomicon_core::math::rotation_state::{
-    planet_rotation_angle_at_epoch, planet_rotation_axis_direction, resolve_planet_body_orientation,
-    solstice_reference_direction,
+    planet_rotation_angle_at_epoch, planet_rotation_axis_direction,
+    resolve_planet_body_orientation, solstice_reference_direction,
 };
 use astronomicon_core::units::{
-    AccelerationVector, Angle, Duration, Quaternion, Vector3,
+    AccelerationVector, Angle, Duration, GravitationalParameter, Length, Mass, Position,
+    Quaternion, Vector3,
 };
 use astronomicon_db::SqlitePool;
-use astronomicon_db::repositories::{planet_repository, star_repository};
 use rocketcon_core::domain::VehiclePhysicalState;
 use rocketcon_core::environment::EnvironmentSnapshot;
 
@@ -22,24 +24,19 @@ fn planet_orientation(planet: &Planet, total_epoch: Duration) -> Quaternion {
         Some(p) if p.value() > 0.0 && p.value().is_finite() => p,
         _ => return Quaternion::identity(),
     };
-
     let prime_meridian = planet
         .prime_meridian_epoch_angle()
         .unwrap_or(Angle::new(0.0));
     let rot_angle = planet_rotation_angle_at_epoch(rot_period, prime_meridian, total_epoch);
-
     let spin_axis = match (planet.orbital_elements(), planet.obliquity()) {
         (Some(elements), Some(obliquity)) => {
             let normal = orbital_plane_normal(&elements);
-            let solstice_anomaly = planet
-                .solstice_true_anomaly()
-                .unwrap_or(Angle::new(0.0));
+            let solstice_anomaly = planet.solstice_true_anomaly().unwrap_or(Angle::new(0.0));
             let solstice_dir = solstice_reference_direction(&elements, solstice_anomaly);
             planet_rotation_axis_direction(normal, obliquity, solstice_dir)
         }
         _ => Vector3::new(0.0, 0.0, 1.0),
     };
-
     resolve_planet_body_orientation(spin_axis, rot_angle)
 }
 
@@ -48,9 +45,7 @@ fn star_orientation(star: &Star, total_epoch: Duration) -> Quaternion {
         Some(p) if p.value() > 0.0 && p.value().is_finite() => p,
         _ => return Quaternion::identity(),
     };
-
     let rot_angle = planet_rotation_angle_at_epoch(rot_period, Angle::new(0.0), total_epoch);
-
     let spin_axis = match (star.orbital_elements(), star.obliquity()) {
         (Some(elements), Some(obliquity)) => {
             let normal = orbital_plane_normal(&elements);
@@ -59,8 +54,115 @@ fn star_orientation(star: &Star, total_epoch: Duration) -> Quaternion {
         }
         _ => Vector3::new(0.0, 0.0, 1.0),
     };
-
     resolve_planet_body_orientation(spin_axis, rot_angle)
+}
+
+struct OblatenessField {
+    center: Position,
+    mu: GravitationalParameter,
+    equatorial_radius: Length,
+    j2: f64,
+    orientation: Quaternion,
+}
+
+pub struct GravityField {
+    sources: Vec<(Position, Mass)>,
+    oblateness: Option<OblatenessField>,
+}
+
+impl GravityField {
+    pub async fn load(
+        pool: &SqlitePool,
+        environment: &EnvironmentSnapshot,
+        total_epoch: Duration,
+    ) -> RocketResult<Self> {
+        let hierarchy = SystemHierarchy::load(pool, &environment.system_id).await?;
+        let positions = resolve_system_positions(pool, environment.system_id, total_epoch).await?;
+        let mut sources = Vec::with_capacity(
+            hierarchy.stars.len() + hierarchy.planets.len() + hierarchy.minor_planets.len(),
+        );
+        for (id, mass) in hierarchy
+            .stars
+            .iter()
+            .map(|body| (body.id(), body.mass()))
+            .chain(
+                hierarchy
+                    .planets
+                    .iter()
+                    .map(|body| (body.id(), body.mass())),
+            )
+            .chain(
+                hierarchy
+                    .minor_planets
+                    .iter()
+                    .map(|body| (body.id(), body.mass())),
+            )
+        {
+            let position = positions.get(&id).copied().ok_or_else(|| {
+                RocketError::Generic(format!("gravitational source '{}' has no ephemeris", id))
+            })?;
+            sources.push((position, mass));
+        }
+
+        let reference = environment.reference_id();
+        let (mu, radius, j2, orientation) = if let Some(planet) = environment.planet.as_ref() {
+            (
+                gravitational_parameter(planet.mass()),
+                planet.equatorial_radius(),
+                planet.oblateness_j2(),
+                planet_orientation(planet, total_epoch),
+            )
+        } else {
+            let star = &environment.star;
+            (
+                gravitational_parameter(star.mass()),
+                star.radius(),
+                star.oblateness_j2(),
+                star_orientation(star, total_epoch),
+            )
+        };
+        let oblateness = match (radius, j2) {
+            (Some(equatorial_radius), Some(j2))
+                if equatorial_radius.value().is_finite()
+                    && equatorial_radius.value() > 0.0
+                    && j2.is_finite()
+                    && j2 != 0.0 =>
+            {
+                let center = positions.get(&reference).copied().ok_or_else(|| {
+                    RocketError::Generic(format!("reference '{}' has no ephemeris", reference))
+                })?;
+                Some(OblatenessField {
+                    center,
+                    mu,
+                    equatorial_radius,
+                    j2,
+                    orientation,
+                })
+            }
+            _ => None,
+        };
+        Ok(Self {
+            sources,
+            oblateness,
+        })
+    }
+
+    pub fn acceleration_at(&self, position: Position) -> AccelerationVector {
+        let point_mass = gravitational_acceleration_at(position, &self.sources);
+        let Some(oblateness) = &self.oblateness else {
+            return point_mass;
+        };
+        let body_fixed =
+            inertial_to_body_fixed_position(oblateness.center, oblateness.orientation, position);
+        let j2_body = j2_gravitational_acceleration(
+            oblateness.mu,
+            oblateness.equatorial_radius,
+            oblateness.j2,
+            body_fixed,
+        );
+        point_mass
+            + AccelerationVector::from_raw(oblateness.orientation.rotate_vector(j2_body.raw()))
+    }
 }
 
 pub async fn resolve_vehicle_gravitational_acceleration(
@@ -70,77 +172,6 @@ pub async fn resolve_vehicle_gravitational_acceleration(
     universe_epoch: Duration,
     at_epoch: Duration,
 ) -> RocketResult<AccelerationVector> {
-    let total_epoch = universe_epoch + at_epoch;
-
-    let net_acc = resolve_net_gravitational_acceleration(
-        pool,
-        &environment.system_id,
-        physical_state.position(),
-        total_epoch,
-    )
-    .await?;
-
-    let ref_id = physical_state.reference_body_id();
-
-    let (mu, eq_radius, j2_opt, body_pos_fallback, orientation) = if environment.planet.as_ref().is_some_and(|planet| ref_id == planet.id()) {
-        let p = environment.planet.as_ref().unwrap();
-        (
-            gravitational_parameter(p.mass()),
-            p.equatorial_radius(),
-            p.oblateness_j2(),
-            environment.reference_position(),
-            planet_orientation(p, total_epoch),
-        )
-    } else if ref_id == environment.star.id() {
-        let s = &environment.star;
-        (
-            gravitational_parameter(s.mass()),
-            s.radius(),
-            s.oblateness_j2(),
-            environment.star_position,
-            star_orientation(s, total_epoch),
-        )
-    } else if let Some(row) = planet_repository::get_by_id(pool, &ref_id).await? {
-        let p = Planet::try_from(row)?;
-        (
-            gravitational_parameter(p.mass()),
-            p.equatorial_radius(),
-            p.oblateness_j2(),
-            environment.reference_position(),
-            planet_orientation(&p, total_epoch),
-        )
-    } else if let Some(row) = star_repository::get_by_id(pool, &ref_id).await? {
-        let s = Star::try_from(row)?;
-        (
-            gravitational_parameter(s.mass()),
-            s.radius(),
-            s.oblateness_j2(),
-            environment.star_position,
-            star_orientation(&s, total_epoch),
-        )
-    } else {
-        return Ok(net_acc);
-    };
-
-    let j2 = match j2_opt {
-        Some(val) if val.is_finite() && val != 0.0 => val,
-        _ => return Ok(net_acc),
-    };
-
-    let r_eq = match eq_radius {
-        Some(r) if r.value() > 0.0 && r.value().is_finite() => r,
-        _ => return Ok(net_acc),
-    };
-
-    let positions = resolve_system_positions(pool, environment.system_id, total_epoch).await?;
-    let body_pos = positions.get(&ref_id).copied().unwrap_or(body_pos_fallback);
-
-    let vehicle_pos = physical_state.position();
-    let body_fixed_pos = inertial_to_body_fixed_position(body_pos, orientation, vehicle_pos);
-
-    let j2_acc_body = j2_gravitational_acceleration(mu, r_eq, j2, body_fixed_pos);
-    let j2_acc_inertial_raw = orientation.rotate_vector(j2_acc_body.raw());
-    let j2_acc_inertial = AccelerationVector::from_raw(j2_acc_inertial_raw);
-
-    Ok(net_acc + j2_acc_inertial)
+    let field = GravityField::load(pool, environment, universe_epoch + at_epoch).await?;
+    Ok(field.acceleration_at(physical_state.position()))
 }

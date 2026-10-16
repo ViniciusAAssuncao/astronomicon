@@ -403,6 +403,41 @@ impl TrajectoryPatch {
         epoch: Duration,
     ) -> RocketDomainResult<(Position, VelocityVector)> {
         match &self.kind {
+            TrajectoryPatchKind::Conic(_) => {
+                self.evaluate_state_after(epoch - self.start_universe_epoch)
+            }
+            TrajectoryPatchKind::LowThrust(lt) => {
+                let t_end = self.end_universe_epoch.unwrap_or(self.start_universe_epoch);
+                let t0 = self.start_universe_epoch.value();
+                let t1 = t_end.value();
+                let dt = t1 - t0;
+                let tau = if dt > 1e-9 {
+                    ((2.0 * (epoch.value() - t0) / dt) - 1.0).clamp(-1.0, 1.0)
+                } else {
+                    0.0
+                };
+
+                let x = evaluate_chebyshev_series(&lt.chebyshev_x, tau);
+                let y = evaluate_chebyshev_series(&lt.chebyshev_y, tau);
+                let z = evaluate_chebyshev_series(&lt.chebyshev_z, tau);
+
+                let vx = evaluate_chebyshev_series(&lt.chebyshev_vx, tau);
+                let vy = evaluate_chebyshev_series(&lt.chebyshev_vy, tau);
+                let vz = evaluate_chebyshev_series(&lt.chebyshev_vz, tau);
+
+                Ok((
+                    Position::from_components(x, y, z),
+                    VelocityVector::from_components(vx, vy, vz),
+                ))
+            }
+        }
+    }
+
+    pub fn evaluate_state_after(
+        &self,
+        elapsed: Duration,
+    ) -> RocketDomainResult<(Position, VelocityVector)> {
+        match &self.kind {
             TrajectoryPatchKind::Conic(conic) => {
                 let elements = OsculatingElements::new(
                     conic.semi_major_axis,
@@ -428,32 +463,10 @@ impl TrajectoryPatch {
 
                 let (r0, v0) =
                     osculating_elements_to_cartesian(&elements, self.gravitational_parameter)?;
-                let dt = epoch - self.start_universe_epoch;
-                propagate_universal_state_vectors(r0, v0, self.gravitational_parameter, dt)
+                propagate_universal_state_vectors(r0, v0, self.gravitational_parameter, elapsed)
             }
-            TrajectoryPatchKind::LowThrust(lt) => {
-                let t_end = self.end_universe_epoch.unwrap_or(self.start_universe_epoch);
-                let t0 = self.start_universe_epoch.value();
-                let t1 = t_end.value();
-                let dt = t1 - t0;
-                let tau = if dt > 1e-9 {
-                    ((2.0 * (epoch.value() - t0) / dt) - 1.0).clamp(-1.0, 1.0)
-                } else {
-                    0.0
-                };
-
-                let x = evaluate_chebyshev_series(&lt.chebyshev_x, tau);
-                let y = evaluate_chebyshev_series(&lt.chebyshev_y, tau);
-                let z = evaluate_chebyshev_series(&lt.chebyshev_z, tau);
-
-                let vx = evaluate_chebyshev_series(&lt.chebyshev_vx, tau);
-                let vy = evaluate_chebyshev_series(&lt.chebyshev_vy, tau);
-                let vz = evaluate_chebyshev_series(&lt.chebyshev_vz, tau);
-
-                Ok((
-                    Position::from_components(x, y, z),
-                    VelocityVector::from_components(vx, vy, vz),
-                ))
+            TrajectoryPatchKind::LowThrust(_) => {
+                self.evaluate_state_at(self.start_universe_epoch + elapsed)
             }
         }
     }

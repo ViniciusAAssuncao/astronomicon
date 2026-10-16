@@ -1,0 +1,2 @@
+crates/rocketcon-db/migrations/1025_allow_zero_thrust_trajectory_patches.sql text eol=lf
+crates/rocketcon-db/migrations/1026_engine_ignition_history.sql text eol=lf

@@ -30,6 +30,10 @@ mod tick_atomicity_test;
 #[path = "flight_tick_bench/session_test.rs"]
 mod session_test;
 
+#[cfg(test)]
+#[path = "flight_tick_bench/thermal_network_test.rs"]
+mod thermal_network_test;
+
 const VEHICLE_ID: &str = "e2897c6a-7d04-4ebc-882c-87984a74a200";
 const COMPONENT_ID: &str = "56c1b894-4718-4f0c-94a0-bc22a6053180";
 const BATTERY_ID: &str = "56c1b894-4718-4f0c-94a0-bc22a6053181";
@@ -46,6 +50,7 @@ enum Scenario {
     Coast,
     Atmosphere,
     Powered,
+    PoweredVacuum,
 }
 
 impl Scenario {
@@ -54,12 +59,13 @@ impl Scenario {
             Self::Coast => "coast",
             Self::Atmosphere => "atmosphere",
             Self::Powered => "powered",
+            Self::PoweredVacuum => "powered-vacuum",
         }
     }
 
     fn planet_id(self) -> &'static str {
         match self {
-            Self::Coast => MEROS_ID,
+            Self::Coast | Self::PoweredVacuum => MEROS_ID,
             Self::Atmosphere | Self::Powered => HADAB_ID,
         }
     }
@@ -77,16 +83,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     let mode = std::env::var("ROCKETCON_PROFILE").unwrap_or_default();
     let requested_scenario = std::env::var("ROCKETCON_SCENARIO").ok();
-    if requested_scenario.as_deref().is_some_and(|name| !matches!(name,
-        "coast" | "atmosphere" | "powered")) {
+    if requested_scenario
+        .as_deref()
+        .is_some_and(|name| !matches!(name, "coast" | "atmosphere" | "powered" | "powered-vacuum"))
+    {
         return Err("ROCKETCON_SCENARIO must be coast, atmosphere, or powered".into());
     }
     let aero_only = matches!(mode.as_str(), "aero-stages" | "aero-sql");
     let profiling = matches!(mode.as_str(), "stages" | "sql");
     let sql_count = matches!(mode.as_str(), "sql" | "aero-sql");
 
-    for scenario in [Scenario::Coast, Scenario::Atmosphere, Scenario::Powered] {
-        if requested_scenario.as_deref().is_some_and(|name| name != scenario.name()) {
+    for scenario in [
+        Scenario::Coast,
+        Scenario::Atmosphere,
+        Scenario::Powered,
+        Scenario::PoweredVacuum,
+    ] {
+        if requested_scenario
+            .as_deref()
+            .is_some_and(|name| name != scenario.name())
+        {
             continue;
         }
         if aero_only && matches!(scenario, Scenario::Coast) {
@@ -314,13 +330,16 @@ async fn create_fixture(
         Duration::new(INITIAL_AT_EPOCH),
     )
     .await?;
-    let planet = environment.planet.as_ref().ok_or("expected a planet in this scenario")?;
+    let planet = environment
+        .planet
+        .as_ref()
+        .ok_or("expected a planet in this scenario")?;
     let radius = planet
         .equatorial_radius()
         .ok_or("planet has no radius")?
         .value();
     let altitude = match scenario {
-        Scenario::Coast => 200_000.0,
+        Scenario::Coast | Scenario::PoweredVacuum => 200_000.0,
         _ => 10_000.0,
     };
     let x = environment.reference_position().raw().0 + radius + altitude;
@@ -329,7 +348,7 @@ async fn create_fixture(
     let orbital_radius = radius + altitude;
     let mu = 6.67430e-11 * planet.mass().value();
     let relative_speed = match scenario {
-        Scenario::Coast => (mu / orbital_radius).sqrt(),
+        Scenario::Coast | Scenario::PoweredVacuum => (mu / orbital_radius).sqrt(),
         _ => 100.0,
     };
     let (_, planet_velocity) = rocketcon_app::orbital::soi::resolve_body_state_at_epoch(
@@ -388,7 +407,7 @@ async fn create_fixture(
         .bind(Uuid::from_u128(0xe2897c6a7d044ebc882c87984a740101).to_string())
         .bind(VEHICLE_ID).bind(SOLAR_ID).execute(pool).await?;
 
-    if matches!(scenario, Scenario::Powered) {
+    if matches!(scenario, Scenario::Powered | Scenario::PoweredVacuum) {
         sqlx::query("INSERT INTO propellants (id, name, propellant_kind, density_kg_per_m3, is_cryogenic, is_hypergolic) VALUES (?, 'Benchmark Fuel', 'LiquidFuel', 800, 0, 0)")
             .bind(PROPELLANT_ID).execute(pool).await?;
         sqlx::query("INSERT INTO components (id, name, component_kind, dry_mass_kg, length_m, diameter_m, power_consumption_w) VALUES (?, 'Benchmark Engine', 'Engine', 250.0, 2.0, 1.0, 25.0)")

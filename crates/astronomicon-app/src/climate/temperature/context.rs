@@ -2,7 +2,7 @@ use super::{resolve_advective_surface_temperature_inner, resolve_top_of_atmosphe
 use crate::climate::circulation::PlanetaryCirculationDiagnostic;
 use crate::error::AppResult;
 use crate::hierarchy::find_parent_star;
-use astronomicon_core::domain::Planet;
+use astronomicon_core::domain::{Planet, Star};
 use astronomicon_core::error::DomainError;
 use astronomicon_core::math::climate::{
     day_length_half_angle, local_radiative_equilibrium_temperature, mean_daily_insolation_factor,
@@ -93,6 +93,7 @@ pub struct AdvectiveTemperatureContext {
     planet_id: Uuid,
     universe_epoch: Duration,
     at_epoch: Duration,
+    parent_star: Star,
     global_mean: Temperature,
     circulation: PlanetaryCirculationDiagnostic,
     surface: SurfaceTemperatureInputs,
@@ -134,6 +135,7 @@ impl AdvectiveTemperatureContext {
             planet_id: body.planet_id(),
             universe_epoch,
             at_epoch,
+            parent_star: body.star.clone(),
             global_mean,
             circulation,
             surface,
@@ -160,6 +162,14 @@ impl AdvectiveTemperatureContext {
 
     pub fn planet_id(&self) -> Uuid {
         self.planet_id
+    }
+
+    pub fn parent_star(&self) -> &Star {
+        &self.parent_star
+    }
+
+    pub fn top_of_atmosphere_irradiance(&self) -> Irradiance {
+        self.surface.top_irradiance
     }
 
     pub fn universe_epoch(&self) -> Duration {

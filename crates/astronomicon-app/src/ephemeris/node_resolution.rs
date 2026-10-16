@@ -1,5 +1,6 @@
 use crate::ephemeris::barycenter::split_barycenter_positions;
 use crate::ephemeris::j2_lookup::get_parent_j2_and_radius;
+use crate::ephemeris::time_offset::OrbitalTime;
 use astronomicon_core::domain::{
     Barycenter, BarycenterMember, MinorPlanet, OrbitalElements, OrbitalParent, Planet, Star,
 };
@@ -7,9 +8,8 @@ use astronomicon_core::error::{DomainError, DomainResult};
 use astronomicon_core::math::gravity::{
     calculate_effective_mass, calculate_parent_effective_mass, combined_gravitational_parameter,
 };
-use astronomicon_core::math::kepler::orbital_position_secular;
 use astronomicon_core::math::perturbation::resolve_secular_precession;
-use astronomicon_core::units::{Duration, Mass, Position};
+use astronomicon_core::units::{Mass, Position};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -22,7 +22,7 @@ fn resolve_relative_position_from_parent(
     planet_map: &HashMap<Uuid, &Planet>,
     barycenter_map: &HashMap<Uuid, &Barycenter>,
     minor_planet_map: &HashMap<Uuid, &MinorPlanet>,
-    time_since_epoch: Duration,
+    time_since_epoch: OrbitalTime,
 ) -> DomainResult<Position> {
     let m_parent = calculate_parent_effective_mass(
         parent,
@@ -35,11 +35,11 @@ fn resolve_relative_position_from_parent(
     let (parent_j2, parent_radius) =
         get_parent_j2_and_radius(parent, star_map, planet_map, minor_planet_map);
     let secular_rates = resolve_secular_precession(elements, mu, parent_j2, parent_radius);
-    let rel_pos = orbital_position_secular(elements, mu, &secular_rates, time_since_epoch)?;
+    let rel_pos = time_since_epoch.position(elements, mu, &secular_rates)?;
     Ok(parent_pos + rel_pos)
 }
 
-pub fn resolve_node(
+pub fn resolve_node_at_offset(
     id: Uuid,
     member_of: &HashMap<Uuid, Uuid>,
     star_map: &HashMap<Uuid, &Star>,
@@ -48,7 +48,7 @@ pub fn resolve_node(
     minor_planet_map: &HashMap<Uuid, &MinorPlanet>,
     memo: &mut HashMap<Uuid, Position>,
     visiting: &mut HashSet<Uuid>,
-    time_since_epoch: Duration,
+    time_since_epoch: OrbitalTime,
 ) -> DomainResult<Position> {
     if let Some(&pos) = memo.get(&id) {
         return Ok(pos);
@@ -62,7 +62,7 @@ pub fn resolve_node(
     }
 
     if let Some(&parent_bary_id) = member_of.get(&id) {
-        let bary_pos = resolve_node(
+        let bary_pos = resolve_node_at_offset(
             parent_bary_id,
             member_of,
             star_map,
@@ -74,16 +74,18 @@ pub fn resolve_node(
             time_since_epoch,
         )?;
 
-        split_barycenter_positions(
-            parent_bary_id,
-            bary_pos,
-            barycenter_map,
-            star_map,
-            planet_map,
-            minor_planet_map,
-            memo,
-            time_since_epoch,
-        )?;
+        if !memo.contains_key(&id) {
+            split_barycenter_positions(
+                parent_bary_id,
+                bary_pos,
+                barycenter_map,
+                star_map,
+                planet_map,
+                minor_planet_map,
+                memo,
+                time_since_epoch,
+            )?;
+        }
 
         visiting.remove(&id);
 
@@ -110,7 +112,7 @@ pub fn resolve_node(
                     | OrbitalParent::MinorPlanet(pid) => pid,
                     OrbitalParent::Fixed => unreachable!(),
                 };
-                let parent_pos = resolve_node(
+                let parent_pos = resolve_node_at_offset(
                     parent_id,
                     member_of,
                     star_map,
@@ -154,7 +156,7 @@ pub fn resolve_node(
                     | OrbitalParent::MinorPlanet(pid) => pid,
                     OrbitalParent::Fixed => unreachable!(),
                 };
-                let parent_pos = resolve_node(
+                let parent_pos = resolve_node_at_offset(
                     parent_id,
                     member_of,
                     star_map,
@@ -199,7 +201,7 @@ pub fn resolve_node(
                     | OrbitalParent::MinorPlanet(pid) => pid,
                     OrbitalParent::Fixed => unreachable!(),
                 };
-                let parent_pos = resolve_node(
+                let parent_pos = resolve_node_at_offset(
                     parent_id,
                     member_of,
                     star_map,
@@ -243,7 +245,7 @@ pub fn resolve_node(
                     | OrbitalParent::MinorPlanet(pid) => pid,
                     OrbitalParent::Fixed => unreachable!(),
                 };
-                let parent_pos = resolve_node(
+                let parent_pos = resolve_node_at_offset(
                     parent_id,
                     member_of,
                     star_map,

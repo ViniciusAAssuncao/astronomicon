@@ -33,3 +33,9 @@ impl TickProfile {
         &self.stages
     }
 }
+
+pub(super) fn mark(profile: &mut Option<&mut TickProfile>, name: &'static str) {
+    if let Some(profile) = profile.as_deref_mut() {
+        profile.mark(name);
+    }
+}

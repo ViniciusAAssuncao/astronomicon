@@ -1,11 +1,71 @@
 use crate::aeroespacial::aerodynamics::AerodynamicDiagnostic;
+use crate::error::{RocketError, RocketResult};
 use crate::power::thermal::VehicleThermalBudget;
-use astronomicon_core::units::{Acceleration, AccelerationVector, Duration, Pressure};
+use astronomicon_app::ephemeris::CelestialState;
+use astronomicon_core::units::{
+    Acceleration, AccelerationVector, Duration, HeatFlux, Length, Position, Pressure,
+    VelocityVector,
+};
 use rocketcon_core::domain::VehiclePhysicalState;
 use rocketcon_core::math::collision::SurfaceContactState;
 use rocketcon_core::math::power_budget::VehiclePowerBudget;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ReferenceBodyTelemetry {
+    pub position: Position,
+    velocity: VelocityVector,
+    radius_m: f64,
+}
+
+impl ReferenceBodyTelemetry {
+    pub(super) fn resolve(
+        states: &HashMap<Uuid, CelestialState>,
+        reference_id: Uuid,
+        radius: Option<Length>,
+    ) -> RocketResult<Self> {
+        let state = states.get(&reference_id).ok_or_else(|| {
+            RocketError::Generic("reference body position unavailable after propagation".into())
+        })?;
+        Ok(Self {
+            position: state.position,
+            velocity: state.velocity,
+            radius_m: radius.map_or(0.0, |radius| radius.value()),
+        })
+    }
+
+    pub(super) fn position_m(self) -> [f64; 3] {
+        let position = self.position.raw();
+        [position.0, position.1, position.2]
+    }
+
+    pub(super) fn velocity_m_s(self) -> [f64; 3] {
+        let velocity = self.velocity.raw();
+        [velocity.0, velocity.1, velocity.2]
+    }
+
+    pub(super) fn radius_m(self) -> f64 {
+        self.radius_m
+    }
+}
+
+pub(super) fn reconcile_thermal_budget(
+    mut budget: VehicleThermalBudget,
+    stagnation_heat_flux: Option<HeatFlux>,
+) -> VehicleThermalBudget {
+    if let Some(flux) = stagnation_heat_flux {
+        budget.stagnation_heat_flux = flux;
+    }
+    budget
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SoiTransitionReport {
+    pub elapsed_seconds: f64,
+    pub entering: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VehicleTickReport {
@@ -23,6 +83,7 @@ pub struct VehicleTickReport {
     pub reference_body_radius_m: f64,
     pub main_engine_loads: Vec<(Uuid, f64)>,
     pub tank_stored_kg: Vec<(Uuid, f64)>,
+    pub soi_transitions: Vec<SoiTransitionReport>,
 }
 
 impl VehicleTickReport {
@@ -41,6 +102,7 @@ impl VehicleTickReport {
         reference_body_radius_m: f64,
         main_engine_loads: Vec<(Uuid, f64)>,
         tank_stored_kg: Vec<(Uuid, f64)>,
+        soi_transitions: Vec<SoiTransitionReport>,
     ) -> Self {
         Self {
             physical_state,
@@ -57,6 +119,7 @@ impl VehicleTickReport {
             reference_body_radius_m,
             main_engine_loads,
             tank_stored_kg,
+            soi_transitions,
         }
     }
 

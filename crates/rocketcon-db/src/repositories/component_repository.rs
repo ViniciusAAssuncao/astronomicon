@@ -1,9 +1,11 @@
 use crate::error::{RocketDbError, RocketDbResult};
 use crate::models::ComponentRow;
+use crate::repositories::component_attributes::RawComponentAttributeRows;
 use crate::repositories::component_attributes::{
     fetch_attribute_map, optional_numeric, optional_text, optional_uuid, required_bool,
     required_numeric, required_text, required_uuid,
 };
+use crate::repositories::eav_attributes::{AttributeValue, decode_eav_attribute_rows};
 use astronomicon_core::units::{
     Angle, AngularMomentum, AngularVelocity, Duration, Energy, Force, Impulse, Length, Luminosity,
     Mass, Pressure, Speed, Torque, Volume,
@@ -18,10 +20,10 @@ use rocketcon_core::domain::{
 use rocketcon_core::error::RocketDomainError;
 use rocketcon_core::physics_reference::{NuclearFuelType, RadioisotopeType};
 use sqlx::SqlitePool;
+use std::collections::HashMap;
 use uuid::Uuid;
 
-const BASE_QUERY: &str =
-    "SELECT id, name, component_kind, dry_mass_kg, length_m, diameter_m, power_consumption_w, manufacturer, manufactured_at_unix_seconds, lore_notes FROM components";
+const BASE_QUERY: &str = "SELECT id, name, component_kind, dry_mass_kg, length_m, diameter_m, power_consumption_w, manufacturer, manufactured_at_unix_seconds, lore_notes FROM components";
 
 async fn fetch_component_details(
     pool: &SqlitePool,
@@ -33,7 +35,14 @@ async fn fetch_component_details(
     }
 
     let attr_map = fetch_attribute_map(pool, &id).await?;
+    component_details_from_attributes(component, &attr_map)
+}
 
+fn component_details_from_attributes(
+    component: &Component,
+    attr_map: &HashMap<String, AttributeValue>,
+) -> RocketDbResult<ComponentDetails> {
+    let id = component.id();
     match component.kind() {
         ComponentKind::Cpu => Ok(ComponentDetails::Cpu),
         ComponentKind::Hull => {
@@ -72,11 +81,8 @@ async fn fetch_component_details(
                 None => required_numeric(&attr_map, &id, "shield_thickness")?,
             };
 
-            let spec = HeatShieldSpecification::new(
-                id,
-                material_id,
-                Length::new(shield_thickness_m),
-            )?;
+            let spec =
+                HeatShieldSpecification::new(id, material_id, Length::new(shield_thickness_m))?;
 
             Ok(ComponentDetails::HeatShield(spec))
         }
@@ -96,8 +102,7 @@ async fn fetch_component_details(
                     }));
                 }
             };
-            let oxidizer_propellant_id =
-                optional_uuid(&attr_map, &id, "oxidizer_propellant_id")?;
+            let oxidizer_propellant_id = optional_uuid(&attr_map, &id, "oxidizer_propellant_id")?;
             let specific_impulse_sea_level_s =
                 optional_numeric(&attr_map, &id, "specific_impulse_sea_level_s")?;
             let integral_propellant_mass_kg =
@@ -106,14 +111,11 @@ async fn fetch_component_details(
                 optional_numeric(&attr_map, &id, "max_gimbal_deflection_rad")?;
             let gimbal_slew_rate_rad_s =
                 optional_numeric(&attr_map, &id, "gimbal_slew_rate_rad_s")?;
-            let min_throttle_fraction =
-                optional_numeric(&attr_map, &id, "min_throttle_fraction")?;
+            let min_throttle_fraction = optional_numeric(&attr_map, &id, "min_throttle_fraction")?;
             let oxidizer_to_fuel_mass_ratio =
                 optional_numeric(&attr_map, &id, "oxidizer_to_fuel_mass_ratio")?;
-            let nozzle_exit_area_m2 =
-                optional_numeric(&attr_map, &id, "nozzle_exit_area_m2")?;
-            let chamber_pressure_pa =
-                optional_numeric(&attr_map, &id, "chamber_pressure_pa")?;
+            let nozzle_exit_area_m2 = optional_numeric(&attr_map, &id, "nozzle_exit_area_m2")?;
+            let chamber_pressure_pa = optional_numeric(&attr_map, &id, "chamber_pressure_pa")?;
 
             let spec = EngineSpecification::builder(
                 id,
@@ -123,9 +125,7 @@ async fn fetch_component_details(
                 ignition_type,
             )
             .with_oxidizer_propellant_id(oxidizer_propellant_id)
-            .with_specific_impulse_sea_level(
-                specific_impulse_sea_level_s.map(Duration::new),
-            )
+            .with_specific_impulse_sea_level(specific_impulse_sea_level_s.map(Duration::new))
             .with_integral_propellant_mass(integral_propellant_mass_kg.map(Mass::new))
             .with_max_gimbal_deflection(max_gimbal_deflection_rad.map(Angle::new))
             .with_gimbal_slew_rate(gimbal_slew_rate_rad_s.map(AngularVelocity::new))
@@ -152,10 +152,8 @@ async fn fetch_component_details(
         }
         ComponentKind::Battery => {
             let capacity_j = required_numeric(&attr_map, &id, "capacity_j")?;
-            let max_discharge_power_w =
-                required_numeric(&attr_map, &id, "max_discharge_power_w")?;
-            let max_charge_power_w =
-                optional_numeric(&attr_map, &id, "max_charge_power_w")?;
+            let max_discharge_power_w = required_numeric(&attr_map, &id, "max_discharge_power_w")?;
+            let max_charge_power_w = optional_numeric(&attr_map, &id, "max_charge_power_w")?;
 
             let spec = BatterySpecification::new(
                 id,
@@ -168,13 +166,10 @@ async fn fetch_component_details(
         }
         ComponentKind::SolarPanel => {
             let surface_area_m2 = required_numeric(&attr_map, &id, "surface_area_m2")?;
-            let conversion_efficiency =
-                required_numeric(&attr_map, &id, "conversion_efficiency")?;
-            let max_power_output_w =
-                required_numeric(&attr_map, &id, "max_power_output_w")?;
+            let conversion_efficiency = required_numeric(&attr_map, &id, "conversion_efficiency")?;
+            let max_power_output_w = required_numeric(&attr_map, &id, "max_power_output_w")?;
             let is_sun_tracking = required_bool(&attr_map, &id, "is_sun_tracking")?;
-            let solar_absorptivity =
-                optional_numeric(&attr_map, &id, "solar_absorptivity")?;
+            let solar_absorptivity = optional_numeric(&attr_map, &id, "solar_absorptivity")?;
 
             let spec = SolarPanelSpecification::new(
                 id,
@@ -192,8 +187,7 @@ async fn fetch_component_details(
             let specific_impulse_vacuum_s =
                 required_numeric(&attr_map, &id, "specific_impulse_vacuum_s")?;
             let max_thrust_n = required_numeric(&attr_map, &id, "max_thrust_n")?;
-            let min_impulse_bit_n_s =
-                optional_numeric(&attr_map, &id, "min_impulse_bit_n_s")?;
+            let min_impulse_bit_n_s = optional_numeric(&attr_map, &id, "min_impulse_bit_n_s")?;
 
             let spec = ReactionControlThrusterSpecification::new(
                 id,
@@ -235,8 +229,7 @@ async fn fetch_component_details(
                 }
             };
             let fuel_mass_kg = required_numeric(&attr_map, &id, "fuel_mass_kg")?;
-            let conversion_efficiency =
-                required_numeric(&attr_map, &id, "conversion_efficiency")?;
+            let conversion_efficiency = required_numeric(&attr_map, &id, "conversion_efficiency")?;
             let fuel_loaded_universe_epoch_s =
                 required_numeric(&attr_map, &id, "fuel_loaded_universe_epoch_s")?;
 
@@ -276,12 +269,9 @@ async fn fetch_component_details(
                 }
             };
             let fuel_mass_kg = required_numeric(&attr_map, &id, "fuel_mass_kg")?;
-            let max_thermal_power_w =
-                required_numeric(&attr_map, &id, "max_thermal_power_w")?;
-            let conversion_efficiency =
-                required_numeric(&attr_map, &id, "conversion_efficiency")?;
-            let min_throttle_fraction =
-                optional_numeric(&attr_map, &id, "min_throttle_fraction")?;
+            let max_thermal_power_w = required_numeric(&attr_map, &id, "max_thermal_power_w")?;
+            let conversion_efficiency = required_numeric(&attr_map, &id, "conversion_efficiency")?;
+            let min_throttle_fraction = optional_numeric(&attr_map, &id, "min_throttle_fraction")?;
 
             let spec = NuclearReactorSpecification::new(
                 id,
@@ -300,17 +290,14 @@ async fn fetch_component_details(
             let emissivity = required_numeric(&attr_map, &id, "emissivity")?;
             let solar_absorptivity = required_numeric(&attr_map, &id, "solar_absorptivity")?;
 
-            let spec = RadiatorSpecification::new(
-                id,
-                radiating_area_m2,
-                emissivity,
-                solar_absorptivity,
-            )?;
+            let spec =
+                RadiatorSpecification::new(id, radiating_area_m2, emissivity, solar_absorptivity)?;
 
             Ok(ComponentDetails::Radiator(spec))
         }
         ComponentKind::PayloadFairing | ComponentKind::PayloadDispenser => {
-            let max_payload_mass_kg = match optional_numeric(&attr_map, &id, "max_payload_mass_kg")? {
+            let max_payload_mass_kg = match optional_numeric(&attr_map, &id, "max_payload_mass_kg")?
+            {
                 Some(v) => v,
                 None => required_numeric(&attr_map, &id, "max_payload_mass")?,
             };
@@ -357,16 +344,44 @@ pub async fn get_by_id(pool: &SqlitePool, id: &Uuid) -> RocketDbResult<Option<Co
         .await?;
 
     let component_row = match row {
-        Some(r) => r,
-        None => {
-            return Ok(None);
-        }
+        Some(row) => row,
+        None => return Ok(None),
     };
-
     let component = Component::try_from(component_row)?;
     let details = fetch_component_details(pool, &component).await?;
-
     Ok(Some(ComponentRecord::new(component, details)))
+}
+
+pub(crate) async fn fetch_rows_for_vehicle(
+    pool: &SqlitePool,
+    vehicle_id: &Uuid,
+) -> RocketDbResult<HashMap<String, ComponentRow>> {
+    let query = format!(
+        "{BASE_QUERY} WHERE id IN (SELECT component_id FROM vehicle_components WHERE vehicle_id = ?)"
+    );
+    let rows = sqlx::query_as::<_, ComponentRow>(&query)
+        .bind(vehicle_id.to_string())
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|row| (row.id.clone(), row)).collect())
+}
+
+pub(crate) fn record_from_row_with_attribute_rows(
+    component_row: ComponentRow,
+    attribute_rows: &RawComponentAttributeRows,
+) -> RocketDbResult<ComponentRecord> {
+    let component = Component::try_from(component_row)?;
+    let details = if component.kind() == ComponentKind::Cpu {
+        ComponentDetails::Cpu
+    } else {
+        let attributes = decode_eav_attribute_rows(
+            attribute_rows.iter().cloned(),
+            &component.id(),
+            "component_attributes",
+        )?;
+        component_details_from_attributes(&component, &attributes)?
+    };
+    Ok(ComponentRecord::new(component, details))
 }
 
 pub async fn list_all(pool: &SqlitePool) -> RocketDbResult<Vec<ComponentRecord>> {

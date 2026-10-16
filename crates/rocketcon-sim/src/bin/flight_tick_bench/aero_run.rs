@@ -1,13 +1,17 @@
 use super::{INITIAL_AT_EPOCH, percentile, sql_trace};
+use astronomicon_app::climate::atmosphere::{
+    resolve_atmospheric_profile_at_altitude, resolve_atmospheric_profile_with_body,
+};
 use astronomicon_app::climate::circulation::{
     resolve_wind_profile_at_latitude, resolve_wind_profile_at_latitude_with_context,
+    resolve_wind_profile_at_latitude_with_context_and_body,
     resolve_wind_profile_at_latitude_with_temperature,
 };
 use astronomicon_app::climate::temperature::{
     AdvectiveTemperatureContext, ClimateBodyInputs, resolve_advective_surface_temperature,
 };
 use astronomicon_app::ephemeris::resolve_planet_orientation;
-use astronomicon_core::units::{Angle, Duration};
+use astronomicon_core::units::{Angle, Duration, Length};
 use rocketcon_app::aeroespacial::{
     resolve_vehicle_aerodynamics, resolve_vehicle_aerodynamics_profiled, resolve_vehicle_snapshot,
 };
@@ -252,6 +256,19 @@ pub async fn run(
         }
     }
 
+    verify_wind_body_reuse(
+        pool,
+        &environment,
+        &climate,
+        &later_climate,
+        &dry_body,
+        epoch,
+        at_epoch,
+        latitude,
+        local_temperature,
+    )
+    .await?;
+
     let expected = resolve_vehicle_aerodynamics(
         pool,
         &state,
@@ -263,8 +280,38 @@ pub async fn run(
         at_epoch,
     )
     .await?;
-    if expected.is_none() {
-        return Err("atmospheric fixture did not produce aerodynamics".into());
+    let diagnostic = expected
+        .as_ref()
+        .ok_or("atmospheric fixture did not produce aerodynamics")?;
+    let body_atmosphere = environment
+        .atmosphere
+        .as_ref()
+        .ok_or("atmospheric fixture has no atmosphere")?;
+    let body_planet = environment
+        .planet
+        .as_ref()
+        .ok_or("atmospheric fixture has no planet")?;
+    for sample_altitude in [
+        Length::new(0.0),
+        diagnostic.altitude,
+        Length::new(100_000.0),
+    ] {
+        let independently_loaded = resolve_atmospheric_profile_at_altitude(
+            pool,
+            planet_id,
+            local_temperature,
+            sample_altitude,
+        )
+        .await?;
+        let reused = resolve_atmospheric_profile_with_body(
+            body_atmosphere,
+            body_planet,
+            local_temperature,
+            sample_altitude,
+        )?;
+        if independently_loaded != reused {
+            return Err("atmospheric profile differs when using loaded body".into());
+        }
     }
 
     if trace_sql {
@@ -343,6 +390,69 @@ pub async fn run(
         for (table, count) in sql_trace::top_tables(12) {
             println!("  aero_sql_table {table}: statements={count}");
         }
+    }
+    Ok(())
+}
+
+async fn verify_wind_body_reuse(
+    pool: &SqlitePool,
+    environment: &rocketcon_core::environment::EnvironmentSnapshot,
+    climate: &AdvectiveTemperatureContext,
+    later_climate: &AdvectiveTemperatureContext,
+    dry_body: &ClimateBodyInputs,
+    epoch: Duration,
+    at_epoch: Duration,
+    latitude: Angle,
+    local_temperature: astronomicon_core::units::Temperature,
+) -> Result<(), Box<dyn Error>> {
+    let planet = environment
+        .planet
+        .as_ref()
+        .ok_or("atmospheric fixture missing planet")?;
+    let atmosphere = environment
+        .atmosphere
+        .as_ref()
+        .ok_or("atmospheric fixture missing atmosphere")?;
+    for context in [climate, later_climate] {
+        for sample_latitude in [Angle::new(-PI / 3.0), latitude, Angle::new(PI / 3.0)] {
+            let temperature = context
+                .temperature_at_latitude(pool, sample_latitude)
+                .await?;
+            let direct = resolve_wind_profile_at_latitude_with_context(
+                pool,
+                context,
+                sample_latitude,
+                temperature,
+            )
+            .await?;
+            let shared = resolve_wind_profile_at_latitude_with_context_and_body(
+                pool,
+                context,
+                sample_latitude,
+                temperature,
+                planet,
+                atmosphere,
+            )
+            .await?;
+            if direct != shared {
+                return Err("wind changed when reusing loaded planet and atmosphere".into());
+            }
+        }
+    }
+    let dry_context =
+        AdvectiveTemperatureContext::load_with_body(pool, dry_body, epoch, at_epoch).await?;
+    if resolve_wind_profile_at_latitude_with_context_and_body(
+        pool,
+        &dry_context,
+        latitude,
+        local_temperature,
+        planet,
+        atmosphere,
+    )
+    .await
+    .is_ok()
+    {
+        return Err("wind reused atmospheric body from a different planet".into());
     }
     Ok(())
 }

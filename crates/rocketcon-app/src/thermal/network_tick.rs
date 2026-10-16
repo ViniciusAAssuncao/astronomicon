@@ -10,7 +10,7 @@ use astronomicon_core::units::{
 };
 use astronomicon_db::SqlitePool;
 use rocketcon_core::domain::{
-    ComponentDetails, ComponentRecord, ThermalNodeState, VehicleComponentEntry,
+    ComponentDetails, ComponentRecord, MaterialRecord, ThermalNodeState, VehicleComponentEntry,
 };
 use rocketcon_core::environment::EnvironmentSnapshot;
 use rocketcon_core::math::thermal_budget::check_material_record_thermal_structural_limits;
@@ -70,6 +70,7 @@ pub async fn advance_vehicle_thermal_network(
         dt,
         universe_epoch,
         at_epoch,
+        None,
         false,
     )
     .await
@@ -88,6 +89,7 @@ pub(crate) async fn advance_vehicle_thermal_network_in_existing_transaction(
     dt: Duration,
     universe_epoch: Duration,
     at_epoch: Duration,
+    materials: &HashMap<Uuid, MaterialRecord>,
 ) -> RocketResult<VehicleThermalTickReport> {
     advance_vehicle_thermal_network_inner(
         pool,
@@ -102,6 +104,7 @@ pub(crate) async fn advance_vehicle_thermal_network_in_existing_transaction(
         dt,
         universe_epoch,
         at_epoch,
+        Some(materials),
         true,
     )
     .await
@@ -120,6 +123,7 @@ async fn advance_vehicle_thermal_network_inner(
     dt: Duration,
     universe_epoch: Duration,
     at_epoch: Duration,
+    materials: Option<&HashMap<Uuid, MaterialRecord>>,
     existing_transaction: bool,
 ) -> RocketResult<VehicleThermalTickReport> {
     let env_temp = local_atmospheric_temperature
@@ -136,8 +140,13 @@ async fn advance_vehicle_thermal_network_inner(
 
     let is_eclipsed = match (&environment.planet, environment.planet_position) {
         (Some(planet), Some(position)) => is_in_cylindrical_shadow(
-            vehicle_position, environment.star_position, position,
-            planet.equatorial_radius().unwrap_or_else(|| Length::new(6371e3))),
+            vehicle_position,
+            environment.star_position,
+            position,
+            planet
+                .equatorial_radius()
+                .unwrap_or_else(|| Length::new(6371e3)),
+        ),
         _ => false,
     };
 
@@ -155,11 +164,19 @@ async fn advance_vehicle_thermal_network_inner(
         substep_dt,
     );
 
-    let all_materials = material_repository::list_all(pool).await?;
-    let mut materials_map: HashMap<Uuid, _> = HashMap::with_capacity(all_materials.len());
-    for mat in all_materials {
-        materials_map.insert(mat.material().id(), mat);
-    }
+    let owned_materials;
+    let materials_map = match materials {
+        Some(materials) => materials,
+        None => {
+            let all_materials = material_repository::list_all(pool).await?;
+            let mut map = HashMap::with_capacity(all_materials.len());
+            for mat in all_materials {
+                map.insert(mat.material().id(), mat);
+            }
+            owned_materials = map;
+            &owned_materials
+        }
+    };
 
     let mut component_diagnostics = Vec::with_capacity(network.nodes.len());
     let mut max_node_temp = Temperature::new(0.0);

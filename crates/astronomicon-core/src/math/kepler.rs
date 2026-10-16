@@ -1,26 +1,20 @@
 use crate::domain::orbital_elements::OrbitalElements;
-use crate::error::{ DomainError, DomainResult };
+use crate::error::{DomainError, DomainResult};
 use crate::math::gravity::combined_gravitational_parameter;
 use crate::math::perturbation::SecularPrecessionRates;
 use crate::units::{
-    Angle,
-    AngularVelocity,
-    Duration,
-    GravitationalParameter,
-    Length,
-    Mass,
-    Position,
-    Speed,
-    Vector3,
-    Velocity,
+    Angle, AngularVelocity, Duration, GravitationalParameter, Length, Mass, Position, Speed,
+    Vector3, Velocity,
 };
-use std::f64::consts::{ PI, TAU };
+use std::f64::consts::{PI, TAU};
 
 pub fn orbital_period(semi_major_axis: Length, mu: GravitationalParameter) -> Option<Duration> {
     if semi_major_axis.value() <= 0.0 || mu.value() <= 0.0 {
         None
     } else {
-        Some(Duration::new(2.0 * PI * (semi_major_axis.value().powi(3) / mu.value()).sqrt()))
+        Some(Duration::new(
+            2.0 * PI * (semi_major_axis.value().powi(3) / mu.value()).sqrt(),
+        ))
     }
 }
 
@@ -82,7 +76,7 @@ pub fn perifocal_state_vectors(
     semi_major_axis: Length,
     eccentricity: f64,
     true_anomaly: Angle,
-    mu: GravitationalParameter
+    mu: GravitationalParameter,
 ) -> (Position, Velocity) {
     let a = semi_major_axis.value();
     let e = eccentricity;
@@ -104,15 +98,23 @@ pub fn rotate_perifocal_to_system(
     velocity: Velocity,
     argument_of_periapsis: Angle,
     inclination: Angle,
-    longitude_of_ascending_node: Angle
+    longitude_of_ascending_node: Angle,
 ) -> (Position, Velocity) {
     let omega = argument_of_periapsis.value();
     let inc = inclination.value();
     let raan = longitude_of_ascending_node.value();
 
-    let r = position.raw().rotate_about_z(omega).rotate_about_x(inc).rotate_about_z(raan);
+    let r = position
+        .raw()
+        .rotate_about_z(omega)
+        .rotate_about_x(inc)
+        .rotate_about_z(raan);
 
-    let v = velocity.raw().rotate_about_z(omega).rotate_about_x(inc).rotate_about_z(raan);
+    let v = velocity
+        .raw()
+        .rotate_about_z(omega)
+        .rotate_about_x(inc)
+        .rotate_about_z(raan);
 
     (Position::from_raw(r), Velocity::from_raw(v))
 }
@@ -120,20 +122,24 @@ pub fn rotate_perifocal_to_system(
 pub fn propagate_mean_anomaly(
     mean_anomaly_at_epoch: Angle,
     mean_motion: AngularVelocity,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> Angle {
-    Angle::new((mean_anomaly_at_epoch + mean_motion * time_since_epoch).value().rem_euclid(TAU))
+    Angle::new(
+        (mean_anomaly_at_epoch + mean_motion * time_since_epoch)
+            .value()
+            .rem_euclid(TAU),
+    )
 }
 
 pub fn mean_longitude_at_epoch(
     elements: &OrbitalElements,
     mean_motion: AngularVelocity,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> Angle {
     let mean_anomaly = propagate_mean_anomaly(
         elements.mean_anomaly_at_epoch(),
         mean_motion,
-        time_since_epoch
+        time_since_epoch,
     );
     Angle::new((elements.longitude_of_periapsis().value() + mean_anomaly.value()).rem_euclid(TAU))
 }
@@ -141,39 +147,39 @@ pub fn mean_longitude_at_epoch(
 pub fn true_anomaly_at_epoch(
     elements: &OrbitalElements,
     mu: GravitationalParameter,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> DomainResult<Angle> {
     let n = mean_motion(elements.semi_major_axis(), mu);
-    let mean_anomaly = propagate_mean_anomaly(
-        elements.mean_anomaly_at_epoch(),
-        n,
-        time_since_epoch
-    );
+    let mean_anomaly =
+        propagate_mean_anomaly(elements.mean_anomaly_at_epoch(), n, time_since_epoch);
     let eccentric_anomaly = solve_kepler(mean_anomaly, elements.eccentricity())?;
-    Ok(true_anomaly_from_eccentric(eccentric_anomaly, elements.eccentricity()))
+    Ok(true_anomaly_from_eccentric(
+        eccentric_anomaly,
+        elements.eccentricity(),
+    ))
 }
 
 pub fn true_anomaly_at_epoch_secular(
     elements: &OrbitalElements,
     mu: GravitationalParameter,
     secular_rates: &SecularPrecessionRates,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> DomainResult<Angle> {
     let n = mean_motion(elements.semi_major_axis(), mu);
     let n_corr = n + secular_rates.mean_anomaly_correction;
-    let mean_anomaly = propagate_mean_anomaly(
-        elements.mean_anomaly_at_epoch(),
-        n_corr,
-        time_since_epoch
-    );
+    let mean_anomaly =
+        propagate_mean_anomaly(elements.mean_anomaly_at_epoch(), n_corr, time_since_epoch);
     let eccentric_anomaly = solve_kepler(mean_anomaly, elements.eccentricity())?;
-    Ok(true_anomaly_from_eccentric(eccentric_anomaly, elements.eccentricity()))
+    Ok(true_anomaly_from_eccentric(
+        eccentric_anomaly,
+        elements.eccentricity(),
+    ))
 }
 
 pub fn orbital_state_vectors(
     elements: &OrbitalElements,
     mu: GravitationalParameter,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> DomainResult<(Position, Velocity)> {
     let true_anom = true_anomaly_at_epoch(elements, mu, time_since_epoch)?;
 
@@ -181,25 +187,23 @@ pub fn orbital_state_vectors(
         elements.semi_major_axis(),
         elements.eccentricity(),
         true_anom,
-        mu
+        mu,
     );
 
-    Ok(
-        rotate_perifocal_to_system(
-            r_pqw,
-            v_pqw,
-            elements.argument_of_periapsis(),
-            elements.inclination(),
-            elements.longitude_of_ascending_node()
-        )
-    )
+    Ok(rotate_perifocal_to_system(
+        r_pqw,
+        v_pqw,
+        elements.argument_of_periapsis(),
+        elements.inclination(),
+        elements.longitude_of_ascending_node(),
+    ))
 }
 
 pub fn orbital_state_vectors_secular(
     elements: &OrbitalElements,
     mu: GravitationalParameter,
     secular_rates: &SecularPrecessionRates,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> DomainResult<(Position, Velocity)> {
     let true_anom = true_anomaly_at_epoch_secular(elements, mu, secular_rates, time_since_epoch)?;
 
@@ -207,36 +211,110 @@ pub fn orbital_state_vectors_secular(
         elements.semi_major_axis(),
         elements.eccentricity(),
         true_anom,
-        mu
+        mu,
     );
 
     let omega_t = Angle::new(
         (elements.argument_of_periapsis() + secular_rates.apsidal * time_since_epoch)
             .value()
-            .rem_euclid(TAU)
+            .rem_euclid(TAU),
     );
     let raan_t = Angle::new(
         (elements.longitude_of_ascending_node() + secular_rates.nodal * time_since_epoch)
             .value()
-            .rem_euclid(TAU)
+            .rem_euclid(TAU),
     );
 
-    Ok(rotate_perifocal_to_system(r_pqw, v_pqw, omega_t, elements.inclination(), raan_t))
+    Ok(rotate_perifocal_to_system(
+        r_pqw,
+        v_pqw,
+        omega_t,
+        elements.inclination(),
+        raan_t,
+    ))
 }
 
 pub fn orbital_position(
     elements: &OrbitalElements,
     mu: GravitationalParameter,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> DomainResult<Position> {
     orbital_state_vectors(elements, mu, time_since_epoch).map(|(r, _)| r)
+}
+
+pub fn orbital_position_secular_at_offset(
+    elements: &OrbitalElements,
+    mu: GravitationalParameter,
+    secular_rates: &SecularPrecessionRates,
+    epoch: Duration,
+    offset_seconds: f64,
+) -> DomainResult<Position> {
+    if !epoch.value().is_finite() || !offset_seconds.is_finite() {
+        return Err(DomainError::InvalidInvariant {
+            field: "orbital_time".into(),
+            reason: "non-finite base epoch or relative offset".into(),
+        });
+    }
+    if offset_seconds == 0.0 {
+        return orbital_position_secular(elements, mu, secular_rates, epoch);
+    }
+    let phase = |origin: f64, rate: f64| -> DomainResult<Angle> {
+        if !origin.is_finite() || !rate.is_finite() {
+            return Err(DomainError::InvalidInvariant {
+                field: "orbital_phase".into(),
+                reason: "non-finite orbital angle or angular rate".into(),
+            });
+        }
+        let initial = (Angle::new(origin) + AngularVelocity::new(rate) * epoch)
+            .value()
+            .rem_euclid(TAU);
+        let increment = rate * offset_seconds;
+        if !initial.is_finite() || !increment.is_finite() {
+            return Err(DomainError::InvalidInvariant {
+                field: "orbital_phase".into(),
+                reason: "orbital phase outside representable range".into(),
+            });
+        }
+        Ok(Angle::new(
+            (initial + increment.rem_euclid(TAU)).rem_euclid(TAU),
+        ))
+    };
+    let anomaly = phase(
+        elements.mean_anomaly_at_epoch().value(),
+        (mean_motion(elements.semi_major_axis(), mu) + secular_rates.mean_anomaly_correction)
+            .value(),
+    )?;
+    let eccentric = solve_kepler(anomaly, elements.eccentricity())?;
+    let true_anomaly = true_anomaly_from_eccentric(eccentric, elements.eccentricity());
+    let (perifocal_position, perifocal_velocity) = perifocal_state_vectors(
+        elements.semi_major_axis(),
+        elements.eccentricity(),
+        true_anomaly,
+        mu,
+    );
+    let apsidal = phase(
+        elements.argument_of_periapsis().value(),
+        secular_rates.apsidal.value(),
+    )?;
+    let nodal = phase(
+        elements.longitude_of_ascending_node().value(),
+        secular_rates.nodal.value(),
+    )?;
+    Ok(rotate_perifocal_to_system(
+        perifocal_position,
+        perifocal_velocity,
+        apsidal,
+        elements.inclination(),
+        nodal,
+    )
+    .0)
 }
 
 pub fn orbital_position_secular(
     elements: &OrbitalElements,
     mu: GravitationalParameter,
     secular_rates: &SecularPrecessionRates,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> DomainResult<Position> {
     orbital_state_vectors_secular(elements, mu, secular_rates, time_since_epoch).map(|(r, _)| r)
 }
@@ -244,7 +322,7 @@ pub fn orbital_position_secular(
 pub fn orbital_velocity(
     elements: &OrbitalElements,
     mu: GravitationalParameter,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> DomainResult<Velocity> {
     orbital_state_vectors(elements, mu, time_since_epoch).map(|(_, v)| v)
 }
@@ -253,7 +331,7 @@ pub fn orbital_velocity_secular(
     elements: &OrbitalElements,
     mu: GravitationalParameter,
     secular_rates: &SecularPrecessionRates,
-    time_since_epoch: Duration
+    time_since_epoch: Duration,
 ) -> DomainResult<Velocity> {
     orbital_state_vectors_secular(elements, mu, secular_rates, time_since_epoch).map(|(_, v)| v)
 }

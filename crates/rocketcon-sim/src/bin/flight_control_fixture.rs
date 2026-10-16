@@ -1,6 +1,5 @@
 #[path = "flight_control_fixture/soi_scenarios.rs"]
 mod soi_scenarios;
-
 use astronomicon_core::units::Duration;
 use rocketcon_db::save::{migrations::run_rocketcon_migrations, template::create_save_copy};
 use rocketcon_sim::{RocketconSession, planet_equatorial_reference, OrbitalReferenceFrame};
