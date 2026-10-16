@@ -70,6 +70,14 @@ impl EphemerisCatalog {
         &self.planets
     }
 
+    pub fn minor_planets(&self) -> &[MinorPlanet] {
+        &self.minor_planets
+    }
+
+    pub fn barycenters(&self) -> &[Barycenter] {
+        &self.barycenters
+    }
+
     pub fn radius_of_body(&self, id: Uuid) -> Option<f64> {
         self.stars
             .iter()

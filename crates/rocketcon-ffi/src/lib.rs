@@ -103,6 +103,27 @@ pub mod ffi {
     }
 
     #[derive(Debug, PartialEq)]
+    struct FfiCatalogBody {
+        id: String,
+        parent_id: String,
+        name: String,
+        kind: u8,
+        has_radius: bool,
+        radius_m: f64,
+        has_mass: bool,
+        mass_kg: f64,
+        relative_position_m: FfiVec3,
+        orbit_points_m: Vec<FfiVec3>,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FfiCelestialAtlas {
+        reference_body_id: String,
+        epoch_seconds: f64,
+        bodies: Vec<FfiCatalogBody>,
+    }
+
+    #[derive(Debug, PartialEq)]
     struct FfiForecastBody {
         name: String,
         radius_m: f64,
@@ -200,6 +221,7 @@ pub mod ffi {
             save_path_utf8: &str,
             vehicle_uuid: &str,
         ) -> Result<()>;
+        fn celestial_atlas(self: &PreviewEngine) -> Result<FfiCelestialAtlas>;
         fn predict(
             self: &PreviewEngine,
             under_thrust: bool,

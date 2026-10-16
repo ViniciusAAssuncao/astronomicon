@@ -15,6 +15,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tangent = option.as_deref() == Some("--tangent");
     let path = Path::new(&path);
     let vehicle_id = Uuid::parse_str(VEHICLE_ID)?;
+    if option.as_deref() == Some("--atlas-only") {
+        let reader = ForecastReader::open(path, vehicle_id).await?;
+        let atlas = reader.celestial_atlas().await?;
+        if atlas.bodies.is_empty() ||
+            !atlas.bodies.iter().any(|b| b.id == atlas.reference_body_id &&
+                b.relative_position_m.iter().all(|v| v.abs() < 1.0)) ||
+            atlas.bodies.iter().any(|b| b.relative_position_m.iter().any(|v| !v.is_finite())) {
+            return Err("invalid celestial atlas".into());
+        }
+        let mut kinds = [0usize; 6];
+        let mut orbits = 0usize;
+        for body in &atlas.bodies {
+            kinds[body.kind as usize] += 1;
+            if !body.orbit_points_m.is_empty() {
+                orbits += 1;
+                let first = body.orbit_points_m.first().unwrap();
+                let last = body.orbit_points_m.last().unwrap();
+                let gap = first.iter().zip(last).map(|(a, b)| (a - b).powi(2))
+                    .sum::<f64>().sqrt();
+                if gap > 1.0 || body.orbit_points_m.len() != 129 ||
+                    body.orbit_points_m.iter().flatten().any(|v| !v.is_finite()) {
+                    return Err(format!("invalid orbit catalog curve: {}", body.name).into());
+                }
+            }
+        }
+        if orbits < 4 { return Err("atlas missing configured orbits".into()); }
+        println!("ATLAS_PASS bodies={} orbits={} kinds={:?} epoch={:.3}",
+            atlas.bodies.len(), orbits, kinds, atlas.epoch_seconds);
+        reader.close().await;
+        return Ok(());
+    }
     if option.as_deref() == Some("--progress-only") {
         let reader = ForecastReader::open(path, vehicle_id).await?;
         let mut partials = Vec::new();

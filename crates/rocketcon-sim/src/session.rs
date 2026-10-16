@@ -1,3 +1,5 @@
+mod celestial_atlas;
+mod celestial_orbit_curve;
 mod engine_control;
 mod forecast_reader;
 mod orbit_apsides;
@@ -18,6 +20,7 @@ mod orbit_view_basis;
 mod snapshot;
 mod vehicle_visual;
 
+pub use celestial_atlas::{CatalogBody, CelestialAtlas};
 pub use forecast_reader::ForecastReader;
 pub use orbit_apsides::OrbitApsis;
 pub use orbit_nodes::{OrbitNode, OrbitNodes};
