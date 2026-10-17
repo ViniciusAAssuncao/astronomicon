@@ -71,6 +71,8 @@ impl PreviewEngine {
                 radius_m: body.radius_m.unwrap_or(0.0),
                 has_mass: body.mass_kg.is_some(),
                 mass_kg: body.mass_kg.unwrap_or(0.0),
+                has_soi_radius: body.soi_radius_m.is_some(),
+                soi_radius_m: body.soi_radius_m.unwrap_or(0.0),
                 relative_position_m: FfiVec3 {
                     x: body.relative_position_m[0],
                     y: body.relative_position_m[1],

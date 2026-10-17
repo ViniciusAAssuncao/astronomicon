@@ -114,6 +114,8 @@ pub mod ffi {
         mass_kg: f64,
         relative_position_m: FfiVec3,
         orbit_points_m: Vec<FfiVec3>,
+        has_soi_radius: bool,
+        soi_radius_m: f64,
     }
 
     #[derive(Debug, PartialEq)]

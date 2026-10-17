@@ -26,8 +26,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         let mut kinds = [0usize; 6];
         let mut orbits = 0usize;
+        let mut soi_count = 0usize;
+        let mut moon_soi_count = 0usize;
         for body in &atlas.bodies {
             kinds[body.kind as usize] += 1;
+            if let Some(soi) = body.soi_radius_m {
+                if !soi.is_finite() || soi <= 0.0 || body.kind == 5 {
+                    return Err(format!("invalid catalog SOI: {}", body.name).into());
+                }
+                soi_count += 1;
+                if body.kind == 2 {
+                    moon_soi_count += 1;
+                }
+            } else if body.kind == 2 && body.mass_kg.is_some() &&
+                body.parent_id.is_some() && !body.orbit_points_m.is_empty() {
+                return Err(format!("catalog moon missing SOI: {}", body.name).into());
+            }
             if !body.orbit_points_m.is_empty() {
                 orbits += 1;
                 let first = body.orbit_points_m.first().unwrap();
@@ -40,9 +54,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
         }
-        if orbits < 4 { return Err("atlas missing configured orbits".into()); }
-        println!("ATLAS_PASS bodies={} orbits={} kinds={:?} epoch={:.3}",
-            atlas.bodies.len(), orbits, kinds, atlas.epoch_seconds);
+        if orbits < 4 || moon_soi_count == 0 {
+            return Err("atlas missing configured orbits or moon SOIs".into());
+        }
+        println!("ATLAS_PASS bodies={} orbits={} soi={} moon_soi={} kinds={:?} epoch={:.3}",
+            atlas.bodies.len(), orbits, soi_count, moon_soi_count, kinds, atlas.epoch_seconds);
         reader.close().await;
         return Ok(());
     }

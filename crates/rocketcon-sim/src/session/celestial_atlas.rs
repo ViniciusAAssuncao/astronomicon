@@ -4,6 +4,7 @@ use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::domain::OrbitalElements;
 use astronomicon_core::domain::{OrbitalParent, PlanetKind};
 use astronomicon_core::units::Duration;
+use rocketcon_core::math::orbital::sphere_of_influence::laplace_sphere_of_influence_radius;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -16,6 +17,7 @@ pub struct CatalogBody {
     pub mass_kg: Option<f64>,
     pub relative_position_m: [f64; 3],
     pub orbit_points_m: Vec<[f64; 3]>,
+    pub soi_radius_m: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +66,19 @@ pub fn catalog_at(
             let point = position.raw() - center;
             let coordinates = [point.0, point.1, point.2];
             if coordinates.iter().all(|v| v.is_finite()) {
+                let soi_radius_m = parent_id
+                    .and_then(|parent| catalog.mass_of_body(parent))
+                    .zip(catalog.mass_of_body(id))
+                    .zip(elements.as_ref())
+                    .and_then(|((parent_mass, body_mass), orbit)| {
+                        let radius = laplace_sphere_of_influence_radius(
+                            orbit.semi_major_axis(),
+                            body_mass,
+                            parent_mass,
+                        )
+                        .value();
+                        (radius.is_finite() && radius > 0.0).then_some(radius)
+                    });
                 let orbit_points_m = parent_id
                     .and_then(|parent| positions.get(&parent))
                     .zip(elements)
@@ -81,6 +96,7 @@ pub fn catalog_at(
                     mass_kg: mass_kg.filter(|m| m.is_finite() && *m > 0.0),
                     relative_position_m: coordinates,
                     orbit_points_m,
+                    soi_radius_m,
                 });
             }
         }
