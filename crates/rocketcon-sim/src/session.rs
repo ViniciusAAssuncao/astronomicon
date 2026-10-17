@@ -1,4 +1,8 @@
 mod celestial_atlas;
+mod celestial_body_details;
+mod celestial_body_environment;
+pub use celestial_body_environment::append_reference_environment;
+mod celestial_body_facts;
 mod celestial_orbit_curve;
 mod engine_control;
 mod forecast_reader;
@@ -21,6 +25,8 @@ mod snapshot;
 mod vehicle_visual;
 
 pub use celestial_atlas::{CatalogBody, CelestialAtlas};
+pub use celestial_body_details::{BodyAtmosphere, BodyComposition, BodyHydrosphere, CelestialBodyDetails, selected_body_details};
+pub use celestial_body_facts::{BodyFact, BodyTextFact, BodyMaterial};
 pub use forecast_reader::ForecastReader;
 pub use orbit_apsides::OrbitApsis;
 pub use orbit_nodes::{OrbitNode, OrbitNodes};

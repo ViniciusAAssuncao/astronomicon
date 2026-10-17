@@ -1,10 +1,12 @@
 use super::celestial_atlas::{CelestialAtlas, catalog_at};
+use super::celestial_body_details::{CelestialBodyDetails, selected_body_details};
+use super::celestial_body_environment::append_reference_environment;
 use super::orbit_preview::{OrbitPreview, preview_from_pool_cancelled};
 use crate::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::units::Duration;
-use rocketcon_db::repositories::vehicle_physical_state;
 use astronomicon_db::SqlitePool;
+use rocketcon_db::repositories::vehicle_physical_state;
 use std::path::Path;
 use uuid::Uuid;
 
@@ -27,10 +29,15 @@ impl ForecastReader {
         let pool = astronomicon_db::connection::open_read_only_pool_path(path).await?;
         let universe_epoch = rocketcon_app::universe::resolve_universe_epoch(&pool).await?;
         let state = vehicle_physical_state::get_by_vehicle_id(&pool, &vehicle_id)
-            .await?.ok_or_else(|| RocketError::Generic("atlas vehicle missing".into()))?;
+            .await?
+            .ok_or_else(|| RocketError::Generic("atlas vehicle missing".into()))?;
         let environment = rocketcon_app::environment::load_environment_snapshot(
-            &pool, state.reference_body_id(), universe_epoch, state.captured_at_epoch(),
-        ).await?;
+            &pool,
+            state.reference_body_id(),
+            universe_epoch,
+            state.captured_at_epoch(),
+        )
+        .await?;
         let catalog = EphemerisCatalog::load(&pool, environment.system_id).await?;
         Ok(Self {
             pool,
@@ -42,8 +49,28 @@ impl ForecastReader {
 
     pub async fn celestial_atlas(&self) -> RocketResult<CelestialAtlas> {
         let state = vehicle_physical_state::get_by_vehicle_id(&self.pool, &self.vehicle_id)
-            .await?.ok_or_else(|| RocketError::Generic("atlas vehicle missing".into()))?;
-        catalog_at(&self.catalog, state.captured_total_epoch(), state.reference_body_id())
+            .await?
+            .ok_or_else(|| RocketError::Generic("atlas vehicle missing".into()))?;
+        catalog_at(
+            &self.catalog,
+            state.captured_total_epoch(),
+            state.reference_body_id(),
+        )
+    }
+
+    pub async fn body_details(&self, id: Uuid) -> RocketResult<CelestialBodyDetails> {
+        let state = vehicle_physical_state::get_by_vehicle_id(&self.pool, &self.vehicle_id)
+            .await?
+            .ok_or_else(|| RocketError::Generic("atlas vehicle missing".into()))?;
+        let mut details = selected_body_details(&self.pool, &self.catalog, id).await?;
+        append_reference_environment(
+            &mut details,
+            &self.catalog,
+            id,
+            self.universe_epoch,
+            state.captured_at_epoch(),
+        );
+        Ok(details)
     }
 
     pub async fn preview(&self, under_thrust: bool) -> RocketResult<OrbitPreview> {

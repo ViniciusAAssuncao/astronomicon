@@ -85,6 +85,14 @@ impl PreviewEngine {
         })
     }
 
+    pub fn body_details(&self, body_id: &str) -> Result<crate::ffi::FfiBodyDetails, String> {
+        let id = body_id.parse::<Uuid>().map_err(|error| error.to_string())?;
+        let reader = self.reader.as_ref().ok_or("no forecast save loaded")?;
+        let result = self.runtime.block_on(reader.body_details(id))
+            .map_err(|error| error.to_string())?;
+        Ok(result.into())
+    }
+
     pub fn predict(
         &self,
         under_thrust: bool,

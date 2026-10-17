@@ -1,3 +1,4 @@
+mod body_details;
 mod engine;
 mod forecast_reader;
 mod orbit_preview;
@@ -126,6 +127,64 @@ pub mod ffi {
     }
 
     #[derive(Debug, PartialEq)]
+    struct FfiBodyComponent {
+        formula: String,
+        percentage: f64,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FfiBodyFact {
+        section: String,
+        key: String,
+        value: f64,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FfiBodyTextFact {
+        section: String,
+        key: String,
+        value: String,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FfiBodyMaterial {
+        name: String,
+        percentage: f64,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct FfiBodyDetails {
+        id: String,
+        has_gravity: bool,
+        gravity_m_s2: f64,
+        has_density: bool,
+        density_kg_m3: f64,
+        has_rotation: bool,
+        rotation_seconds: f64,
+        has_distance: bool,
+        orbital_distance_m: f64,
+        has_period: bool,
+        orbital_period_seconds: f64,
+        has_eccentricity: bool,
+        eccentricity: f64,
+        has_inclination: bool,
+        inclination_deg: f64,
+        has_temperature: bool,
+        temperature_k: f64,
+        reference_radius_gravity: bool,
+        has_atmosphere: bool,
+        pressure_pa: f64,
+        gases: Vec<FfiBodyComponent>,
+        has_hydrosphere: bool,
+        coverage_percent: f64,
+        depth_m: f64,
+        liquids: Vec<FfiBodyComponent>,
+        facts: Vec<FfiBodyFact>,
+        text_facts: Vec<FfiBodyTextFact>,
+        materials: Vec<FfiBodyMaterial>,
+    }
+
+    #[derive(Debug, PartialEq)]
     struct FfiForecastBody {
         name: String,
         radius_m: f64,
@@ -224,6 +283,7 @@ pub mod ffi {
             vehicle_uuid: &str,
         ) -> Result<()>;
         fn celestial_atlas(self: &PreviewEngine) -> Result<FfiCelestialAtlas>;
+        fn body_details(self: &PreviewEngine, body_id: &str) -> Result<FfiBodyDetails>;
         fn predict(
             self: &PreviewEngine,
             under_thrust: bool,

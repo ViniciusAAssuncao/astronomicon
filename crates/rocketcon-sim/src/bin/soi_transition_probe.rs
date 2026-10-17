@@ -15,6 +15,45 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tangent = option.as_deref() == Some("--tangent");
     let path = Path::new(&path);
     let vehicle_id = Uuid::parse_str(VEHICLE_ID)?;
+    if option.as_deref() == Some("--details-only") {
+        let reader = ForecastReader::open(path, vehicle_id).await?;
+        let atlas = reader.celestial_atlas().await?;
+        let mut moons = 0;
+        let mut stars = 0;
+        for body in &atlas.bodies {
+            let details = reader.body_details(body.id).await?;
+            if details.id != body.id {
+                return Err("body details id mismatch".into());
+            }
+            if body.kind == 2 {
+                moons += 1;
+                if details.gravity_m_s2.is_none_or(|value| !value.is_finite() || value <= 0.0) ||
+                    details.orbital_period_seconds.is_none() {
+                    return Err(format!("incomplete moon facts: {}", body.name).into());
+                }
+            }
+            if body.kind == 0 {
+                stars += 1;
+                if details.atmosphere.is_some() || details.hydrosphere.is_some() {
+                    return Err("star was misclassified with planetary environment".into());
+                }
+            }
+            if let Some(atmosphere) = &details.atmosphere {
+                if atmosphere.pressure_pa < 1.0 ||
+                    atmosphere.gases.iter().any(|gas| gas.percentage < 0.0 ||
+                        !gas.percentage.is_finite()) {
+                    return Err("invalid atmospheric facts".into());
+                }
+            }
+        }
+        if moons < 4 || stars == 0 {
+            return Err("unexpected missing Jovian catalogue bodies".into());
+        }
+        println!("BODY_DETAILS_PASS bodies={} moons={} stars={}",
+            atlas.bodies.len(), moons, stars);
+        reader.close().await;
+        return Ok(());
+    }
     if option.as_deref() == Some("--atlas-only") {
         let reader = ForecastReader::open(path, vehicle_id).await?;
         let atlas = reader.celestial_atlas().await?;
