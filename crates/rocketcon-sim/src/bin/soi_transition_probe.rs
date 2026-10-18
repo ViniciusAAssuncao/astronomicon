@@ -15,6 +15,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tangent = option.as_deref() == Some("--tangent");
     let path = Path::new(&path);
     let vehicle_id = Uuid::parse_str(VEHICLE_ID)?;
+    if option.as_deref() == Some("--c2-only") {
+        let reader = ForecastReader::open(path, vehicle_id).await?;
+        let atlas = reader.celestial_atlas().await?;
+        let started = Instant::now();
+        let mut with_wind = 0usize;
+        for body in &atlas.bodies {
+            let begin = Instant::now();
+            let details = reader.body_details(body.id).await?;
+            let facts: Vec<_> = details.facts.iter().filter(|f| f.section == "climate").collect();
+            if !facts.is_empty() {
+                with_wind += 1;
+                if facts.len() != 14 || facts.iter().any(|f| !f.value.is_finite()) {
+                    return Err(format!("invalid wind reference for {}: {} fields", body.name, facts.len()).into());
+                }
+                for fact in &facts {
+                    if fact.key.starts_with("surface_wind_") || fact.key.starts_with("jet_wind_") {
+                        if fact.value < 0.0 || fact.value > 2000.0 {
+                            return Err(format!("invalid magnitude {}={}", fact.key, fact.value).into());
+                        }
+                    }
+                }
+            }
+            if body.kind == 0 && !facts.is_empty() {
+                return Err("stellar body received wind profile".into());
+            }
+            println!("C2_BODY name={} wind={} ms={:.2} surface30n={:.2}",
+                body.name, !facts.is_empty(), begin.elapsed().as_secs_f64()*1000.0,
+                facts.iter().find(|f| f.key == "surface_wind_30n").map_or(0.0, |f| f.value));
+        }
+        if with_wind != 3 { return Err(format!("expected 3 modelled atmospheres, got {with_wind}").into()); }
+        println!("C2_PASS bodies={} winds={} elapsed_ms={:.2}",atlas.bodies.len(), with_wind,
+            started.elapsed().as_secs_f64() * 1000.0);
+        reader.close().await;
+        return Ok(());
+    }
     if option.as_deref() == Some("--c1-only") {
         let reader = ForecastReader::open(path, vehicle_id).await?;
         let atlas = reader.celestial_atlas().await?;

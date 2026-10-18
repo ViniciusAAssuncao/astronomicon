@@ -1,5 +1,6 @@
 use super::celestial_atlas::{CelestialAtlas, catalog_at};
 use super::celestial_body_atmosphere::append_atmospheric_physics;
+use super::celestial_body_climate::append_reference_winds;
 use super::celestial_body_details::{CelestialBodyDetails, selected_body_details};
 use super::celestial_body_environment::append_reference_environment;
 use super::celestial_body_geoscience::append_geoscience;
@@ -88,6 +89,9 @@ impl ForecastReader {
         }
         if let Some(body) = self.catalog.planets().iter().find(|body| body.id() == id) {
             append_atmospheric_physics(&mut details, &self.pool, body).await;
+            if let Some(context) = radiative.as_ref() {
+                append_reference_winds(&mut details, &self.pool, &self.catalog, body, context).await;
+            }
             append_geoscience(
                 &mut details,
                 &self.pool,

@@ -13,7 +13,7 @@ use astronomicon_core::units::{Duration, Irradiance, Position, Temperature};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-fn star_flux_at_distance(star: &Star, distance_m: f64) -> Option<f64> {
+pub(super) fn star_flux_at_distance(star: &Star, distance_m: f64) -> Option<f64> {
     if !matches!(star.kind(), StarKind::Star | StarKind::BrownDwarf) {
         return None;
     }

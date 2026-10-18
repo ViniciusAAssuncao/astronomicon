@@ -1,5 +1,6 @@
 mod celestial_atlas;
 mod celestial_body_atmosphere;
+mod celestial_body_climate;
 mod celestial_body_details;
 mod celestial_body_environment;
 mod celestial_body_geoscience;

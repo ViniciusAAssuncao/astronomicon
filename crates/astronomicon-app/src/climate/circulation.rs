@@ -31,7 +31,9 @@ use std::f64::consts::PI;
 use uuid::Uuid;
 
 mod planetary;
+mod reference_wind;
 pub use planetary::{PlanetaryCirculationDiagnostic, resolve_planetary_circulation};
+pub use reference_wind::{ReferenceWindInputs, ReferenceWindProfile, reference_wind_profile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct WindProfileDiagnostic {
