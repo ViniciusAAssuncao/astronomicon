@@ -15,6 +15,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tangent = option.as_deref() == Some("--tangent");
     let path = Path::new(&path);
     let vehicle_id = Uuid::parse_str(VEHICLE_ID)?;
+    if option.as_deref() == Some("--c3-only") {
+        let reader = ForecastReader::open(path, vehicle_id).await?;
+        let atlas = reader.celestial_atlas().await?;
+        let start = Instant::now();
+        let mut weather_bodies = 0;
+        let mut raining = 0;
+        for body in &atlas.bodies {
+            let now = Instant::now();
+            let details = reader.body_details(body.id).await?;
+            let weather: Vec<_> = details.facts.iter().filter(|f| f.section == "weather").collect();
+            if !weather.is_empty() {
+                weather_bodies += 1;
+                if weather.iter().any(|f| !f.value.is_finite() || f.value < 0.0) ||
+                    !weather.iter().any(|f| f.key == "cloud_base_m") ||
+                    !details.text_facts.iter().any(|f| f.section == "weather" && f.key == "cloud_condensable") {
+                    return Err(format!("invalid weather for {}", body.name).into());
+                }
+                if weather.iter().any(|f| f.key == "precipitation_mm_h") { raining += 1; }
+            }
+            println!("C3_BODY name={} weather={} precipitation={} ms={:.2} condensable={}",
+                body.name, !weather.is_empty(),
+                weather.iter().find(|f| f.key == "precipitation_mm_h").map_or(0.0, |f| f.value),
+                now.elapsed().as_secs_f64() * 1000.0,
+                details.text_facts.iter().find(|f| f.key == "cloud_condensable")
+                    .map_or("-", |f| f.value.as_str()));
+        }
+        if weather_bodies == 0 {
+            return Err("no C3 meteorological body in Zod".into());
+        }
+        println!("C3_PASS bodies={} with_weather={} with_precipitation={} elapsed_ms={:.2}",
+            atlas.bodies.len(), weather_bodies, raining,
+            start.elapsed().as_secs_f64() * 1000.0);
+        reader.close().await;
+        return Ok(());
+    }
     if option.as_deref() == Some("--c2-only") {
         let reader = ForecastReader::open(path, vehicle_id).await?;
         let atlas = reader.celestial_atlas().await?;

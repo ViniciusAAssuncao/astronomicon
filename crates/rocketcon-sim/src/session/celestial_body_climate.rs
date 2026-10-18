@@ -1,7 +1,9 @@
 use super::celestial_body_details::CelestialBodyDetails;
 use super::celestial_body_environment::{RadiativeContext, star_flux_at_distance};
 use super::celestial_body_facts::push;
-use astronomicon_app::climate::circulation::{ReferenceWindInputs, reference_wind_profile};
+use astronomicon_app::climate::circulation::{
+    ReferenceWindInputs, ReferenceWindProfile, reference_wind_profile,
+};
 use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::domain::{Planet, PlanetKind};
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
@@ -19,9 +21,9 @@ pub async fn append_reference_winds(
     catalog: &EphemerisCatalog,
     planet: &Planet,
     context: &RadiativeContext,
-) {
+) -> Option<ReferenceWindProfile> {
     if matches!(planet.kind(), PlanetKind::GasGiant | PlanetKind::IceGiant) {
-        return;
+        return None;
     }
     let (
         Some(radius),
@@ -43,7 +45,7 @@ pub async fn append_reference_winds(
         planet.thermal_inertia(),
     )
     else {
-        return;
+        return None;
     };
     let Some(mean_k) = details
         .facts
@@ -51,21 +53,21 @@ pub async fn append_reference_winds(
         .find(|f| f.section == "environment" && f.key == "surface_mean_k")
         .map(|f| f.value)
     else {
-        return;
+        return None;
     };
     let Ok(Some(atmosphere)) = atmosphere_repository::get_by_planet_id(pool, &planet.id()).await
     else {
-        return;
+        return None;
     };
     if atmosphere.surface_pressure().value() < 1.0 || atmosphere.composition().is_empty() {
-        return;
+        return None;
     }
     let Ok(cp) = atmosphere.mean_specific_heat_capacity() else {
-        return;
+        return None;
     };
     let gravity = surface_gravity(gravitational_parameter(planet.mass()), radius);
     let Ok(scale_height) = atmosphere.scale_height(gravity, Temperature::new(mean_k)) else {
-        return;
+        return None;
     };
     let pole = planet_rotation_axis_direction(
         orbital_plane_normal(&elements),
@@ -73,24 +75,24 @@ pub async fn append_reference_winds(
         solstice_reference_direction(&elements, solstice),
     );
     let Some(target) = context.positions.get(&planet.id()).copied() else {
-        return;
+        return None;
     };
     let mut stars = Vec::with_capacity(catalog.stars().len());
     for star in catalog.stars() {
         let Some(source) = context.positions.get(&star.id()).copied() else {
-            return;
+            return None;
         };
         let direction = (source - target).raw();
         let distance = direction.magnitude();
         if !distance.is_finite() || distance <= 0.0 {
-            return;
+            return None;
         }
         let Some(flux) = star_flux_at_distance(star, distance) else {
-            return;
+            return None;
         };
         let declination = (pole.dot(&(direction / distance))).clamp(-1.0, 1.0).asin();
         if !declination.is_finite() {
-            return;
+            return None;
         }
         stars.push((Irradiance::new(flux), Angle::new(declination)));
     }
@@ -108,7 +110,7 @@ pub async fn append_reference_winds(
         thermal_inertia: inertia,
         stars,
     }) else {
-        return;
+        return None;
     };
     push(
         &mut details.facts,
@@ -122,7 +124,7 @@ pub async fn append_reference_winds(
         "thermal_redistribution",
         Some(winds.redistribution_efficiency),
     );
-    for band in winds.bands {
+    for band in &winds.bands {
         let label = if band.latitude_degrees > 0 {
             format!("{}n", band.latitude_degrees)
         } else {
@@ -147,4 +149,5 @@ pub async fn append_reference_winds(
             Some(band.jet_speed_m_s),
         );
     }
+    Some(winds)
 }

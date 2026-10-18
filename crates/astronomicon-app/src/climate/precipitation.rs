@@ -6,9 +6,7 @@ use crate::climate::clouds::cover::{CloudCoverDiagnostic, resolve_cloud_cover_at
 use crate::climate::clouds::instability::{
     ConvectiveInstabilityDiagnostic, resolve_convective_instability_at_latitude,
 };
-use crate::climate::clouds::tropopause::{
-    TropopauseDiagnostic, resolve_tropopause_at_latitude,
-};
+use crate::climate::clouds::tropopause::{TropopauseDiagnostic, resolve_tropopause_at_latitude};
 use crate::climate::condensable_species::{
     resolve_all_condensable_species, resolve_condensable_species,
 };
@@ -21,15 +19,13 @@ use astronomicon_core::math::atmosphere::ideal_gas_density;
 use astronomicon_core::math::climate::temperature_at_altitude;
 use astronomicon_core::math::gravity::{gravitational_parameter, surface_gravity};
 use astronomicon_core::math::precipitation::{
-    AcidityClassification, CondensatePrimaryClass, PrecipitationPhase,
-    SurfaceCondensationType, apply_bergeron_enhancement, bergeron_enhancement_factor,
-    classify_surface_condensation, evaluate_precipitation_acidity,
-    layer_vertical_velocity_scale, resolve_sedimentation_balance,
+    AcidityClassification, CondensatePrimaryClass, PrecipitationPhase, SurfaceCondensationType,
+    apply_bergeron_enhancement, bergeron_enhancement_factor, classify_surface_condensation,
+    evaluate_precipitation_acidity, layer_vertical_velocity_scale, resolve_sedimentation_balance,
     scan_precipitation_phase, subcloud_evaporation_profile,
 };
 use astronomicon_core::units::{
-    Acceleration, Angle, Density, Duration, DynamicViscosity, Length, MassFluxDensity,
-    MolarMass, Speed, Temperature,
+    Acceleration, Angle, Density, Duration, Length, MassFluxDensity, MolarMass, Speed, Temperature,
 };
 use astronomicon_db::SqlitePool;
 use astronomicon_db::repositories::{
@@ -65,12 +61,43 @@ pub fn calculate_precipitation_diagnostic(
     gravity: Acceleration,
     hydro_composition: &[(String, f64)],
 ) -> AppResult<PrecipitationDiagnostic> {
+    calculate_precipitation_diagnostic_with_shear(
+        atmosphere,
+        cloud_diag,
+        stratification,
+        tropo,
+        instability,
+        (wind.jet_stream_speed.value() - wind.surface_wind_speed.value()).abs(),
+        solvent_props,
+        solvent_molar_mass,
+        surface_humidity,
+        freezing_point,
+        scale_h,
+        gravity,
+        hydro_composition,
+    )
+}
+
+pub fn calculate_precipitation_diagnostic_with_shear(
+    atmosphere: &Atmosphere,
+    cloud_diag: &CloudCoverDiagnostic,
+    stratification: &AtmosphericStratificationDiagnostic,
+    tropo: &TropopauseDiagnostic,
+    instability: &ConvectiveInstabilityDiagnostic,
+    bulk_shear: f64,
+    solvent_props: &SolventProperties,
+    solvent_molar_mass: MolarMass,
+    surface_humidity: f64,
+    freezing_point: Temperature,
+    scale_h: Length,
+    gravity: Acceleration,
+    hydro_composition: &[(String, f64)],
+) -> AppResult<PrecipitationDiagnostic> {
     let surf_temp = tropo.surface_temperature;
     let surf_press = atmosphere.surface_pressure();
     let atm_molar_mass = atmosphere.mean_molar_mass()?;
     let env_lapse_rate = atmosphere.lapse_rate();
 
-    let bulk_shear = (wind.jet_stream_speed.value() - wind.surface_wind_speed.value()).abs();
     let vertical_wind_shear = bulk_shear / tropo.tropopause_altitude.value().max(1.0);
 
     let layers = [
@@ -97,9 +124,7 @@ pub fn calculate_precipitation_diagnostic(
             temperature_at_altitude(surf_temp, layer.representative_altitude, env_lapse_rate);
         let press_z = atmosphere.pressure_at_altitude(layer.representative_altitude, scale_h);
         let fluid_density = ideal_gas_density(press_z, atm_molar_mass, temp_z);
-        let dynamic_viscosity = atmosphere
-            .mean_dynamic_viscosity(temp_z)
-            .unwrap_or_else(|_| DynamicViscosity::new(1.81e-5));
+        let dynamic_viscosity = atmosphere.mean_dynamic_viscosity(temp_z)?;
 
         let w_scale = layer_vertical_velocity_scale(
             instability.morphology,
@@ -170,16 +195,10 @@ pub fn calculate_precipitation_diagnostic(
         .map(|c| (c.formula().to_string(), c.percentage()))
         .collect();
 
-    let acidity_diag = evaluate_precipitation_acidity(
-        hydro_composition,
-        &atm_comp,
-        surf_press,
-        surf_temp,
-    );
+    let acidity_diag =
+        evaluate_precipitation_acidity(hydro_composition, &atm_comp, surf_press, surf_temp);
 
-    let dyn_visc_surf = atmosphere
-        .mean_dynamic_viscosity(surf_temp)
-        .unwrap_or_else(|_| DynamicViscosity::new(1.81e-5));
+    let dyn_visc_surf = atmosphere.mean_dynamic_viscosity(surf_temp)?;
 
     let (final_flux, reaches_surface) =
         if current_flux > 0.0 && current_droplet_radius.value() > 0.0 {
@@ -274,7 +293,8 @@ pub async fn resolve_precipitation_diagnostic(
     )
     .await?;
     let cloud_diag =
-        resolve_cloud_cover_at_latitude(pool, planet_id, latitude, universe_epoch, at_epoch).await?;
+        resolve_cloud_cover_at_latitude(pool, planet_id, latitude, universe_epoch, at_epoch)
+            .await?;
     let wind_diag =
         resolve_wind_profile_at_latitude(pool, planet_id, latitude, universe_epoch, at_epoch)
             .await?;
@@ -336,12 +356,6 @@ pub async fn resolve_precipitation_diagnostic_global(
     universe_epoch: Duration,
     at_epoch: Duration,
 ) -> AppResult<PrecipitationDiagnostic> {
-    resolve_precipitation_diagnostic(
-        pool,
-        planet_id,
-        Angle::new(0.0),
-        universe_epoch,
-        at_epoch,
-    )
-    .await
+    resolve_precipitation_diagnostic(pool, planet_id, Angle::new(0.0), universe_epoch, at_epoch)
+        .await
 }

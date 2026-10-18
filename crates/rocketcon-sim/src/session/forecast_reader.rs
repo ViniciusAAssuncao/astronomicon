@@ -6,6 +6,7 @@ use super::celestial_body_environment::append_reference_environment;
 use super::celestial_body_geoscience::append_geoscience;
 use super::celestial_body_radiation::append_radiation_and_magnetism;
 use super::celestial_body_volcanism::append_volcanism;
+use super::celestial_body_weather::append_reference_weather;
 use super::orbit_preview::{OrbitPreview, preview_from_pool_cancelled};
 use crate::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::EphemerisCatalog;
@@ -90,7 +91,11 @@ impl ForecastReader {
         if let Some(body) = self.catalog.planets().iter().find(|body| body.id() == id) {
             append_atmospheric_physics(&mut details, &self.pool, body).await;
             if let Some(context) = radiative.as_ref() {
-                append_reference_winds(&mut details, &self.pool, &self.catalog, body, context).await;
+                if let Some(winds) = append_reference_winds(
+                    &mut details, &self.pool, &self.catalog, body, context
+                ).await {
+                    append_reference_weather(&mut details, &self.pool, body, &winds).await;
+                }
             }
             append_geoscience(
                 &mut details,

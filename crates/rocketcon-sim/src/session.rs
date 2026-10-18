@@ -6,6 +6,7 @@ mod celestial_body_environment;
 mod celestial_body_geoscience;
 mod celestial_body_radiation;
 mod celestial_body_volcanism;
+mod celestial_body_weather;
 pub use celestial_body_environment::append_reference_environment;
 mod celestial_body_facts;
 mod celestial_orbit_curve;
