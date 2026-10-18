@@ -102,6 +102,22 @@ fn new_details(
         .as_ref()
         .map(|o| o.inclination().value() * 360.0 / TAU)
         .filter(|number| number.is_finite());
+    let mut facts = Vec::new();
+    if let Some(r) = radius_m {
+        celestial_body_facts::push(
+            &mut facts,
+            "general",
+            "surface_area_m2",
+            Some(4.0 * PI * r * r),
+        );
+        celestial_body_facts::push(&mut facts, "general", "circumference_m", Some(2.0 * PI * r));
+        celestial_body_facts::push(
+            &mut facts,
+            "general",
+            "sphere_volume_m3",
+            Some((4.0 / 3.0) * PI * r.powi(3)),
+        );
+    }
     CelestialBodyDetails {
         id,
         gravity_m_s2,
@@ -115,7 +131,7 @@ fn new_details(
         reference_radius_gravity: false,
         atmosphere: None,
         hydrosphere: None,
-        facts: Vec::new(),
+        facts,
         text_facts: Vec::new(),
         materials: Vec::new(),
     }

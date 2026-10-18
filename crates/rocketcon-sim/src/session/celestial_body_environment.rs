@@ -1,10 +1,15 @@
 use super::celestial_body_details::CelestialBodyDetails;
 use super::celestial_body_facts::push;
 use astronomicon_app::ephemeris::EphemerisCatalog;
+use astronomicon_app::shape::planet_mean_density;
 use astronomicon_core::domain::{Star, StarKind};
 use astronomicon_core::math::climate::local_radiative_equilibrium_temperature;
+use astronomicon_core::math::gravity::gravitational_parameter;
+use astronomicon_core::math::habitability::calculate_earth_similarity_index;
+use astronomicon_core::math::radiometry::escape_velocity;
 use astronomicon_core::math::radiometry::{orbital_irradiance, stellar_luminosity};
-use astronomicon_core::units::{Duration, Irradiance, Position};
+use astronomicon_core::math::shape::mean_radius;
+use astronomicon_core::units::{Duration, Irradiance, Position, Temperature};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -51,43 +56,41 @@ fn system_stellar_flux(
     (total > 0.0).then_some(total)
 }
 
+pub struct RadiativeContext {
+    pub positions: HashMap<Uuid, Position>,
+}
+
 pub fn append_reference_environment(
     details: &mut CelestialBodyDetails,
     catalog: &EphemerisCatalog,
     id: Uuid,
     universe_epoch: Duration,
     at_epoch: Duration,
-) {
+) -> Option<RadiativeContext> {
     let Some(body) = catalog.planets().iter().find(|body| body.id() == id) else {
-        return;
+        return None;
     };
     let Some(system_id) = body.star_system_id() else {
-        return;
+        return None;
     };
     if catalog.stars().is_empty() || !at_epoch.value().is_finite() {
-        return;
+        return None;
     }
     let total_epoch = universe_epoch + at_epoch;
     if catalog.system_id != system_id || !total_epoch.value().is_finite() {
-        return;
+        return None;
     }
     let Ok(positions) = catalog.positions(total_epoch) else {
-        return;
+        return None;
     };
     let Some(incident_flux) = system_stellar_flux(catalog.stars(), &positions, id) else {
-        return;
+        return None;
     };
     push(
         &mut details.facts,
         "environment",
         "stellar_irradiance",
         Some(incident_flux),
-    );
-    push(
-        &mut details.facts,
-        "environment",
-        "diagnostic_epoch",
-        Some(at_epoch.value()),
     );
     if let Some(albedo) = body
         .bond_albedo()
@@ -102,13 +105,51 @@ pub fn append_reference_environment(
                 "radiative_equilibrium_k",
                 Some(equilibrium.value()),
             );
+            if !matches!(
+                body.kind(),
+                astronomicon_core::domain::PlanetKind::GasGiant
+                    | astronomicon_core::domain::PlanetKind::IceGiant
+            ) {
+                let greenhouse = details
+                    .facts
+                    .iter()
+                    .find(|fact| fact.section == "atmosphere" && fact.key == "greenhouse_effect")
+                    .map(|fact| fact.value)
+                    .unwrap_or(0.0);
+                let mean_surface = equilibrium.value() + greenhouse;
+                if mean_surface.is_finite() && mean_surface > 0.0 {
+                    push(
+                        &mut details.facts,
+                        "environment",
+                        "surface_mean_k",
+                        Some(mean_surface),
+                    );
+                    if let Some(eq_radius) = body.equatorial_radius() {
+                        let polar = body.polar_radius().unwrap_or(eq_radius);
+                        let radius = mean_radius(eq_radius, polar);
+                        let density = planet_mean_density(body);
+                        let speed =
+                            escape_velocity(gravitational_parameter(body.mass()), eq_radius);
+                        if radius.value() > 0.0 && density.value() > 0.0 && speed.value() > 0.0 {
+                            let esi = calculate_earth_similarity_index(
+                                radius,
+                                density,
+                                speed,
+                                Temperature::new(mean_surface),
+                            );
+                            push(
+                                &mut details.facts,
+                                "environment",
+                                "earth_similarity",
+                                Some(esi.global),
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
-    details.text_facts.push(super::celestial_body_facts::BodyTextFact {
-        section: "environment".to_owned(),
-        key: "reference_model".to_owned(),
-        value: "Estimativa radiativa na época da seleção. Não representa temperatura superficial medida.".to_owned(),
-    });
+    Some(RadiativeContext { positions })
 }
 
 #[cfg(test)]

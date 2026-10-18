@@ -1,6 +1,8 @@
 use super::celestial_atlas::{CelestialAtlas, catalog_at};
 use super::celestial_body_details::{CelestialBodyDetails, selected_body_details};
 use super::celestial_body_environment::append_reference_environment;
+use super::celestial_body_geoscience::append_geoscience;
+use super::celestial_body_radiation::append_radiation_and_magnetism;
 use super::orbit_preview::{OrbitPreview, preview_from_pool_cancelled};
 use crate::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::EphemerisCatalog;
@@ -63,13 +65,36 @@ impl ForecastReader {
             .await?
             .ok_or_else(|| RocketError::Generic("atlas vehicle missing".into()))?;
         let mut details = selected_body_details(&self.pool, &self.catalog, id).await?;
-        append_reference_environment(
+        let radiative = append_reference_environment(
             &mut details,
             &self.catalog,
             id,
             self.universe_epoch,
             state.captured_at_epoch(),
         );
+        if let Some(context) = radiative.as_ref() {
+            append_radiation_and_magnetism(
+                &mut details,
+                &self.pool,
+                &self.catalog,
+                id,
+                self.universe_epoch,
+                state.captured_at_epoch(),
+                context,
+            )
+            .await;
+        }
+        if let Some(body) = self.catalog.planets().iter().find(|body| body.id() == id) {
+            append_geoscience(
+                &mut details,
+                &self.pool,
+                id,
+                body.kind(),
+                self.universe_epoch,
+                state.captured_at_epoch(),
+            )
+            .await;
+        }
         Ok(details)
     }
 

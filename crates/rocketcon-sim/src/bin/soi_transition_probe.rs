@@ -15,11 +15,53 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tangent = option.as_deref() == Some("--tangent");
     let path = Path::new(&path);
     let vehicle_id = Uuid::parse_str(VEHICLE_ID)?;
+    if option.as_deref() == Some("--b2a-only") {
+        let reader = ForecastReader::open(path, vehicle_id).await?;
+        let atlas = reader.celestial_atlas().await?;
+        let mut radiation = 0;
+        let mut magnetic = 0;
+        let mut surface = 0;
+        let mut area = 0;
+        let mut cores = 0;
+        let mut tectonic = 0;
+        let mut terrestrial = 0;
+        let now = Instant::now();
+        for body in &atlas.bodies {
+            let details = reader.body_details(body.id).await?;
+            let has = |section: &str, key: &str| details.facts.iter()
+                .find(|fact| fact.section == section && fact.key == key)
+                .is_some_and(|fact| fact.value.is_finite());
+            radiation += usize::from(has("radiation", "stellar_particle_flux"));
+            magnetic += usize::from(has("magnetic", "magnetic_equatorial_t"));
+            surface += usize::from(has("environment", "surface_mean_k"));
+            area += usize::from(has("general", "surface_area_m2"));
+            cores += usize::from(has("interior", "core_radius_m"));
+            tectonic += usize::from(details.text_facts.iter().any(|fact|
+                fact.section == "tectonics" && fact.key == "tectonic_regime"));
+            terrestrial += usize::from(has("environment", "earth_similarity"));
+            if details.facts.iter().any(|fact| fact.key == "diagnostic_epoch")
+                || details.text_facts.iter().any(|fact| fact.key == "reference_model") {
+                return Err("developer-only fields were published".into());
+            }
+        }
+        if area < 6 || cores < 3 || tectonic < 2 || terrestrial < 3 {
+            return Err(format!("missing geoscience facts: area={area} cores={cores} tectonic={tectonic} esi={terrestrial}").into());
+        }
+        if radiation < 3 || magnetic == 0 || surface < 3 {
+            return Err(format!("insufficient environment coverage: radiation={radiation} magnetic={magnetic} surface={surface}").into());
+        }
+        println!("GEOSCIENCE_PASS bodies={} radiation={} magnetic={} surface={} area={} cores={} tectonic={} esi={} elapsed_ms={:.2}",
+            atlas.bodies.len(), radiation, magnetic, surface, area, cores,
+            tectonic, terrestrial, now.elapsed().as_secs_f64() * 1000.0);
+        reader.close().await;
+        return Ok(());
+    }
     if option.as_deref() == Some("--details-only") {
         let reader = ForecastReader::open(path, vehicle_id).await?;
         let atlas = reader.celestial_atlas().await?;
         let mut moons = 0;
         let mut stars = 0;
+        let mut io_tidal_power = None;
         for body in &atlas.bodies {
             let details = reader.body_details(body.id).await?;
             if details.id != body.id {
@@ -31,6 +73,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     details.orbital_period_seconds.is_none() {
                     return Err(format!("incomplete moon facts: {}", body.name).into());
                 }
+            }
+            if body.name == "Io" {
+                io_tidal_power = details.facts.iter()
+                    .find(|fact| fact.section == "tides" && fact.key == "tidal_power_w")
+                    .map(|fact| fact.value);
             }
             if body.kind == 0 {
                 stars += 1;
@@ -49,8 +96,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if moons < 4 || stars == 0 {
             return Err("unexpected missing Jovian catalogue bodies".into());
         }
-        println!("BODY_DETAILS_PASS bodies={} moons={} stars={}",
-            atlas.bodies.len(), moons, stars);
+        if !io_tidal_power.is_some_and(|value| value.is_finite() && value > 0.0) {
+            return Err("Io did not receive calculated tidal power".into());
+        }
+        println!("BODY_DETAILS_PASS bodies={} moons={} stars={} io_tidal_power_w={:.3e}",
+            atlas.bodies.len(), moons, stars, io_tidal_power.unwrap());
         reader.close().await;
         return Ok(());
     }
@@ -90,6 +140,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 if gap > 1.0 || body.orbit_points_m.len() != 129 ||
                     body.orbit_points_m.iter().flatten().any(|v| !v.is_finite()) {
                     return Err(format!("invalid orbit catalog curve: {}", body.name).into());
+                }
+                let mut nearest = f64::INFINITY;
+                let mut largest_step: f64 = 0.0;
+                for pair in body.orbit_points_m.windows(2) {
+                    let edge: [f64; 3] = std::array::from_fn(|i| pair[1][i] - pair[0][i]);
+                    let delta: [f64; 3] = std::array::from_fn(|i| body.relative_position_m[i] - pair[0][i]);
+                    let edge_sq = edge.iter().map(|v| v * v).sum::<f64>();
+                    let t = if edge_sq > 0.0 {
+                        (delta.iter().zip(edge).map(|(v, e)| v * e).sum::<f64>() / edge_sq)
+                            .clamp(0.0, 1.0)
+                    } else { 0.0 };
+                    let distance = (0..3).map(|i| (delta[i] - t * edge[i]).powi(2))
+                        .sum::<f64>().sqrt();
+                    nearest = nearest.min(distance);
+                    largest_step = largest_step.max(edge_sq.sqrt());
+                }
+                if nearest > largest_step * 0.1 + 1.0 {
+                    return Err(format!("catalog orbit misses {}: distance={:.3} m / step={:.3} m",
+                        body.name, nearest, largest_step).into());
                 }
             }
         }

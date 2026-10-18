@@ -1,9 +1,13 @@
 use astronomicon_core::domain::OrbitalElements;
+use astronomicon_core::math::perturbation::SecularPrecessionRates;
+use astronomicon_core::units::Duration;
 
 const SAMPLES: usize = 128;
 
 pub fn catalog_orbit_points(
     elements: OrbitalElements,
+    rates: SecularPrecessionRates,
+    epoch: Duration,
     parent_position_m: [f64; 3],
     origin_position_m: [f64; 3],
 ) -> Vec<[f64; 3]> {
@@ -12,9 +16,18 @@ pub fn catalog_orbit_points(
     if !a.is_finite() || a <= 0.0 || !e.is_finite() || !(0.0..1.0).contains(&e) {
         return Vec::new();
     }
-    let (sin_node, cos_node) = elements.longitude_of_ascending_node().value().sin_cos();
+    let ascending_node = (elements.longitude_of_ascending_node() + rates.nodal * epoch)
+        .value()
+        .rem_euclid(std::f64::consts::TAU);
+    let argument = (elements.argument_of_periapsis() + rates.apsidal * epoch)
+        .value()
+        .rem_euclid(std::f64::consts::TAU);
+    if !ascending_node.is_finite() || !argument.is_finite() {
+        return Vec::new();
+    }
+    let (sin_node, cos_node) = ascending_node.sin_cos();
     let (sin_i, cos_i) = elements.inclination().value().sin_cos();
-    let (sin_w, cos_w) = elements.argument_of_periapsis().value().sin_cos();
+    let (sin_w, cos_w) = argument.sin_cos();
     let axis_x = [
         cos_node * cos_w - sin_node * sin_w * cos_i,
         sin_node * cos_w + cos_node * sin_w * cos_i,

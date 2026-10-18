@@ -57,38 +57,57 @@ impl PreviewEngine {
     }
 
     pub fn celestial_atlas(&self) -> Result<FfiCelestialAtlas, String> {
-        let atlas = self.runtime.block_on(
-            self.reader.as_ref().ok_or("no forecast save loaded")?.celestial_atlas()
-        ).map_err(|error| error.to_string())?;
+        let atlas = self
+            .runtime
+            .block_on(
+                self.reader
+                    .as_ref()
+                    .ok_or("no forecast save loaded")?
+                    .celestial_atlas(),
+            )
+            .map_err(|error| error.to_string())?;
         Ok(FfiCelestialAtlas {
             reference_body_id: atlas.reference_body_id.to_string(),
             epoch_seconds: atlas.epoch_seconds,
-            bodies: atlas.bodies.into_iter().map(|body| FfiCatalogBody {
-                id: body.id.to_string(),
-                parent_id: body.parent_id.map_or_else(String::new, |id| id.to_string()),
-                name: body.name, kind: body.kind,
-                has_radius: body.radius_m.is_some(),
-                radius_m: body.radius_m.unwrap_or(0.0),
-                has_mass: body.mass_kg.is_some(),
-                mass_kg: body.mass_kg.unwrap_or(0.0),
-                has_soi_radius: body.soi_radius_m.is_some(),
-                soi_radius_m: body.soi_radius_m.unwrap_or(0.0),
-                relative_position_m: FfiVec3 {
-                    x: body.relative_position_m[0],
-                    y: body.relative_position_m[1],
-                    z: body.relative_position_m[2],
-                },
-                orbit_points_m: body.orbit_points_m.into_iter().map(|point| FfiVec3 {
-                    x: point[0], y: point[1], z: point[2],
-                }).collect(),
-            }).collect(),
+            bodies: atlas
+                .bodies
+                .into_iter()
+                .map(|body| FfiCatalogBody {
+                    id: body.id.to_string(),
+                    parent_id: body.parent_id.map_or_else(String::new, |id| id.to_string()),
+                    name: body.name,
+                    kind: body.kind,
+                    has_radius: body.radius_m.is_some(),
+                    radius_m: body.radius_m.unwrap_or(0.0),
+                    has_mass: body.mass_kg.is_some(),
+                    mass_kg: body.mass_kg.unwrap_or(0.0),
+                    has_soi_radius: body.soi_radius_m.is_some(),
+                    soi_radius_m: body.soi_radius_m.unwrap_or(0.0),
+                    relative_position_m: FfiVec3 {
+                        x: body.relative_position_m[0],
+                        y: body.relative_position_m[1],
+                        z: body.relative_position_m[2],
+                    },
+                    orbit_points_m: body
+                        .orbit_points_m
+                        .into_iter()
+                        .map(|point| FfiVec3 {
+                            x: point[0],
+                            y: point[1],
+                            z: point[2],
+                        })
+                        .collect(),
+                })
+                .collect(),
         })
     }
 
     pub fn body_details(&self, body_id: &str) -> Result<crate::ffi::FfiBodyDetails, String> {
         let id = body_id.parse::<Uuid>().map_err(|error| error.to_string())?;
         let reader = self.reader.as_ref().ok_or("no forecast save loaded")?;
-        let result = self.runtime.block_on(reader.body_details(id))
+        let result = self
+            .runtime
+            .block_on(reader.body_details(id))
             .map_err(|error| error.to_string())?;
         Ok(result.into())
     }

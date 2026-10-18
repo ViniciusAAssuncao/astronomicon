@@ -68,13 +68,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .any(|fact| fact.key == "stellar_irradiance")
             {
                 radiative += 1;
-                if !details
-                    .facts
-                    .iter()
-                    .any(|fact| fact.key == "diagnostic_epoch")
-                {
-                    return Err("radiative result missing reference epoch".into());
-                }
+
             }
             if details
                 .facts

@@ -1,10 +1,16 @@
 use super::celestial_orbit_curve::catalog_orbit_points;
 use crate::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::EphemerisCatalog;
-use astronomicon_core::domain::OrbitalElements;
+use astronomicon_app::ephemeris::j2_lookup::get_parent_j2_and_radius;
+use astronomicon_core::domain::{BarycenterMember, OrbitalElements};
 use astronomicon_core::domain::{OrbitalParent, PlanetKind};
+use astronomicon_core::math::gravity::{
+    calculate_effective_mass, calculate_parent_effective_mass, combined_gravitational_parameter,
+};
+use astronomicon_core::math::perturbation::resolve_secular_precession;
 use astronomicon_core::units::Duration;
 use rocketcon_core::math::orbital::sphere_of_influence::laplace_sphere_of_influence_radius;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +55,26 @@ pub fn catalog_at(
         .get(&reference)
         .ok_or_else(|| RocketError::Generic("atlas reference center missing".into()))?
         .raw();
+    let stars: HashMap<_, _> = catalog
+        .stars()
+        .iter()
+        .map(|body| (body.id(), body))
+        .collect();
+    let planets: HashMap<_, _> = catalog
+        .planets()
+        .iter()
+        .map(|body| (body.id(), body))
+        .collect();
+    let barycenters: HashMap<_, _> = catalog
+        .barycenters()
+        .iter()
+        .map(|body| (body.id(), body))
+        .collect();
+    let minors: HashMap<_, _> = catalog
+        .minor_planets()
+        .iter()
+        .map(|body| (body.id(), body))
+        .collect();
     let mut bodies = Vec::with_capacity(
         catalog.stars().len()
             + catalog.planets().len()
@@ -56,12 +82,13 @@ pub fn catalog_at(
             + catalog.barycenters().len(),
     );
     let mut add = |id: Uuid,
-                   parent_id: Option<Uuid>,
+                   parent: OrbitalParent,
                    name: &str,
                    kind: u8,
                    radius_m: Option<f64>,
                    mass_kg: Option<f64>,
                    elements: Option<OrbitalElements>| {
+        let parent_id = parent_id(parent);
         if let Some(position) = positions.get(&id) {
             let point = position.raw() - center;
             let coordinates = [point.0, point.1, point.2];
@@ -82,11 +109,41 @@ pub fn catalog_at(
                 let orbit_points_m = parent_id
                     .and_then(|parent| positions.get(&parent))
                     .zip(elements)
-                    .map_or_else(Vec::new, |(parent, orbit)| {
-                        let p = parent.raw();
-                        let origin = center;
-                        catalog_orbit_points(orbit, [p.0, p.1, p.2], [origin.0, origin.1, origin.2])
-                    });
+                    .and_then(|(parent_position, orbit)| {
+                        let mass = if kind == 5 {
+                            calculate_effective_mass(
+                                &BarycenterMember::Barycenter(id),
+                                &stars,
+                                &planets,
+                                &barycenters,
+                            )
+                            .ok()
+                        } else {
+                            catalog.mass_of_body(id)
+                        }?;
+                        let parent_mass = calculate_parent_effective_mass(
+                            &parent,
+                            &stars,
+                            &planets,
+                            &barycenters,
+                            &minors,
+                        )
+                        .ok()?;
+                        let mu = combined_gravitational_parameter(mass, parent_mass);
+                        let (j2, radius) =
+                            get_parent_j2_and_radius(&parent, &stars, &planets, &minors);
+                        let rates = resolve_secular_precession(&orbit, mu, j2, radius);
+                        let p = parent_position.raw();
+                        let curve = catalog_orbit_points(
+                            orbit,
+                            rates,
+                            epoch,
+                            [p.0, p.1, p.2],
+                            [center.0, center.1, center.2],
+                        );
+                        Some(curve)
+                    })
+                    .unwrap_or_default();
                 bodies.push(CatalogBody {
                     id,
                     parent_id,
@@ -104,7 +161,7 @@ pub fn catalog_at(
     for star in catalog.stars() {
         add(
             star.id(),
-            parent_id(star.orbital_parent()),
+            star.orbital_parent(),
             star.name(),
             0,
             star.radius().map(|r| r.value()),
@@ -123,7 +180,7 @@ pub fn catalog_at(
         };
         add(
             planet.id(),
-            parent_id(parent),
+            parent,
             planet.name(),
             kind,
             planet
@@ -143,7 +200,7 @@ pub fn catalog_at(
             .reduce(f64::max);
         add(
             minor.id(),
-            parent_id(minor.orbital_parent()),
+            minor.orbital_parent(),
             minor.name(),
             4,
             radius,
@@ -154,7 +211,7 @@ pub fn catalog_at(
     for barycenter in catalog.barycenters() {
         add(
             barycenter.id(),
-            parent_id(barycenter.orbital_parent()),
+            barycenter.orbital_parent(),
             barycenter.name(),
             5,
             None,
