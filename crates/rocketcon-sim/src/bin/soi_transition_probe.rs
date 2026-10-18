@@ -15,6 +15,85 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tangent = option.as_deref() == Some("--tangent");
     let path = Path::new(&path);
     let vehicle_id = Uuid::parse_str(VEHICLE_ID)?;
+    if option.as_deref() == Some("--c1-only") {
+        let reader = ForecastReader::open(path, vehicle_id).await?;
+        let atlas = reader.celestial_atlas().await?;
+        let mut atmospheric = 0usize;
+        let mut volcanic = 0usize;
+        let started = Instant::now();
+        let mut slowest_ms: f64 = 0.0;
+        for body in &atlas.bodies {
+            let now = Instant::now();
+            let details = reader.body_details(body.id).await?;
+            let elapsed = now.elapsed().as_secs_f64() * 1000.0;
+            slowest_ms = slowest_ms.max(elapsed);
+            let atmosphere = details
+                .facts
+                .iter()
+                .any(|f| f.section == "atmosphere" && f.key == "surface_air_density");
+            let vulcanism = details
+                .facts
+                .iter()
+                .find(|f| f.section == "volcanism" && f.key == "magma_production_rate");
+            if atmosphere {
+                atmospheric += 1;
+                for key in [
+                    "mean_molar_mass",
+                    "surface_sound_speed",
+                    "atmospheric_scale_height",
+                ] {
+                    if !details.facts.iter().any(|f| {
+                        f.section == "atmosphere"
+                            && f.key == key
+                            && f.value > 0.0
+                            && f.value.is_finite()
+                    }) {
+                        return Err(format!(
+                            "missing atmospheric physical fact: {} {key}",
+                            body.name
+                        )
+                        .into());
+                    }
+                }
+            }
+            if let Some(rate) = vulcanism {
+                volcanic += 1;
+                if !rate.value.is_finite()
+                    || rate.value <= 0.0
+                    || !details
+                        .text_facts
+                        .iter()
+                        .any(|f| f.section == "volcanism" && f.key == "volcanic_style")
+                {
+                    return Err(format!("invalid volcanic diagnostic: {}", body.name).into());
+                }
+            }
+            if body.kind == 0 && (atmosphere || vulcanism.is_some()) {
+                return Err(format!("invalid stellar diagnostic: {}", body.name).into());
+            }
+            println!(
+                "C1_BODY name={} atmosphere={} volcanism={} rate_kg_s={:.6e} elapsed_ms={:.2}",
+                body.name,
+                atmosphere,
+                vulcanism.is_some(),
+                vulcanism.map_or(0.0, |v| v.value),
+                elapsed
+            );
+        }
+        if atmospheric < 3 {
+            return Err(format!("incomplete atmospheric coverage: {atmospheric}").into());
+        }
+        println!(
+            "C1_PASS bodies={} atmospheres={} volcanic={} total_ms={:.2} slowest_ms={:.2}",
+            atlas.bodies.len(),
+            atmospheric,
+            volcanic,
+            started.elapsed().as_secs_f64() * 1000.0,
+            slowest_ms
+        );
+        reader.close().await;
+        return Ok(());
+    }
     if option.as_deref() == Some("--b2a-only") {
         let reader = ForecastReader::open(path, vehicle_id).await?;
         let atlas = reader.celestial_atlas().await?;

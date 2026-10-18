@@ -1,8 +1,10 @@
 use super::celestial_atlas::{CelestialAtlas, catalog_at};
+use super::celestial_body_atmosphere::append_atmospheric_physics;
 use super::celestial_body_details::{CelestialBodyDetails, selected_body_details};
 use super::celestial_body_environment::append_reference_environment;
 use super::celestial_body_geoscience::append_geoscience;
 use super::celestial_body_radiation::append_radiation_and_magnetism;
+use super::celestial_body_volcanism::append_volcanism;
 use super::orbit_preview::{OrbitPreview, preview_from_pool_cancelled};
 use crate::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::EphemerisCatalog;
@@ -85,7 +87,17 @@ impl ForecastReader {
             .await;
         }
         if let Some(body) = self.catalog.planets().iter().find(|body| body.id() == id) {
+            append_atmospheric_physics(&mut details, &self.pool, body).await;
             append_geoscience(
+                &mut details,
+                &self.pool,
+                id,
+                body.kind(),
+                self.universe_epoch,
+                state.captured_at_epoch(),
+            )
+            .await;
+            append_volcanism(
                 &mut details,
                 &self.pool,
                 id,
