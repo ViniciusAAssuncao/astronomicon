@@ -56,14 +56,14 @@ impl PreviewEngine {
         Ok(())
     }
 
-    pub fn celestial_atlas(&self) -> Result<FfiCelestialAtlas, String> {
+    pub fn celestial_atlas(&self, show_small_bodies: bool) -> Result<FfiCelestialAtlas, String> {
         let atlas = self
             .runtime
             .block_on(
                 self.reader
                     .as_ref()
                     .ok_or("no forecast save loaded")?
-                    .celestial_atlas(),
+                    .celestial_atlas_filtered(show_small_bodies),
             )
             .map_err(|error| error.to_string())?;
         Ok(FfiCelestialAtlas {

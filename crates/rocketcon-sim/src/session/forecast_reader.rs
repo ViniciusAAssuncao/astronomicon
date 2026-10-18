@@ -1,4 +1,4 @@
-use super::celestial_atlas::{CelestialAtlas, catalog_at};
+use super::celestial_atlas::{CelestialAtlas, catalog_at_visible};
 use super::celestial_body_atmosphere::append_atmospheric_physics;
 use super::celestial_body_climate::append_reference_winds;
 use super::celestial_body_details::{CelestialBodyDetails, selected_body_details};
@@ -54,13 +54,21 @@ impl ForecastReader {
     }
 
     pub async fn celestial_atlas(&self) -> RocketResult<CelestialAtlas> {
+        self.celestial_atlas_filtered(true).await
+    }
+
+    pub async fn celestial_atlas_filtered(
+        &self,
+        show_small_bodies: bool,
+    ) -> RocketResult<CelestialAtlas> {
         let state = vehicle_physical_state::get_by_vehicle_id(&self.pool, &self.vehicle_id)
             .await?
             .ok_or_else(|| RocketError::Generic("atlas vehicle missing".into()))?;
-        catalog_at(
+        catalog_at_visible(
             &self.catalog,
             state.captured_total_epoch(),
             state.reference_body_id(),
+            show_small_bodies,
         )
     }
 
@@ -91,9 +99,10 @@ impl ForecastReader {
         if let Some(body) = self.catalog.planets().iter().find(|body| body.id() == id) {
             append_atmospheric_physics(&mut details, &self.pool, body).await;
             if let Some(context) = radiative.as_ref() {
-                if let Some(winds) = append_reference_winds(
-                    &mut details, &self.pool, &self.catalog, body, context
-                ).await {
+                if let Some(winds) =
+                    append_reference_winds(&mut details, &self.pool, &self.catalog, body, context)
+                        .await
+                {
                     append_reference_weather(&mut details, &self.pool, body, &winds).await;
                 }
             }

@@ -10,7 +10,7 @@ use astronomicon_core::math::gravity::{
 use astronomicon_core::math::perturbation::resolve_secular_precession;
 use astronomicon_core::units::Duration;
 use rocketcon_core::math::orbital::sphere_of_influence::laplace_sphere_of_influence_radius;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,14 +43,63 @@ fn parent_id(parent: OrbitalParent) -> Option<Uuid> {
     }
 }
 
-pub fn catalog_at(
+pub fn catalog_at_visible(
     catalog: &EphemerisCatalog,
     epoch: Duration,
     reference: Uuid,
+    show_small_bodies: bool,
 ) -> RocketResult<CelestialAtlas> {
-    let positions = catalog
-        .positions(epoch)
-        .map_err(|error| RocketError::Generic(error.to_string()))?;
+    const MIN_VISIBLE_RADIUS_M: f64 = 400_000.0;
+    let visible_minors: HashSet<_> = catalog
+        .minor_planets()
+        .iter()
+        .filter(|body| {
+            show_small_bodies
+                || body.id() == reference
+                || [body.axis_a(), body.axis_b(), body.axis_c()]
+                    .into_iter()
+                    .flatten()
+                    .any(|radius| {
+                        radius.value().is_finite() && radius.value() >= MIN_VISIBLE_RADIUS_M
+                    })
+        })
+        .map(|body| body.id())
+        .collect();
+    let visible_planets: HashSet<_> = catalog
+        .planets()
+        .iter()
+        .filter(|body| {
+            show_small_bodies
+                || body.id() == reference
+                || body.kind() != PlanetKind::IcyBody
+                || body
+                    .equatorial_radius()
+                    .or_else(|| body.polar_radius())
+                    .is_some_and(|radius| {
+                        radius.value().is_finite() && radius.value() >= MIN_VISIBLE_RADIUS_M
+                    })
+        })
+        .map(|body| body.id())
+        .collect();
+    let positions = if show_small_bodies {
+        catalog.positions(epoch)
+    } else {
+        let mut ids: Vec<_> = catalog
+            .stars()
+            .iter()
+            .map(|body| body.id())
+            .chain(catalog.barycenters().iter().map(|body| body.id()))
+            .chain(visible_planets.iter().copied())
+            .chain(visible_minors.iter().copied())
+            .chain(std::iter::once(reference))
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        catalog
+            .prepared_positions()
+            .and_then(|lookup| lookup.selected_at_offset(epoch, 0.0, &ids))
+    }
+    .map_err(|error| RocketError::Generic(error.to_string()))?;
     let center = positions
         .get(&reference)
         .ok_or_else(|| RocketError::Generic("atlas reference center missing".into()))?
@@ -119,7 +168,9 @@ pub fn catalog_at(
                             )
                             .ok()
                         } else {
-                            catalog.mass_of_body(id)
+                            catalog
+                                .mass_of_body(id)
+                                .or_else(|| minors.get(&id).map(|body| body.mass()))
                         }?;
                         let parent_mass = calculate_parent_effective_mass(
                             &parent,
@@ -170,6 +221,9 @@ pub fn catalog_at(
         );
     }
     for planet in catalog.planets() {
+        if !visible_planets.contains(&planet.id()) {
+            continue;
+        }
         let parent = planet.orbital_parent();
         let kind = if planet.kind() == PlanetKind::DwarfPlanet {
             3
@@ -192,6 +246,9 @@ pub fn catalog_at(
         );
     }
     for minor in catalog.minor_planets() {
+        if !visible_minors.contains(&minor.id()) {
+            continue;
+        }
         let radius = [minor.axis_a(), minor.axis_b(), minor.axis_c()]
             .into_iter()
             .flatten()

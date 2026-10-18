@@ -282,7 +282,7 @@ pub mod ffi {
             save_path_utf8: &str,
             vehicle_uuid: &str,
         ) -> Result<()>;
-        fn celestial_atlas(self: &PreviewEngine) -> Result<FfiCelestialAtlas>;
+        fn celestial_atlas(self: &PreviewEngine, show_small_bodies: bool) -> Result<FfiCelestialAtlas>;
         fn body_details(self: &PreviewEngine, body_id: &str) -> Result<FfiBodyDetails>;
         fn predict(
             self: &PreviewEngine,
