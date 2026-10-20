@@ -4,7 +4,7 @@ use rocketcon_core::math::orbital::trajectory_prediction::{
     find_soi_exit_event, time_between_true_anomalies,
 };
 
-const MAX_OPEN_HORIZON: f64 = 259_200.0;
+const MAX_OPEN_HORIZON: f64 = 90.0 * 86400.0;
 pub const MAX_BOUND_HORIZON: f64 = 172_800.0;
 
 pub fn preview_horizon(
@@ -14,7 +14,7 @@ pub fn preview_horizon(
     soi_radius: Option<f64>,
 ) -> f64 {
     if let Some(period) = period_seconds {
-        return period.clamp(600.0, MAX_BOUND_HORIZON);
+        return period.clamp(600.0, 14.0 * 86400.0);
     }
     let mut goal = 3_600.0_f64;
     if let Ok(dt) =

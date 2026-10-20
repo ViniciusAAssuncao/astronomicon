@@ -180,6 +180,7 @@ impl From<SessionPreview> for OrbitPreview {
                     start_seconds: arc.start_seconds,
                     end_seconds: arc.end_seconds,
                     points_m: arc.points_m.into_iter().map(FfiVec3::from).collect(),
+                    reference_points_m: arc.reference_points_m.into_iter().map(FfiVec3::from).collect(),
                 })
                 .collect(),
             forecast_events: source

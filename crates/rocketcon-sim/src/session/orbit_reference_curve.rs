@@ -8,7 +8,7 @@ pub fn closed_osculating_reference(
     velocity: VelocityVector,
     mu: GravitationalParameter,
     elements: &OsculatingElements,
-    body_radius: Option<Length>,
+    _body_radius: Option<Length>,
 ) -> Option<Vec<[f64; 3]>> {
     if !matches!(
         elements.orbit_type(),
@@ -18,10 +18,6 @@ pub fn closed_osculating_reference(
         || !mu.value().is_finite()
         || mu.value() <= 0.0
     {
-        return None;
-    }
-    let radius = body_radius?.value();
-    if !radius.is_finite() || radius <= 0.0 || elements.periapsis_distance.value() <= radius {
         return None;
     }
     let h = position.raw().cross(&velocity.raw());

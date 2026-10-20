@@ -93,6 +93,7 @@ pub mod ffi {
         start_seconds: f64,
         end_seconds: f64,
         points_m: Vec<FfiVec3>,
+        reference_points_m: Vec<FfiVec3>,
     }
 
     #[derive(Debug, PartialEq)]

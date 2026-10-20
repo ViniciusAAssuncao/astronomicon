@@ -4,7 +4,7 @@ use super::orbit_apsides::{OrbitApsis, next_apoapsis, next_periapsis};
 use super::orbit_forecast::{ForecastArc, ForecastBody, ForecastEvent, ForecastResult};
 use super::orbit_forecast_hybrid::sample_hybrid_forecast_cancelled;
 use super::orbit_nodes::{orbit_nodes, orbit_nodes_in_frame};
-use super::orbit_preview_horizon::{MAX_BOUND_HORIZON, preview_horizon};
+use super::orbit_preview_horizon::preview_horizon;
 use super::orbit_preview_path::{PreviewEndReason, sample_preview_path};
 use super::orbit_reference_curve::closed_osculating_reference;
 use super::orbit_soi::{OrbitSoiPreview, soi_radius};
@@ -205,7 +205,12 @@ pub async fn preview_from_pool_cancelled(
             frame,
         });
     let catalog = EphemerisCatalog::load(pool, environment.system_id).await?;
-    let mut forecast_horizon = horizon_seconds.max(MAX_BOUND_HORIZON);
+    let mut forecast_horizon = horizon_seconds.max(14.0 * 86400.0);
+    if environment.planet.is_none()
+        && period_seconds.is_none_or(|period| period > 365.25 * 86400.0)
+    {
+        forecast_horizon = forecast_horizon.max(20.0 * 365.25 * 86400.0);
+    }
     if let Some(period) = period_seconds {
         if period.is_finite() && period > 0.0 && period <= 400.0 * 86400.0 {
             forecast_horizon = forecast_horizon.max(period);

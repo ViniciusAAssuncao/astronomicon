@@ -3,11 +3,16 @@ use super::orbit_forecast::{
 };
 use super::orbit_forecast_continuation::terminal_continuation;
 use super::orbit_forecast_geometry::sample_smooth_curve;
+use super::orbit_forecast_reference::osculating_arc_reference;
+use super::orbit_forecast_past::open_osculating_past;
+use super::orbit_forecast_long_range::extend_with_patched_conics;
 use super::orbit_preview_horizon::MAX_BOUND_HORIZON;
 use crate::catalog_nbody::{CatalogTrajectory, integrate_catalog_trajectory_from_offset};
 use crate::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::EphemerisCatalog;
+use astronomicon_core::math::gravity::gravitational_parameter;
 use astronomicon_core::units::{Duration, Position, Vector3, VelocityVector};
+use rocketcon_core::math::orbital::cartesian_to_osculating_elements;
 use rocketcon_app::aeroespacial::first_crossing;
 use rocketcon_app::orbital::hybrid_regime::{GravityRegime, RegimePolicy, choose_regime_at_offset};
 use rocketcon_core::math::orbital::n_body::dop853::{
@@ -15,8 +20,8 @@ use rocketcon_core::math::orbital::n_body::dop853::{
 };
 use uuid::Uuid;
 
-const MAX_FORECAST_GEOMETRY_POINTS: usize = 1536;
-const MAX_NUMERICAL_WINDOWS: usize = 4;
+const MAX_FORECAST_GEOMETRY_POINTS: usize = 4096;
+const MAX_NUMERICAL_WINDOWS: usize = 12;
 
 fn position_at(segment: &Dop853DenseSegment<6>, time: f64) -> RocketResult<Position> {
     let state = segment
@@ -228,11 +233,25 @@ fn append_window(
                     position_m: point(*center, display_center),
                 });
             }
+            let crossing_state = segment.evaluate(crossing_local).ok_or_else(|| {
+                RocketError::Generic("forecast crossing velocity unavailable".into())
+            })?;
+            let reference_points_m = osculating_arc_reference(
+                catalog,
+                epoch + Duration::new(crossing_absolute),
+                first_reference,
+                *reference,
+                position_at(segment, crossing_local)?,
+                VelocityVector::from_raw(Vector3::new(
+                    crossing_state[3], crossing_state[4], crossing_state[5],
+                )),
+            );
             result.arcs.push(ForecastArc {
                 reference_body_id: *reference,
                 start_seconds: crossing_absolute,
                 end_seconds: crossing_absolute,
                 points_m: vec![display_point],
+                reference_points_m,
             });
         }
         append_curve(
@@ -279,12 +298,29 @@ pub(super) fn sample_restricted_forecast(
         .ok_or_else(|| RocketError::Generic("forecast reference has no ephemeris".into()))?
         .position
         .raw();
+    let active_body = states
+        .get(&first_reference)
+        .ok_or_else(|| RocketError::Generic("forecast reference unavailable".into()))?;
+    let relative_position = Position::from_raw(position.raw() - initial_center);
+    let relative_velocity =
+        VelocityVector::from_raw(velocity.raw() - active_body.velocity.raw());
+    let past_points = catalog.mass_of_body(first_reference)
+        .map(gravitational_parameter)
+        .and_then(|mu| {
+            cartesian_to_osculating_elements(relative_position, relative_velocity, mu)
+                .ok()
+                .map(|elements| open_osculating_past(
+                    relative_position, relative_velocity, mu, &elements,
+                ))
+        })
+        .unwrap_or_default();
     let mut result = ForecastResult {
         arcs: vec![ForecastArc {
             reference_body_id: first_reference,
             start_seconds: 0.0,
             end_seconds: 0.0,
             points_m: vec![point(position, initial_center)],
+            reference_points_m: past_points,
         }],
         events: Vec::new(),
         bodies: Vec::new(),
@@ -400,7 +436,22 @@ pub(super) fn sample_restricted_forecast(
         }
         progress(&result);
     }
-    if offset > 0.0 && result.impact_seconds.is_none() {
+    if offset > 0.0 && result.impact_seconds.is_none() && horizon > offset {
+        extend_with_patched_conics(
+            &mut result,
+            catalog,
+            epoch,
+            first_reference,
+            reference,
+            offset,
+            current_position,
+            current_velocity,
+            horizon,
+        )?;
+    }
+    if offset > 0.0 && result.impact_seconds.is_none()
+        && result.continuation_points_m.is_empty()
+    {
         result.continuation_points_m = terminal_continuation(
             catalog, epoch, first_reference, reference, offset,
             current_position, current_velocity,

@@ -1,5 +1,7 @@
 use super::orbit_forecast_continuation::terminal_continuation;
 use super::orbit_forecast_events::first_surface_intersection;
+use super::orbit_forecast_reference::osculating_arc_reference;
+use super::orbit_forecast_past::open_osculating_past;
 use crate::{RocketError, RocketResult};
 use astronomicon_app::ephemeris::EphemerisCatalog;
 use astronomicon_core::math::gravity::gravitational_parameter;
@@ -11,8 +13,8 @@ use rocketcon_core::math::orbital::{
 };
 use uuid::Uuid;
 
-const MAX_VERTICES: usize = 385;
-pub(super) const MAX_ARCS: usize = 8;
+const MAX_VERTICES: usize = 2049;
+pub(super) const MAX_ARCS: usize = 32;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForecastArc {
@@ -20,6 +22,7 @@ pub struct ForecastArc {
     pub start_seconds: f64,
     pub end_seconds: f64,
     pub points_m: Vec<[f64; 3]>,
+    pub reference_points_m: Vec<[f64; 3]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,19 +74,53 @@ pub fn sample_patched_forecast(
     velocity: VelocityVector,
     horizon: f64,
 ) -> RocketResult<ForecastResult> {
+    sample_patched_forecast_in_frame(
+        catalog, epoch, first_reference, first_reference, position, velocity, horizon,
+    )
+}
+
+pub(super) fn sample_patched_forecast_in_frame(
+    catalog: &EphemerisCatalog,
+    epoch: Duration,
+    first_reference: Uuid,
+    display_reference: Uuid,
+    position: Position,
+    velocity: VelocityVector,
+    horizon: f64,
+) -> RocketResult<ForecastResult> {
     let initial = catalog.states(epoch)?;
     let first = initial.get(&first_reference).ok_or_else(|| {
         RocketError::Generic(format!(
             "forecast reference '{first_reference}' has no ephemeris"
         ))
     })?;
-    let origin = first.position.raw();
+    let origin = initial.get(&display_reference).ok_or_else(|| {
+        RocketError::Generic("forecast display reference unavailable".into())
+    })?.position.raw();
+    let relative_position = Position::from_raw(position.raw() - first.position.raw());
+    let relative_velocity = VelocityVector::from_raw(velocity.raw() - first.velocity.raw());
+    let initial_reference_points = catalog.mass_of_body(first_reference)
+        .map(gravitational_parameter)
+        .and_then(|mu| {
+            cartesian_to_osculating_elements(relative_position, relative_velocity, mu)
+                .ok()
+                .map(|elements| open_osculating_past(
+                    relative_position, relative_velocity, mu, &elements,
+                ))
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .map(|point| {
+            let offset = first.position.raw() - origin;
+            [point[0] + offset.0, point[1] + offset.1, point[2] + offset.2]
+        })
+        .collect();
     let mut bodies = Vec::new();
     if let Some(radius_m) = catalog.radius_of_body(first_reference) {
         bodies.push(ForecastBody {
             name: body_name(catalog, first_reference),
             radius_m,
-            position_m: [0.0; 3],
+            position_m: as_array(first.position.raw() - origin),
         });
     }
     let mut result = ForecastResult {
@@ -92,6 +129,7 @@ pub fn sample_patched_forecast(
             start_seconds: 0.0,
             end_seconds: 0.0,
             points_m: vec![as_array(position.raw() - origin)],
+            reference_points_m: initial_reference_points,
         }],
         events: Vec::new(),
         bodies,
@@ -103,8 +141,8 @@ pub fn sample_patched_forecast(
         return Ok(result);
     }
     let mut reference = first_reference;
-    let mut center_position = origin;
-     let mut relative_position = Position::from_raw(position.raw() - origin);
+    let mut center_position = first.position.raw();
+    let mut relative_position = Position::from_raw(position.raw() - center_position);
     let mut relative_velocity = VelocityVector::from_raw(velocity.raw() - first.velocity.raw());
     let mut elapsed = 0.0;
     let mut goal = horizon;
@@ -254,9 +292,9 @@ pub fn sample_patched_forecast(
         };
         let world = center_position + propagated.0.raw();
         let frame_center = catalog
-            .positions_for_ids_at_offset(epoch, now, &[first_reference])
+            .positions_for_ids_at_offset(epoch, now, &[display_reference])
             .map_err(|error| RocketError::Generic(error.to_string()))?
-            .get(&first_reference)
+            .get(&display_reference)
             .ok_or_else(|| RocketError::Generic("forecast display center unavailable".into()))?
             .raw();
         let point = as_array(world - frame_center);
@@ -334,6 +372,11 @@ pub fn sample_patched_forecast(
                 start_seconds: now,
                 end_seconds: now,
                 points_m: vec![point],
+                reference_points_m: osculating_arc_reference(
+                    catalog, epoch_now, display_reference, reference,
+                    Position::from_raw(world),
+                    VelocityVector::from_raw(new_body.velocity.raw() + relative_velocity.raw()),
+                ),
             });
         }
     }
@@ -343,7 +386,7 @@ pub fn sample_patched_forecast(
             .get(&reference)
             .ok_or_else(|| RocketError::Generic("forecast terminal body unavailable".into()))?;
         result.continuation_points_m = terminal_continuation(
-            catalog, epoch, first_reference, reference, result.elapsed_seconds,
+            catalog, epoch, display_reference, reference, result.elapsed_seconds,
             Position::from_raw(center_position + relative_position.raw()),
             VelocityVector::from_raw(body.velocity.raw() + relative_velocity.raw()),
         ).unwrap_or_default();

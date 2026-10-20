@@ -2,7 +2,7 @@ use super::orbit_soi::{OrbitSoiPreview, outside_soi, refine_exit};
 use astronomicon_core::units::{Duration, GravitationalParameter, Position, VelocityVector};
 use rocketcon_core::math::orbital::propagate_universal_state_vectors;
 
-const MAX_POINTS: usize = 257;
+const MAX_POINTS: usize = 1025;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
