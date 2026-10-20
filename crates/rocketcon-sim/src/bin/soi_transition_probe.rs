@@ -462,6 +462,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     if option.as_deref() == Some("--forecast-only") {
+        if preview.orbit_classification == 3 {
+            let first = preview.future_arcs.first().ok_or("missing current patch")?;
+            let past = &first.reference_points_m;
+            if past.len() < 64 || past.iter().flatten().any(|value| !value.is_finite()) {
+                return Err("missing or invalid inbound osculating patch".into());
+            }
+            let start = first.points_m.first().ok_or("missing craft anchor")?;
+            let end = past.last().ok_or("missing osculating endpoint")?;
+            let deviation = start.iter().zip(end.iter())
+                .map(|(a, b)| (a - b).powi(2)).sum::<f64>().sqrt();
+            if deviation > 0.01 {
+                return Err(format!("retroconic is disconnected from craft: {deviation} m").into());
+            }
+            println!("FORECAST_INBOUND_OSCULATING_PASS vertices={} anchor_delta_m={deviation:.6}", past.len());
+        }
         if preview.future_arcs.len() < 2 {
             return Err("expected two or more future orbit arcs".into());
         }
